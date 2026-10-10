@@ -1,6 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.core import voice
+from app.modules.prepcrew import session
 from app.modules.prepcrew.schemas import (
     PlanRequest, PlanResponse,
     SessionStartRequest, SessionStartResponse,
@@ -15,22 +16,26 @@ router = APIRouter(prefix="/api", tags=["prepcrew"])
 
 @router.post("/plans", response_model=PlanResponse)
 async def create_plan(body: PlanRequest):
-    # TODO: core.ai.generate_json extracts required skills from body.job_posting and body.resume
-    # TODO: map skills to topic graph nodes (topic_graph.py); persist with core.store.create_record("plan", ...)
-    return PlanResponse(plan_id="TODO", topics=[], questions=[])
+    # TODO: map skills to topic graph nodes (topic_graph.py)
+    return PlanResponse(**await session.create_plan(body.job_posting, body.resume))
 
 
 @router.post("/sessions", response_model=SessionStartResponse)
 async def start_session(body: SessionStartRequest):
-    # TODO: core.store.create_record("session", ...)
-    return SessionStartResponse(session_id="TODO", voice_token=await voice.mint_token())
+    try:
+        started = await session.start(body.plan_id, body.user_id)
+    except session.SessionError as e:
+        raise HTTPException(e.status, str(e))
+    return SessionStartResponse(**started, voice_token=await voice.mint_token())
 
 
 @router.post("/sessions/{session_id}/turns", response_model=TurnResponse)
 async def take_turn(session_id: str, body: TurnRequest):
-    # TODO: store the answer, core.memory.recall(...), core.ai.generate_text for the next question
-    # Keep this path fast: no grading during the live interview
-    return TurnResponse(next_question="TODO")
+    # TODO: core.memory.recall(...) for session two. Keep this path fast: no grading during the live interview
+    try:
+        return TurnResponse(**await session.take_turn(session_id, body.answer))
+    except session.SessionError as e:
+        raise HTTPException(e.status, str(e))
 
 
 @router.post("/sessions/{session_id}/probe", response_model=ProbeResponse)

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PlanRequest(BaseModel):
@@ -8,25 +8,33 @@ class PlanRequest(BaseModel):
 
 class PlanResponse(BaseModel):
     plan_id: str
+    project: str = ""
     topics: list[str]
     questions: list[str]
+    degraded: bool = False  # True when the model plan failed and generic questions were used
 
 
 class SessionStartRequest(BaseModel):
     plan_id: str
+    user_id: str | None = None
 
 
 class SessionStartResponse(BaseModel):
     session_id: str
+    state: str = "interview"
+    opening: str = ""
     voice_token: str | None = None
 
 
 class TurnRequest(BaseModel):
-    answer: str
+    answer: str = Field(max_length=5000)
 
 
 class TurnResponse(BaseModel):
     next_question: str
+    answer_id: str = ""
+    done: bool = False  # True when the interview part is over and the walkthrough starts
+    degraded: bool = False  # True when the model failed and the planned question was used
 
 
 class ProbeRequest(BaseModel):

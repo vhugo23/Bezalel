@@ -12,8 +12,9 @@ def test_pages():
 
 def test_api_stubs():
     assert client.post("/api/plans", json={"job_posting": "", "resume": ""}).status_code == 200
-    assert client.post("/api/sessions", json={"plan_id": "x"}).status_code == 200
-    assert client.post("/api/sessions/x/turns", json={"answer": ""}).status_code == 200
+    plan = client.post("/api/plans", json={"job_posting": "j", "resume": "r"}).json()
+    sid = client.post("/api/sessions", json={"plan_id": plan["plan_id"]}).json()["session_id"]
+    assert client.post(f"/api/sessions/{sid}/turns", json={"answer": "hi"}).status_code == 200
     assert client.post("/api/sessions/x/probe", json={"node": "n1"}).status_code == 200
     assert client.post("/api/sessions/x/end").status_code == 200
     assert client.get("/api/sessions/x/report").status_code == 200
