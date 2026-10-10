@@ -21,3 +21,6 @@ Thumbs.db
 # local data
 *.sqlite3
 *.log
+
+# teammate's entry
+.git copy/

@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+jinja2
+pydantic
+python-dotenv
+httpx
+asyncpg
+pytest
+# Gemini SDK: verify the current package name in Google's docs before installing
+# ElevenLabs / Backboard: use httpx against their REST APIs or their SDKs; check each one's docs
