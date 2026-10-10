@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prepcrew/rubric.schema.json",
+  "title": "Rubric",
+  "description": "What an evaluator grades. Written by the content owner. A rubric is not used in a real run until status is 'reviewed' and reviewed_by is filled in with a real person.",
+  "type": "object",
+  "required": ["rubric_id", "title", "module", "status", "score_max", "criteria"],
+  "additionalProperties": false,
+  "properties": {
+    "rubric_id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "title": { "type": "string" },
+    "module": { "enum": ["interview", "debug", "drill", "embedded_c", "behavioral"] },
+    "status": { "enum": ["draft", "reviewed"] },
+    "reviewed_by": { "type": ["string", "null"], "description": "Name and role, only if a real review happened." },
+    "review_notes": { "type": ["string", "null"], "description": "What the reviewer actually said." },
+    "score_max": { "type": "integer", "minimum": 1, "description": "Every criterion is scored 0..score_max." },
+    "criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "skill_id", "anchors"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+          "description": { "type": "string" },
+          "skill_id": { "type": "string", "description": "Skill node flagged when this criterion scores low, for example circuits1.ohms_law." },
+          "uses_probe_log": { "type": "boolean", "default": false, "description": "True if the evaluator also receives the ordered probe events." },
+          "anchors": {
+            "type": "object",
+            "description": "What each score level looks like, keyed by the score as a string.",
+            "additionalProperties": { "type": "string" },
+            "minProperties": 2
+          }
+        }
+      }
+    }
+  }
+}

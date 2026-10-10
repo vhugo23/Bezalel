@@ -1,0 +1,37 @@
+{
+  "scenario_id": "led_reversed",
+  "title": "LED does not light",
+  "kind": "debug",
+  "prompt": "A 5 V supply feeds a 330 ohm resistor and an LED to ground. The LED is dark. Walk me through how you'd debug it.",
+  "ground_net": "gnd",
+  "parts": [
+    { "id": "V1", "type": "supply", "value": 5 },
+    { "id": "R1", "type": "resistor", "value": 330 },
+    { "id": "D1", "type": "led", "value": 2.0, "orientation": "reversed" }
+  ],
+  "nets": [
+    { "id": "n1", "pins": ["V1.plus", "R1.1"], "label": "VCC" },
+    { "id": "n2", "pins": ["R1.2", "D1.anode"] },
+    { "id": "gnd", "pins": ["V1.minus", "D1.cathode"], "label": "GND" }
+  ],
+  "fault": {
+    "type": "led_reversed",
+    "part": "D1",
+    "hint_ladder": [
+      "What do you expect the voltage to be across the resistor if the LED is on?",
+      "What does the reading at n2 tell you about whether current is flowing?"
+    ]
+  },
+  "expected_voltages": {
+    "healthy": { "n1": 5.0, "n2": 2.0, "gnd": 0.0 },
+    "faulted": { "n1": 5.0, "n2": 5.0, "gnd": 0.0 }
+  },
+  "layout": {
+    "schematic": {
+      "V1": { "x": 40, "y": 80 },
+      "R1": { "x": 140, "y": 40 },
+      "D1": { "x": 240, "y": 80, "rotation": 90 }
+    },
+    "breadboard": {}
+  }
+}

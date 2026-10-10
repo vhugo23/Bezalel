@@ -1,0 +1,5 @@
+[
+  { "event_id": "e1", "seq": 0, "t": "2026-10-10T21:00:05Z", "session_id": "s1", "scenario_id": "led_reversed", "action": "probe_voltage", "node": "n1", "value": 5.0, "unit": "V" },
+  { "event_id": "e2", "seq": 1, "t": "2026-10-10T21:00:19Z", "session_id": "s1", "scenario_id": "led_reversed", "action": "probe_voltage", "node": "n2", "value": 5.0, "unit": "V" },
+  { "event_id": "e3", "seq": 2, "t": "2026-10-10T21:00:41Z", "session_id": "s1", "scenario_id": "led_reversed", "action": "swap_part", "node": "D1", "value": null, "unit": "none" }
+]

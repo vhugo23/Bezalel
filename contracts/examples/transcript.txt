@@ -1,0 +1,2 @@
+Interviewer: The LED is dark. Where do you start?
+Candidate: I'd measure the supply first to make sure we actually have five volts. Then I think the LED might be in backwards, so I'd expect to see the full five volts at the node after the resistor because no current is flowing.

@@ -1,0 +1,51 @@
+{
+  "answer_id": "a1",
+  "rubric_id": "debug_process_v0",
+  "criteria": [
+    {
+      "id": "checked_supply_first",
+      "score": 2,
+      "evidence_quote": "I'd measure the supply first to make sure we actually have five volts.",
+      "evidence_span": [
+        61,
+        131
+      ],
+      "rationale": "States the supply check as the first step."
+    },
+    {
+      "id": "verified_ground",
+      "score": 0,
+      "evidence_quote": "",
+      "evidence_span": [
+        0,
+        0
+      ],
+      "rationale": "Ground is not mentioned."
+    },
+    {
+      "id": "isolated_before_swapping",
+      "score": 0,
+      "evidence_quote": "",
+      "evidence_span": [
+        0,
+        0
+      ],
+      "rationale": "No narrowing described in the spoken answer."
+    },
+    {
+      "id": "stated_hypothesis",
+      "score": 2,
+      "evidence_quote": "I think the LED might be in backwards, so I'd expect to see the full five volts at the node after the resistor because no current is flowing.",
+      "evidence_span": [
+        137,
+        278
+      ],
+      "rationale": "Names the fault and the reading that would confirm it."
+    }
+  ],
+  "skill_flags": [
+    "circuits1.grounding",
+    "circuits1.fault_isolation"
+  ],
+  "confidence": 0.7
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prepcrew/probe_event.schema.json",
+  "title": "Probe event",
+  "description": "One user action on the circuit. The order matters: the debug rubric reads the sequence to judge supply first, ground verified, and isolate before swap. 'seq' is assigned by the server, not the client.",
+  "type": "object",
+  "required": ["event_id", "seq", "t", "session_id", "scenario_id", "action"],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": { "type": "string" },
+    "seq": { "type": "integer", "minimum": 0, "description": "0-based order within the session, server assigned." },
+    "t": { "type": "string", "format": "date-time" },
+    "session_id": { "type": "string" },
+    "scenario_id": { "type": "string" },
+    "action": {
+      "enum": ["probe_voltage", "probe_continuity", "swap_part", "isolate_section", "power_cycle"],
+      "description": "Only probe_voltage is in the original brief. The rest are added so the rubric can see isolation and part swaps."
+    },
+    "node": { "type": ["string", "null"], "description": "Net id for probes, part id for swap_part, section id for isolate_section." },
+    "value": { "type": ["number", "null"], "description": "Reading returned to the user. Null for actions with no reading." },
+    "unit": { "enum": ["V", "ohm", "none"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "action": { "enum": ["probe_voltage", "probe_continuity"] } } },
+      "then": { "required": ["node", "value", "unit"], "properties": { "node": { "type": "string" }, "value": { "type": "number" } } }
+    }
+  ]
+}

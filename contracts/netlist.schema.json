@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prepcrew/netlist.schema.json",
+  "title": "Scenario netlist",
+  "description": "One file per scenario. Used by the DC solver, the schematic SVG, and the draw-it-first checker. Pin names are PART.PIN, for example V1.plus or R1.1.",
+  "type": "object",
+  "required": ["scenario_id", "title", "kind", "ground_net", "parts", "nets"],
+  "additionalProperties": false,
+  "properties": {
+    "scenario_id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "title": { "type": "string", "minLength": 1 },
+    "kind": {
+      "enum": ["debug", "drill_reference"],
+      "description": "debug: has a planted fault. drill_reference: the answer key for a draw-it-first prompt, fault must be null."
+    },
+    "prompt": { "type": "string", "description": "Text shown to the user (drill) or read by the interviewer (debug)." },
+    "ground_net": { "type": "string" },
+    "parts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z]+[0-9]+$" },
+          "type": { "enum": ["supply", "resistor", "led", "capacitor", "switch", "diode", "gate"] },
+          "value": { "type": "number", "description": "Volts, ohms, farads. Omitted for parts without a value." },
+          "orientation": { "enum": ["normal", "reversed"], "description": "Polarized parts only." }
+        }
+      }
+    },
+    "nets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "pins"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+          "pins": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^[A-Z]+[0-9]+\\.[A-Za-z0-9_]+$" }
+          },
+          "label": { "type": "string", "description": "Name shown on the schematic, for example VCC." }
+        }
+      }
+    },
+    "fault": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["type", "part"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "enum": ["led_reversed", "open_resistor", "shorted_to_ground", "missing_ground", "wrong_value"] },
+            "part": { "type": "string" },
+            "params": { "type": "object" },
+            "hint_ladder": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Hints the interviewer may give, in order, if the user is stuck."
+            }
+          }
+        }
+      ]
+    },
+    "expected_voltages": {
+      "type": "object",
+      "description": "Fallback when the solver is not trusted: node voltages per state, keyed by net id. The solver output must match these in tests.",
+      "required": ["healthy"],
+      "additionalProperties": false,
+      "properties": {
+        "healthy": { "$ref": "#/$defs/voltage_map" },
+        "faulted": { "$ref": "#/$defs/voltage_map" }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schematic": { "$ref": "#/$defs/layout_map" },
+        "breadboard": { "$ref": "#/$defs/layout_map" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "debug" } } },
+      "then": { "required": ["fault", "expected_voltages"], "properties": { "fault": { "type": "object" } } },
+      "else": { "properties": { "fault": { "type": "null" } } }
+    }
+  ],
+  "$defs": {
+    "voltage_map": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "layout_map": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["x", "y"],
+        "additionalProperties": false,
+        "properties": {
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "rotation": { "enum": [0, 90, 180, 270] }
+        }
+      }
+    }
+  }
+}

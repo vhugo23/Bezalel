@@ -86,7 +86,7 @@ Keys needed in `.env`:
 | `ELEVENLABS_API_KEY` | Streamed speech |
 | `ANTHROPIC_API_KEY` | Evaluators |
 | `BACKBOARD_API_KEY` | Memory |
-| `TIGER_DATABASE_URL` | Tiger Data connection string |
+| `DATABASE_URL` | Tiger Data connection string (any Postgres works) |
 
 Never commit `.env`.
 
