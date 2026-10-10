@@ -19,14 +19,67 @@ class FakeProvider:
 
 
 class GeminiProvider:
+    """Calls Google's Gemini generateContent REST API. Needs GEMINI_API_KEY and GEMINI_MODEL in .env."""
     name = "gemini"
 
     async def text(self, prompt: str, system: str | None = None) -> str:
-        # TODO: call Gemini using config.GEMINI_API_KEY. Verify the current SDK/REST call in Google's docs.
-        raise NotImplementedError("Gemini provider is not implemented yet")
+        import logging
+        import httpx  # lazy import
+        logging.getLogger("httpx").setLevel(logging.WARNING)  # never log URLs (the key is a query param)
+        if not config.GEMINI_API_KEY:
+            raise AIError("GEMINI_API_KEY is empty. Add it to .env and restart the server.")
+        if not config.GEMINI_MODEL:
+            raise AIError("GEMINI_MODEL is empty. Set it in .env to a model name from Google's current model list.")
+        model = config.GEMINI_MODEL.removeprefix("models/")
+        body: dict = {"contents": [{"parts": [{"text": prompt}]}]}
+        if system:
+            body["systemInstruction"] = {"parts": [{"text": system}]}
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{config.GEMINI_BASE_URL}/models/{model}:generateContent",
+                params={"key": config.GEMINI_API_KEY},
+                json=body,
+            )
+        if resp.status_code != 200:
+            raise AIError(f"Gemini error {resp.status_code}: {resp.text[:300]}")
+        data = resp.json()
+        candidates = data.get("candidates") or []
+        if not candidates:
+            raise AIError(f"Gemini returned no answer (blocked or empty): {str(data.get('promptFeedback', data))[:300]}")
+        parts = candidates[0].get("content", {}).get("parts", [])
+        text = "".join(p.get("text", "") for p in parts)
+        if not text:
+            raise AIError(f"Gemini returned an empty answer (finish reason: {candidates[0].get('finishReason')})")
+        return text
 
 
-PROVIDERS = {"fake": FakeProvider, "gemini": GeminiProvider}
+class OpenAIProvider:
+    """Calls the OpenAI chat completions REST API. Needs OPENAI_API_KEY and OPENAI_MODEL in .env.
+    OPENAI_BASE_URL can point at any OpenAI-compatible service."""
+    name = "openai"
+
+    async def text(self, prompt: str, system: str | None = None) -> str:
+        import httpx  # lazy import
+        if not config.OPENAI_API_KEY:
+            raise AIError("OPENAI_API_KEY is empty. Add it to .env and restart the server.")
+        if not config.OPENAI_MODEL:
+            raise AIError("OPENAI_MODEL is empty. Set it in .env to a model your account can use.")
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{config.OPENAI_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {config.OPENAI_API_KEY}"},
+                json={"model": config.OPENAI_MODEL, "messages": messages},
+            )
+        if resp.status_code != 200:
+            raise AIError(f"OpenAI error {resp.status_code}: {resp.text[:300]}")
+        return resp.json()["choices"][0]["message"]["content"]
+
+
+PROVIDERS = {"fake": FakeProvider, "gemini": GeminiProvider, "openai": OpenAIProvider}
 
 
 def get_provider():
