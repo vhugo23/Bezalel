@@ -11,7 +11,7 @@ Live site: _(fill in after deploy)_
 1. You paste a hardware job posting and your resume.
 2. A voice interviewer opens on one of your resume projects and follows up on what you say.
 3. Circuit walkthrough: you get a schematic with a planted fault. You talk through your debugging and click nodes to probe voltages. The interviewer reacts to your probes.
-4. Draw it first: you draw a schematic from a prompt and explain it.
+4. Draw it first: you draw a schematic from a prompt and explain it!
 5. When the session ends, evaluators grade every answer in parallel and quote the evidence. The debugging process is graded too: did you check the supply first, verify ground, isolate the fault before swapping parts, and state a hypothesis.
 6. Each flagged gap links to a skill node and a short lesson. You retest, and the mastery chart updates.
 7. Your next session starts from your weak spots from the last one!
