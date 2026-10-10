@@ -1,29 +1,25 @@
 """PrepCrew idea module. To start a different idea, copy this folder to app/modules/<newname>,
-edit routes/templates, and set ENABLED_MODULES=<newname> in .env. The core stays untouched."""
+edit its routes, and set ENABLED_MODULES=<newname> in .env. The core stays untouched.
+
+Routes added: /api/... (routes.py) and /ws/... (ws.py). No page routes unless SERVE_HTML=true,
+so the React frontend owns every other path."""
 from fastapi import Request
 
-from app.modules.prepcrew.routes import router
+from app.modules.prepcrew import routes, ws
 
 
 def register(app, templates):
-    app.include_router(router)
+    app.include_router(routes.router)
+    app.include_router(ws.router)
+    if templates is None:  # API-only mode (default): the frontend owns all page routes
+        return
 
-    @app.get("/plan")
-    async def plan_page(request: Request):
-        return templates.TemplateResponse(request, "prepcrew/plan.html")
-
-    @app.get("/session/{session_id}")
-    async def session_page(request: Request, session_id: str):
-        return templates.TemplateResponse(request, "prepcrew/session.html")
-
-    @app.get("/report/{session_id}")
-    async def report_page(request: Request, session_id: str):
-        return templates.TemplateResponse(request, "prepcrew/report.html")
-
-    @app.get("/lesson/{topic}")
-    async def lesson_page(request: Request, topic: str):
-        return templates.TemplateResponse(request, "prepcrew/lesson.html")
-
-    @app.get("/season")
-    async def season_page(request: Request):
-        return templates.TemplateResponse(request, "prepcrew/season.html")
+    # Optional blank HTML fallback pages, only when SERVE_HTML=true
+    pages = {"/plan": "plan.html", "/session/{session_id}": "session.html",
+             "/report/{session_id}": "report.html", "/lesson/{skill_id}": "lesson.html"}
+    for path, tpl in pages.items():
+        def make(tpl=tpl):
+            async def page(request: Request):
+                return templates.TemplateResponse(request, f"prepcrew/{tpl}")
+            return page
+        app.add_api_route(path, make(), methods=["GET"], include_in_schema=False)

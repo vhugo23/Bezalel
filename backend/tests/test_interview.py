@@ -1,5 +1,5 @@
-"""Interview loop tests. Run on the fake provider, or with ai.generate_text patched to misbehave.
-No keys and no network needed."""
+"""Interview loop tests, on top of service.py. Run on the fake provider, or with ai.generate_text patched
+to misbehave. No keys and no network needed."""
 import asyncio
 import json
 
@@ -7,16 +7,19 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import config
-from app.core import ai
+from app.core import ai, store
 from app.main import app
-from app.modules.prepcrew import interviewer, session
+from app.modules.prepcrew import interviewer, service
 
 client = TestClient(app)
 
 
-def new_session() -> str:
-    plan = client.post("/api/plans", json={"job_posting": "Embedded firmware intern", "resume": "Built an RC filter"}).json()
-    return client.post("/api/sessions", json={"plan_id": plan["plan_id"]}).json()["session_id"]
+def new_session(user="u1") -> dict:
+    plan = client.post("/api/plans", json={"job_posting": "Embedded firmware intern", "resume": "Built an RC filter",
+                                           "user_id": user}).json()
+    r = client.post("/api/sessions", json={"plan_id": plan["plan_id"], "user_id": user, "consent": True})
+    assert r.status_code == 200, r.text
+    return r.json()
 
 
 def answer(sid: str, text: str = "I checked the supply first."):
@@ -33,12 +36,15 @@ def valid_plan_json(n_questions=5):
                        "questions": [f"Question {i}?" for i in range(n_questions)]})
 
 
+def state_of(sid: str) -> dict:
+    return asyncio.run(service.get_session(sid))["data"]
+
+
 # ---- the happy path ----
 
 def test_full_typed_interview_on_fake_provider_never_repeats_a_question():
-    plan = client.post("/api/plans", json={"job_posting": "j", "resume": "r"}).json()
-    sid = client.post("/api/sessions", json={"plan_id": plan["plan_id"]}).json()["session_id"]
-    asked, ids, last = [plan["questions"][0]], [], None
+    s = new_session()
+    sid, asked, ids, last = s["session_id"], [s["opening"]], [], None
     for i in range(interviewer.MAX_ANSWERS):
         r = answer(sid, f"answer {i}")
         assert r.status_code == 200
@@ -48,56 +54,85 @@ def test_full_typed_interview_on_fake_provider_never_repeats_a_question():
             break
         asked.append(last["next_question"])
     assert last["done"] is True
-    assert len(asked) == len(set(asked)) == len(plan["questions"])
-    assert ids == [f"{sid}:a{n}" for n in range(1, len(plan["questions"]) + 1)]
-    assert answer(sid).status_code == 409  # interview is over, session is in walkthrough
+    assert len(asked) == len(set(asked))
+    assert len(ids) == len(set(ids)) == len(asked)
+    assert state_of(sid)["state"] == "walkthrough"
+
+
+def test_session_starts_in_interview_with_an_opening_question():
+    s = new_session()
+    plan_questions = client.post("/api/plans", json={"job_posting": "j", "resume": "r"}).json()["questions"]
+    assert s["state"] == "interview"
+    assert s["opening"] and s["opening"] in plan_questions + interviewer.FALLBACK_QUESTIONS
 
 
 def test_fake_provider_turns_are_labelled_fake_not_model():
-    sid = new_session()
-    r = answer(sid).json()
+    r = answer(new_session()["session_id"]).json()
     assert r["source"] == "fake"
     assert r["degraded"] is False
     assert not r["next_question"].startswith("Got it")
 
 
-def test_session_opens_with_a_question_and_stores_transcript():
+def test_fake_provider_plan_is_marked_degraded():
     plan = client.post("/api/plans", json={"job_posting": "j", "resume": "r"}).json()
-    started = client.post("/api/sessions", json={"plan_id": plan["plan_id"]}).json()
-    assert started["opening"] == plan["questions"][0]
-    assert started["state"] == "interview"
-    answer(started["session_id"], "hello there")
-    turns = asyncio.run(session.transcript(started["session_id"]))
-    assert [t["role"] for t in turns] == ["interviewer", "candidate", "interviewer"]
-    assert turns[1]["answer_id"].endswith(":a1")
+    assert plan["degraded"] is True  # the fake provider cannot write a plan, so generic questions were used
 
 
-def test_transcript_returns_a_copy():
-    sid = new_session()
-    answer(sid)
-    first = asyncio.run(session.transcript(sid))
-    first[0]["text"] = "tampered"
-    assert asyncio.run(session.transcript(sid))[0]["text"] != "tampered"
+def test_transcript_is_stored_in_order():
+    sid = new_session()["session_id"]
+    answer(sid, "first")
+    answer(sid, "second")
+    turns = asyncio.run(service._interview_turns(sid))
+    assert [(t["role"], t["turn"]) for t in turns] == [
+        ("interviewer", 0), ("candidate", 1), ("interviewer", 1), ("candidate", 2), ("interviewer", 2)]
+    assert [t["text"] for t in turns if t["role"] == "candidate"] == ["first", "second"]
 
 
 def test_two_sessions_on_one_plan_are_independent():
     plan = client.post("/api/plans", json={"job_posting": "j", "resume": "r"}).json()
-    a = client.post("/api/sessions", json={"plan_id": plan["plan_id"]}).json()["session_id"]
-    b = client.post("/api/sessions", json={"plan_id": plan["plan_id"]}).json()["session_id"]
-    assert a != b
-    assert answer(a).json()["answer_id"] == f"{a}:a1"
-    assert answer(b).json()["answer_id"] == f"{b}:a1"
+    ids = [client.post("/api/sessions", json={"plan_id": plan["plan_id"], "user_id": "u", "consent": True}
+                       ).json()["session_id"] for _ in range(2)]
+    assert ids[0] != ids[1]
+    answer(ids[0])
+    assert state_of(ids[0])["turn"] == 1 and state_of(ids[1])["turn"] == 0
+
+
+def test_answers_after_the_interview_are_still_stored_for_grading(monkeypatch):
+    sid = new_session()["session_id"]
+    for _ in range(interviewer.MAX_ANSWERS):
+        if answer(sid).json()["done"]:
+            break
+    async def must_not_run(prompt, system=None):
+        raise AssertionError("the interview model should not run during the walkthrough")
+    patch_model(monkeypatch, must_not_run)
+    r = answer(sid, "I'd probe the node after the resistor.")
+    assert r.status_code == 200
+    assert r.json()["source"] == "scripted" and r.json()["done"] is False
+    answers = asyncio.run(store.list_events(sid, kind="answer"))
+    assert "I'd probe the node after the resistor." in [e["data"]["text"] for e in answers]
+    assert state_of(sid)["state"] == "walkthrough"
 
 
 # ---- bad input ----
 
 @pytest.mark.parametrize("text", ["", "   ", "\n\t"])
 def test_empty_answer_rejected(text):
-    assert answer(new_session(), text).status_code == 400
+    assert answer(new_session()["session_id"], text).status_code == 400
 
 
 def test_oversized_answer_rejected():
-    assert answer(new_session(), "x" * 5001).status_code == 422
+    assert answer(new_session()["session_id"], "x" * 5001).status_code == 422
+
+
+def test_bad_answer_over_the_voice_socket_does_not_close_it():
+    sid = new_session()["session_id"]
+    with client.websocket_connect(f"/ws/voice/{sid}") as ws:
+        ws.receive_json(), ws.receive_json()  # state, opening question
+        for bad in ("   ", "x" * 6000):
+            ws.send_json({"type": "text_answer", "text": bad})
+            assert ws.receive_json()["code"] == "bad_answer"
+        ws.send_json({"type": "text_answer", "text": "a real answer"})
+        assert ws.receive_json()["type"] == "transcript_final"
 
 
 @pytest.mark.parametrize("body", [
@@ -111,34 +146,28 @@ def test_plan_inputs_are_bounded(body):
 
 
 def test_unknown_ids():
-    assert client.post("/api/sessions", json={"plan_id": "nope"}).status_code == 404
+    assert client.post("/api/sessions", json={"plan_id": "nope", "user_id": "u", "consent": True}).status_code == 404
     assert answer("nope").status_code == 404
 
 
 def test_session_id_cannot_be_used_as_plan_id():
-    sid = new_session()
-    assert client.post("/api/sessions", json={"plan_id": sid}).status_code == 404
+    sid = new_session()["session_id"]
+    assert client.post("/api/sessions", json={"plan_id": sid, "user_id": "u", "consent": True}).status_code == 404
 
 
 def test_unknown_session_does_not_create_a_lock():
-    before = len(session._locks)
+    before = len(service._turn_locks)
     for i in range(5):
         assert answer(f"missing-{i}").status_code == 404
-    assert len(session._locks) == before
+    assert len(service._turn_locks) == before
 
 
-def test_lock_is_freed_when_the_interview_ends():
-    sid = new_session()
-    for _ in range(interviewer.MAX_ANSWERS):
-        if answer(sid).json()["done"]:
-            break
-    assert sid not in session._locks
-
-
-def test_bad_transition_rejected():
-    with pytest.raises(session.SessionError):
-        session.check_transition("interview", "retest")
-    session.check_transition("interview", "walkthrough")
+def test_delete_session_removes_the_interview_transcript_and_lock():
+    sid = new_session()["session_id"]
+    answer(sid)
+    assert client.delete(f"/api/sessions/{sid}").status_code == 200
+    assert asyncio.run(store.list_events(sid)) == []
+    assert sid not in service._turn_locks
 
 
 # ---- plan: model misbehaviour ----
@@ -203,7 +232,7 @@ def test_plan_prompt_marks_inputs_as_data(monkeypatch):
 # ---- live turn: model misbehaviour ----
 
 def test_turn_falls_back_on_model_timeout_using_the_live_timeout(monkeypatch):
-    sid = new_session()  # created on the fake provider
+    sid = new_session()["session_id"]  # created on the fake provider
     async def hang(prompt, system=None):
         await asyncio.sleep(30)
     patch_model(monkeypatch, hang)
@@ -212,11 +241,11 @@ def test_turn_falls_back_on_model_timeout_using_the_live_timeout(monkeypatch):
     r = answer(sid).json()
     assert r["degraded"] is True and r["source"] == "fallback"
     assert r["next_question"]
-    assert r["answer_id"].endswith(":a1")
+    assert r["answer_id"]
 
 
 def test_turn_falls_back_on_model_error(monkeypatch):
-    sid = new_session()
+    sid = new_session()["session_id"]
     async def boom(prompt, system=None):
         raise ai.AIError("Gemini error 500")
     patch_model(monkeypatch, boom)
@@ -224,7 +253,7 @@ def test_turn_falls_back_on_model_error(monkeypatch):
 
 
 def test_turn_falls_back_on_empty_model_text(monkeypatch):
-    sid = new_session()
+    sid = new_session()["session_id"]
     async def blank(prompt, system=None):
         return "   "
     patch_model(monkeypatch, blank)
@@ -232,7 +261,7 @@ def test_turn_falls_back_on_empty_model_text(monkeypatch):
 
 
 def test_turn_uses_model_text_when_it_works(monkeypatch):
-    sid = new_session()
+    sid = new_session()["session_id"]
     async def fine(prompt, system=None):
         return "  What did the scope show?  "
     patch_model(monkeypatch, fine)
@@ -242,7 +271,7 @@ def test_turn_uses_model_text_when_it_works(monkeypatch):
 
 
 def test_turn_prompt_contains_last_answer_persona_and_delimiters(monkeypatch):
-    sid = new_session()
+    sid = new_session()["session_id"]
     seen = {}
     async def spy(prompt, system=None):
         seen["prompt"], seen["system"] = prompt, system
@@ -255,7 +284,7 @@ def test_turn_prompt_contains_last_answer_persona_and_delimiters(monkeypatch):
 
 
 def test_long_model_reply_is_cut_short(monkeypatch):
-    sid = new_session()
+    sid = new_session()["session_id"]
     async def rambling(prompt, system=None):
         return ("That's interesting. " * 100) + "\n\nSecond paragraph here."
     patch_model(monkeypatch, rambling)
@@ -266,13 +295,13 @@ def test_long_model_reply_is_cut_short(monkeypatch):
 
 
 def test_degraded_interview_still_ends_without_repeating(monkeypatch):
-    sid = new_session()
+    s = new_session()
     async def boom(prompt, system=None):
         raise ai.AIError("down")
     patch_model(monkeypatch, boom)
-    asked = []
+    asked = [s["opening"]]
     for _ in range(interviewer.MAX_ANSWERS):
-        r = answer(sid).json()
+        r = answer(s["session_id"]).json()
         if r["done"]:
             break
         asked.append(r["next_question"])
@@ -280,36 +309,35 @@ def test_degraded_interview_still_ends_without_repeating(monkeypatch):
     assert len(asked) == len(set(asked))
 
 
-def test_degraded_turns_are_counted(monkeypatch):
-    sid = new_session()
+def test_degraded_turns_are_counted_and_fake_turns_are_not(monkeypatch):
+    fake_sid = new_session()["session_id"]
+    answer(fake_sid)
+    assert state_of(fake_sid)["degraded_turns"] == 0
+    sid = new_session()["session_id"]
     async def boom(prompt, system=None):
         raise ai.AIError("down")
     patch_model(monkeypatch, boom)
     answer(sid)
     answer(sid)
-    assert asyncio.run(session._load(sid))["data"]["degraded_turns"] == 2
-
-
-def test_fake_turns_are_not_counted_as_degraded():
-    sid = new_session()
-    answer(sid)
-    assert asyncio.run(session._load(sid))["data"]["degraded_turns"] == 0
+    assert state_of(sid)["degraded_turns"] == 2
 
 
 # ---- concurrency ----
 
-def test_concurrent_turns_get_distinct_answer_ids(monkeypatch):
-    """The model call yields, so without the per-session lock two turns would read the same turn count."""
+def test_concurrent_turns_are_serialised_per_session(monkeypatch):
+    """The model call yields, so without the per-session lock two turns would read the same turn number."""
     async def slow(prompt, system=None):
         await asyncio.sleep(0.01)
         return "Okay, and then?"
     patch_model(monkeypatch, slow)
 
     async def run():
-        plan = await session.create_plan("j", "r")
-        sid = (await session.start(plan["plan_id"]))["session_id"]
-        results = await asyncio.gather(*(session.take_turn(sid, f"a{i}") for i in range(3)))
-        return sorted(r["answer_id"] for r in results), sid, await session.transcript(sid)
-    ids, sid, turns = asyncio.run(run())
-    assert ids == [f"{sid}:a1", f"{sid}:a2", f"{sid}:a3"]
-    assert [t["role"] for t in turns].count("candidate") == 3
+        plan = await service.create_plan("j", "r", "u")
+        session = await service.create_session(plan["plan_id"], "u", consent=True)
+        results = await asyncio.gather(*(service.handle_answer(session["id"], f"a{i}") for i in range(3)))
+        return session["id"], results
+    sid, results = asyncio.run(run())
+    assert sorted(r["turn"] for r in results) == [1, 2, 3]
+    assert len({r["answer_id"] for r in results}) == 3
+    assert state_of(sid)["turn"] == 3
+    assert len(asyncio.run(store.list_events(sid, kind="answer"))) == 3

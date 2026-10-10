@@ -34,6 +34,8 @@ FALLBACK_QUESTIONS = [
     "Tell me about a time something didn't work the way you expected on the bench.",
 ]
 
+HANDOFF = "Okay, that's the project part. Next I'll show you a circuit that isn't working."
+
 # Where a question came from. Only "model" means the live model wrote it.
 MODEL, FALLBACK, FAKE = "model", "fallback", "fake"
 

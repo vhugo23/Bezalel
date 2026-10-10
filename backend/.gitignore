@@ -1,0 +1,12 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# python
+.venv/
+__pycache__/
+.pytest_cache/
+
+# accidental nested clone of this repo (delete the folder; never commit it)
+Bezalel/
