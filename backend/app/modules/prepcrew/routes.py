@@ -25,15 +25,16 @@ def _http(e: Exception) -> HTTPException:
 
 def _session_response(rec: dict, voice_token: str | None = None) -> SessionStartResponse:
     d = rec["data"]
+    opening = d.get("last_interviewer_text") if d["kind"] == "interview" else None
     return SessionStartResponse(session_id=rec["id"], kind=d["kind"], pair_code=d["pair_code"],
-                                voice_token=voice_token)
+                                voice_token=voice_token, state=d["state"], opening=opening)
 
 
 @router.post("/plans", response_model=PlanResponse)
 async def create_plan(body: PlanRequest):
     p = await service.create_plan(body.job_posting, body.resume, body.user_id)
     return PlanResponse(plan_id=p["plan_id"], topics=p["topics"], questions=p["questions"],
-                        scenario_ids=p["scenario_ids"])
+                        scenario_ids=p["scenario_ids"], project=p["project"], degraded=p["degraded"])
 
 
 @router.post("/sessions", response_model=SessionStartResponse)
@@ -50,9 +51,10 @@ async def take_turn(session_id: str, body: TurnRequest):
     """Typed fallback. The voice path uses WS /ws/voice/{session_id}."""
     try:
         r = await service.handle_answer(session_id, body.answer)
-    except service.NotFound as e:
+    except (service.NotFound, service.BadRequest) as e:
         raise _http(e)
-    return TurnResponse(answer_id=r["answer_id"], next_question=r["next_question"])
+    return TurnResponse(answer_id=r["answer_id"], next_question=r["next_question"], done=r["done"],
+                        degraded=r["degraded"], source=r["source"])
 
 
 @router.post("/sessions/{session_id}/probe", response_model=ProbeEvent)

@@ -2,11 +2,13 @@
 Storage goes through core.store (records + time-series events), so no new tables are needed yet.
 
 Stored shapes:
-  record kind "plan":    {user_id, job_posting, resume, topics, questions, scenario_ids}
+  record kind "plan":    {user_id, job_posting, resume, project, topics, questions, scenario_ids, degraded}
   record kind "session": {plan_id, user_id, kind, pair_code, state, status, scenario_ids, current_scenario_id,
                           results, skill_flags, total_ms, parent_session_id, skill_ids, last_interviewer_text, turn}
   record kind "lesson":  {skill_id, body, ai_generated}
-  events (subject = session id): "answer" {answer_id, text, turn}, "probe" {probe event},
+  events (subject = session id): "answer" {answer_id, text, turn},
+                                 "interviewer" {text, turn, source} (turn 0 is the opening question),
+                                 "probe" {probe event},
                                  "timing" value=ms {stage}, "score" value=0..1 {user_id, skill_id, criterion_id, ...}
 TODO: when contracts/db.sql (answer_scores, probe_events, mastery_daily) is verified on Tiger Data,
 write scores and probes there instead of the generic events table.
@@ -20,11 +22,14 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from app.core import bus, store
-from app.modules.prepcrew import evaluators, simulator, topic_graph
+from app.modules.prepcrew import evaluators, interviewer, simulator, topic_graph
 
 PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
 _seq_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 _seq_next: dict[str, int] = {}
+_turn_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # one answer at a time per session
+MAX_ANSWER_CHARS = 5000
+SCRIPTED_REPLY = "Okay. What would you check next?"  # placeholder until the walkthrough interviewer exists
 
 
 class NotFound(LookupError):
@@ -49,10 +54,12 @@ def channel(session_id: str) -> str:
 
 # ---- plans ----
 async def create_plan(job_posting: str, resume: str, user_id: str | None) -> dict:
-    # TODO: core.ai.generate_json extracts required skills from the posting and resume,
-    # maps them onto topic_graph skill ids, picks scenario ids from simulator.list_scenarios().
-    data = {"user_id": user_id, "job_posting": job_posting, "resume": resume,
-            "topics": [], "questions": [], "scenario_ids": []}
+    # interviewer.build_plan picks a resume project and questions, with generic questions if the model fails.
+    # TODO: map topics onto topic_graph skill ids and pick scenario ids from simulator.list_scenarios().
+    plan = await interviewer.build_plan(job_posting, resume)
+    data = {"user_id": user_id, "job_posting": job_posting, "resume": resume, "project": plan["project"],
+            "topics": plan["topics"], "questions": plan["questions"], "scenario_ids": [],
+            "degraded": plan["degraded"]}
     rec = await store.create_record("plan", data, owner_id=user_id)
     return {"plan_id": rec["id"], **data}
 
@@ -73,33 +80,73 @@ async def create_session(plan_id: str, user_id: str, consent: bool, kind: str = 
     if plan is None or plan["kind"] != "plan":
         raise NotFound("plan not found")
     scenario_ids = plan["data"].get("scenario_ids", [])
+    opening = plan["data"]["questions"][0] if kind == "interview" and plan["data"].get("questions") else None
     data = {
         "plan_id": plan_id, "user_id": user_id, "consent": True, "kind": kind,
         "pair_code": "".join(secrets.choice(PAIR_ALPHABET) for _ in range(6)),
-        "state": "retest" if kind == "retest" else "intake", "status": "not_ended",
+        "state": "retest" if kind == "retest" else ("interview" if opening else "intake"),
+        "status": "not_ended",
         "scenario_ids": scenario_ids, "current_scenario_id": scenario_ids[0] if scenario_ids else None,
         "results": [], "skill_flags": [], "total_ms": None, "turn": 0,
         "parent_session_id": parent_session_id, "skill_ids": skill_ids or [],
-        "last_interviewer_text": None,
+        "last_interviewer_text": opening, "degraded_turns": 0,
     }
-    return await store.create_record("session", data, owner_id=user_id)
+    rec = await store.create_record("session", data, owner_id=user_id)
+    if opening:
+        await store.add_event(rec["id"], "interviewer", data={"text": opening, "turn": 0, "source": "plan"})
+    return rec
+
+
+async def _interview_turns(session_id: str) -> list[dict]:
+    """The conversation so far, oldest first: opening question, then each answer followed by the reply to it."""
+    turns = []
+    for kind, role in (("answer", "candidate"), ("interviewer", "interviewer")):
+        for e in await store.list_events(session_id, kind=kind, limit=100000):
+            turns.append({"role": role, "text": e["data"]["text"], "turn": e["data"]["turn"]})
+    return sorted(turns, key=lambda t: (t["turn"], t["role"] == "interviewer"))
 
 
 async def handle_answer(session_id: str, text: str) -> dict:
-    """Stores one candidate answer and produces the next interviewer line. Used by POST /turns and /ws/voice."""
+    """Stores one candidate answer and produces the next interviewer line. Used by POST /turns and /ws/voice.
+    Answers keep being stored after the interview part ends, because the circuit walkthrough is spoken too."""
     start = time.perf_counter()
-    session = await get_session(session_id)
-    turn = int(session["data"].get("turn", 0)) + 1
-    answer_id = str(uuid.uuid4())
-    await store.add_event(session_id, "answer", data={"answer_id": answer_id, "text": text, "turn": turn})
-    # TODO: core.memory.recall(user_id) + core.ai.generate_text with config.INTERVIEWER_MODEL. Keep it fast;
-    # no grading during the live interview.
-    next_question = "TODO: interviewer not implemented yet"
-    await store.update_record(session_id, {"turn": turn, "last_interviewer_text": next_question,
-                                           "state": "interview"})
+    text = text.strip()
+    if not text:
+        raise BadRequest("empty answer")
+    if len(text) > MAX_ANSWER_CHARS:
+        raise BadRequest(f"answer is over {MAX_ANSWER_CHARS} characters")
+    await get_session(session_id)  # unknown ids get a 404 before any lock is created
+    async with _turn_locks[session_id]:
+        session = await get_session(session_id)
+        d = session["data"]
+        turn = int(d.get("turn", 0)) + 1
+        answer_id = str(uuid.uuid4())
+        await store.add_event(session_id, "answer", data={"answer_id": answer_id, "text": text, "turn": turn})
+
+        update = {"turn": turn}
+        done, source = False, "scripted"
+        if d.get("state") in ("intake", "interview"):
+            plan = await store.get_record(d["plan_id"])
+            if plan is None:
+                raise NotFound("plan for this session is missing")
+            question, source = await interviewer.next_question(plan["data"], await _interview_turns(session_id))
+            if question is None:
+                done = True
+                question, source = interviewer.HANDOFF, "scripted"
+                update["state"] = "walkthrough"
+            else:
+                update["state"] = "interview"
+        else:
+            question = SCRIPTED_REPLY  # TODO: walkthrough interviewer that reacts to probe events
+        degraded = source == interviewer.FALLBACK
+        update.update(last_interviewer_text=question,
+                      degraded_turns=int(d.get("degraded_turns", 0)) + (1 if degraded else 0))
+        await store.update_record(session_id, update)
+        await store.add_event(session_id, "interviewer", data={"text": question, "turn": turn, "source": source})
     ms = (time.perf_counter() - start) * 1000
     await store.add_event(session_id, "timing", value=ms, data={"stage": "turn_total", "turn": turn})
-    return {"answer_id": answer_id, "next_question": next_question, "turn": turn, "turn_total_ms": ms}
+    return {"answer_id": answer_id, "next_question": question, "turn": turn, "turn_total_ms": ms,
+            "done": done, "degraded": degraded, "source": source}
 
 
 # ---- circuit probes (contracts/probe_event.schema.json) ----
@@ -250,4 +297,5 @@ async def delete_session(session_id: str) -> int:
     bus.clear(channel(session_id))
     _seq_next.pop(session_id, None)
     _seq_locks.pop(session_id, None)
+    _turn_locks.pop(session_id, None)
     return removed

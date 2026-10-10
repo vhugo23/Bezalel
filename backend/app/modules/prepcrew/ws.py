@@ -67,7 +67,11 @@ async def voice_ws(ws: WebSocket, session_id: str):
                     await _error(ws, "voice_not_implemented", "speech-to-text not implemented yet; use text_answer")
                     audio_warned = True
             elif kind == "text_answer":
-                r = await service.handle_answer(session_id, str(data.get("text", "")))
+                try:
+                    r = await service.handle_answer(session_id, str(data.get("text", "")))
+                except service.BadRequest as e:
+                    await _error(ws, "bad_answer", str(e))
+                    continue
                 await _send(ws, "transcript_final", text=data.get("text", ""), turn=r["turn"], answer_id=r["answer_id"])
                 await _send(ws, "interviewer_text", text=r["next_question"], turn=r["turn"])
                 await _send(ws, "timing", turn=r["turn"], stage="turn_total", ms=round(r["turn_total_ms"], 1))

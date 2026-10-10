@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 
 # ---- plans ----
 class PlanRequest(BaseModel):
-    job_posting: str
-    resume: str
+    job_posting: str = Field(min_length=1, max_length=20000)
+    resume: str = Field(min_length=1, max_length=20000)
     user_id: str | None = None
 
 
@@ -17,6 +17,8 @@ class PlanResponse(BaseModel):
     topics: list[str]
     questions: list[str]
     scenario_ids: list[str]
+    project: str = ""
+    degraded: bool = Field(default=False, description="True when the model plan failed and generic questions were used.")
 
 
 # ---- sessions ----
@@ -35,15 +37,20 @@ class SessionStartResponse(BaseModel):
     kind: SessionKind
     pair_code: str = Field(description="Short code the iPad enters to join /ws/board/{session_id}.")
     voice_token: str | None = None
+    state: SessionState = "intake"
+    opening: str | None = Field(default=None, description="First interviewer question, interview sessions only.")
 
 
 class TurnRequest(BaseModel):
-    answer: str
+    answer: str = Field(max_length=5000)
 
 
 class TurnResponse(BaseModel):
     answer_id: str
     next_question: str
+    done: bool = Field(default=False, description="True on the turn that ends the interview part; the walkthrough follows.")
+    degraded: bool = Field(default=False, description="True when the model failed and a planned question was used.")
+    source: str = Field(default="model", description="model | fallback | fake | scripted. Only 'model' was written by the live model.")
 
 
 # ---- probe events (contracts/probe_event.schema.json) ----

@@ -51,7 +51,7 @@ def test_cors_allows_vite_dev_server_only():
 # ---- sessions ----
 def test_plan_and_session_shapes():
     plan = client.post("/api/plans", json={"job_posting": "p", "resume": "r"}).json()
-    assert set(plan) == {"plan_id", "topics", "questions", "scenario_ids"}
+    assert set(plan) == {"plan_id", "topics", "questions", "scenario_ids", "project", "degraded"}
     s = client.post("/api/sessions", json={"plan_id": plan["plan_id"], "user_id": "u", "consent": True}).json()
     assert s["kind"] == "interview" and len(s["pair_code"]) == 6
 
@@ -188,7 +188,8 @@ def test_delete_session_removes_everything(scenario):
 def test_voice_ws_text_fallback_and_resume():
     sid = new_session()["session_id"]
     with client.websocket_connect(f"/ws/voice/{sid}") as ws:
-        assert ws.receive_json() == {"type": "state", "state": "intake"}
+        assert ws.receive_json() == {"type": "state", "state": "interview"}
+        assert ws.receive_json()["type"] == "interviewer_text"  # the opening question
         ws.send_json({"type": "text_answer", "text": "hello"})
         types = [ws.receive_json()["type"] for _ in range(4)]
         assert types == ["transcript_final", "interviewer_text", "timing", "tts_done"]

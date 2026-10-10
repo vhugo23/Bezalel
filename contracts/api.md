@@ -5,9 +5,9 @@ Routes keep the existing `/api` prefix. The brief's sketch had no prefix, so `/a
 
 | Route | Today | Change proposed |
 |---|---|---|
-| `POST /api/plans` | exists | Response adds `scenario_ids` (which circuits this plan uses). |
-| `POST /api/sessions` | exists | Request adds `user_id`, `consent: true` (rejected if false). Response adds `pair_code`. |
-| `POST /api/sessions/{id}/turns` | exists | Keep as the typed fallback. The voice path uses `/ws/voice`. |
+| `POST /api/plans` | built | Request fields 1 to 20000 chars. Response has `project`, `degraded` (true when generic questions were used). Still to add: `scenario_ids`. |
+| `POST /api/sessions` | built | Request needs `user_id` and `consent: true` (400 if false). Response has `pair_code`, `state` and `opening` (first question, interview sessions only). |
+| `POST /api/sessions/{id}/turns` | built | Typed path, also the fallback for voice. Answer max 5000 chars, blank is 400. After the interview part ends the route keeps storing answers (the walkthrough is spoken too) and replies with a scripted line until the walkthrough interviewer exists. Response: `next_question`, `answer_id`, `done`, `degraded`, `source`. `source` is `model`, `fallback` (model failed, planned question used), `fake` (fake provider), or `scripted`. After `done`, the session is in `walkthrough`. Runs in one process only, see below. |
 | `POST /api/sessions/{id}/probe` | exists, `{node}` only | Replace with the board WebSocket. Keep the POST for tests and as a fallback. Response is a probe event. |
 | `POST /api/sessions/{id}/end` | exists | Returns immediately with `{"status": "grading"}`. Results arrive over SSE. |
 | `GET /api/sessions/{id}/events` | missing | SSE, event types below. |
@@ -36,3 +36,10 @@ Routes keep the existing `/api` prefix. The brief's sketch had no prefix, so `/a
 4. Quote check (reference code in `contracts/check_contracts.py`): `transcript[start:end] == evidence_quote` for every criterion, and scores within `0..score_max`. One mismatch rejects the whole result, retry once, then `needs_review: true` with `quote_mismatch`.
 5. Passing results write one `answer_scores` row per criterion with `score / score_max`. Results with `needs_review` are stored but excluded from the mastery aggregate.
 6. Reported durations are measured with `perf_counter`. Nothing is estimated.
+
+## Live interview notes
+
+- Live turns time out after `LIVE_TURN_TIMEOUT_SECONDS` (default 5). Background work uses `TASK_TIMEOUT_SECONDS`.
+- Per-session locking is in process memory. Run a single uvicorn worker until turns are stored with a row lock or a version check.
+- `/api/plans` and the turns route are not behind `x-api-key`. The browser calls them, so a key would ship in the page. Add a rate limit at deploy.
+- `DELETE /api/sessions/{id}` removes the session, its events and its interview transcript. The plan record (resume and posting text) is only removed if `delete_linked` is extended to it. Check before the first tester session.

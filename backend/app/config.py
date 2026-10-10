@@ -39,3 +39,7 @@ CORS_ORIGINS = [o.strip() for o in os.getenv(
     "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000").split(",") if o.strip()]
 # The React app owns every page. Leave false so the backend serves JSON only (no HTML pages, no /static).
 SERVE_HTML = os.getenv("SERVE_HTML", "false").strip().lower() in ("1", "true", "yes")
+
+# Live interview turns need a short limit, the voice loop sits silent while it waits.
+# TASK_TIMEOUT_SECONDS is for background work.
+LIVE_TURN_TIMEOUT_SECONDS = float(os.getenv("LIVE_TURN_TIMEOUT_SECONDS", "5"))

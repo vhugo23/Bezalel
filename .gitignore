@@ -24,3 +24,6 @@ Thumbs.db
 
 # teammate's entry
 .git copy/
+
+# spike output
+spikes/*.pcm
