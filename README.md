@@ -14,7 +14,7 @@ Live site: _(fill in after deploy)_
 4. Draw it first: you draw a schematic from a prompt and explain it.
 5. When the session ends, evaluators grade every answer in parallel and quote the evidence. The debugging process is graded too: did you check the supply first, verify ground, isolate the fault before swapping parts, and state a hypothesis.
 6. Each flagged gap links to a skill node and a short lesson. You retest, and the mastery chart updates.
-7. Your next session starts from your weak spots from the last one.
+7. Your next session starts from your weak spots from the last one!
 
 ## How it differs from existing tools
 
