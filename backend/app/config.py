@@ -22,4 +22,5 @@ MEMORY_BACKEND = os.getenv("MEMORY_BACKEND", "")
 
 ENABLED_MODULES = [m.strip() for m in os.getenv("ENABLED_MODULES", "prepcrew").split(",") if m.strip()]
 APP_API_KEY = os.getenv("APP_API_KEY", "")
-TASK_TIMEOUT_SECONDS = float(os.getenv("TASK_TIMEOUT_SECONDS", "20"))
+TASK_TIMEOUT_SECONDS = float(os.getenv("TASK_TIMEOUT_SECONDS", "20"))# Live interview turns need a short limit, the voice loop sits silent while it waits. TASK_TIMEOUT_SECONDS is for background work.
+LIVE_TURN_TIMEOUT_SECONDS = float(os.getenv("LIVE_TURN_TIMEOUT_SECONDS", "5"))

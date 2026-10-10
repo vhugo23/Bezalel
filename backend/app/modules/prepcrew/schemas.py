@@ -2,8 +2,8 @@ from pydantic import BaseModel, Field
 
 
 class PlanRequest(BaseModel):
-    job_posting: str
-    resume: str
+    job_posting: str = Field(min_length=1, max_length=20000)
+    resume: str = Field(min_length=1, max_length=20000)
 
 
 class PlanResponse(BaseModel):
@@ -35,6 +35,7 @@ class TurnResponse(BaseModel):
     answer_id: str = ""
     done: bool = False  # True when the interview part is over and the walkthrough starts
     degraded: bool = False  # True when the model failed and the planned question was used
+    source: str = "model"  # model | fallback | fake. Only "model" was written by the live model
 
 
 class ProbeRequest(BaseModel):

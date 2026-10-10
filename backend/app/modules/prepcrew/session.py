@@ -1,6 +1,7 @@
 """Interview session state and transcript, stored with core.store records.
 Each candidate answer gets a stable answer_id ("<session_id>:a<n>") that evaluators reference later."""
 import asyncio
+import copy
 
 from app.core import store
 from app.modules.prepcrew import interviewer
@@ -16,6 +17,7 @@ TRANSITIONS = {
     "retest": {"debrief"},
 }
 
+FALLBACK_SOURCE = "fallback"
 HANDOFF = "Okay, that's the project part. Next I'll show you a circuit that isn't working."
 
 _locks: dict[str, asyncio.Lock] = {}
@@ -42,8 +44,9 @@ async def start(plan_id: str, user_id: str | None = None) -> dict:
     plan_rec = await store.get_record(plan_id)
     if not plan_rec or plan_rec["kind"] != "plan":
         raise SessionError("unknown plan_id", 404)
+    check_transition("intake", "interview")
     opening = plan_rec["data"]["questions"][0]
-    turns = [{"turn": 0, "role": "interviewer", "text": opening}]
+    turns = [{"turn": 0, "role": "interviewer", "text": opening, "source": "plan"}]
     rec = await store.create_record(
         "session", {"plan_id": plan_id, "state": "interview", "turns": turns, "degraded_turns": 0}, owner_id=user_id
     )
@@ -62,6 +65,7 @@ async def take_turn(session_id: str, answer: str) -> dict:
     answer = answer.strip()
     if not answer:
         raise SessionError("empty answer", 400)
+    await _load(session_id)  # unknown ids get a 404 before any lock is created
     async with _locks.setdefault(session_id, asyncio.Lock()):
         rec = await _load(session_id)
         data = rec["data"]
@@ -73,17 +77,22 @@ async def take_turn(session_id: str, answer: str) -> dict:
         turns.append({"turn": len(turns), "role": "candidate", "text": answer, "answer_id": answer_id})
 
         plan_rec = await store.get_record(data["plan_id"])
-        question, degraded = await interviewer.next_question(plan_rec["data"], turns)
+        if not plan_rec:
+            raise SessionError("plan for this session is missing", 409)
+        question, source = await interviewer.next_question(plan_rec["data"], turns)
+        degraded = source == FALLBACK_SOURCE
         update = {"degraded_turns": data.get("degraded_turns", 0) + (1 if degraded else 0)}
         done = question is None
         if done:
-            check_transition("interview", "walkthrough")
             update["state"] = "walkthrough"
-            question = HANDOFF
-        turns.append({"turn": len(turns), "role": "interviewer", "text": question})
+            question, source = HANDOFF, "scripted"
+        turns.append({"turn": len(turns), "role": "interviewer", "text": question, "source": source})
         await store.update_record(session_id, {**update, "turns": turns})
-        return {"next_question": question, "answer_id": answer_id, "done": done, "degraded": degraded}
+        if done:
+            _locks.pop(session_id, None)  # the session can't take more turns, free its lock
+        return {"next_question": question, "answer_id": answer_id, "done": done,
+                "degraded": degraded, "source": source}
 
 
 async def transcript(session_id: str) -> list[dict]:
-    return (await _load(session_id))["data"]["turns"]
+    return copy.deepcopy((await _load(session_id))["data"]["turns"])
