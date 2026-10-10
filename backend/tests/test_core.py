@@ -78,3 +78,32 @@ def test_fan_out_keeps_partial_results():
     assert out["ok"]["ok"] and out["ok"]["result"] == 1
     assert not out["boom"]["ok"] and "ValueError" in out["boom"]["error"]
     assert not out["slow"]["ok"] and "TimeoutError" in out["slow"]["error"]
+
+
+def test_fan_out_respects_concurrency_limit():
+    running, peak = 0, 0
+
+    async def job():
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await asyncio.sleep(0.02)
+        running -= 1
+        return True
+
+    out = asyncio.run(fan_out({str(i): job for i in range(6)}, timeout=2, limit=2))
+    assert all(o["ok"] for o in out.values()) and peak == 2
+
+
+def test_bus_replays_history_to_late_subscribers():
+    from app.core import bus
+
+    async def go():
+        await bus.publish("c1", "a", {"n": 1})
+        await bus.publish("c1", "b", {"n": 2})
+        sub = bus.subscribe("c1")
+        got = [await sub.__anext__(), await sub.__anext__()]
+        await sub.aclose()
+        return [g["event"] for g in got]
+
+    assert asyncio.run(go()) == ["a", "b"]

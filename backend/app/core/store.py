@@ -103,3 +103,23 @@ async def list_events(subject_id: str, kind: str | None = None, limit: int = 200
         return [_row(r) for r in rows]
     items = [e for e in _events if e["subject_id"] == subject_id and (kind is None or e["kind"] == kind)]
     return sorted(items, key=lambda e: e["created_at"], reverse=True)[:limit]
+
+
+# ---- deletion (consent: remove everything tied to one id) ----
+async def delete_linked(subject_id: str) -> int:
+    """Deletes the record with this id, records whose data.session_id is this id, and all events for it.
+    Returns how many rows were removed."""
+    if _use_db():
+        r1 = await db.execute("delete from events where subject_id = $1", subject_id)
+        r2 = await db.execute(
+            "delete from records where id = $1 or data->>'session_id' = $1", subject_id)
+        return int(r1.split()[-1]) + int(r2.split()[-1])
+    global _events
+    before = len(_events)
+    _events = [e for e in _events if e["subject_id"] != subject_id]
+    removed = before - len(_events)
+    for rid in [rid for rid, r in _records.items()
+                if rid == subject_id or r["data"].get("session_id") == subject_id]:
+        del _records[rid]
+        removed += 1
+    return removed
