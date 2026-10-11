@@ -12,6 +12,8 @@ test('intake → whiteboard → fleet with a rejected unsupported claim',async({
  await page.getByLabel('What are you aiming for?').fill('Software engineer — synthetic E2E tester');
  await page.getByLabel('Save my answers and session transcript for this practice.').check();
  await page.getByRole('button',{name:'Build my plan'}).click();
+ await expect(page.getByRole('button',{name:'Cancel generation'})).toBeVisible();
+ await page.reload();
  await expect(page.getByRole('heading',{name:/Your plan/})).toBeVisible();
  await page.getByRole('button',{name:'Start session'}).click();
  await page.getByRole('button',{name:'Type instead'}).click();
@@ -116,7 +118,7 @@ test('source text is saved, excerpts are confirmed, and the plan keeps its attac
  await page.getByRole('button',{name:'Review source'}).click();
  await expect(page.locator('.source-fact input').first()).toBeChecked();
  await page.getByLabel('Save my answers and session transcript for this practice.').check();
- const planResponse=page.waitForResponse(response=>response.url().endsWith('/api/v2/plans')&&response.request().method()==='POST');
+ const planResponse=page.waitForResponse(response=>/\/api\/v2\/plans\/[^/]+$/.test(response.url())&&response.request().method()==='GET');
  await page.getByRole('button',{name:'Build my plan'}).click();
  await expect(page.getByRole('heading',{name:/Your plan/})).toBeVisible();
  const savedPlan=await (await planResponse).json();
@@ -130,4 +132,28 @@ test('source text is saved, excerpts are confirmed, and the plan keeps its attac
  // Arbitrary fetch targets never reach the network.
  const bad=await request.post('/api/v2/sources/github',{data:{user_id:'synthetic-ssrf',url:'https://127.0.0.1/private'}});
  expect(bad.status()).toBe(422);
+});
+
+test('plan jobs are idempotent, preferences change practice, and intake does not invent scores',async({request})=>{
+ const build=async(role:string,question:string,struggles:string[])=>{
+  const body={user_id:crypto.randomUUID(),name:'Synthetic planner',role,question,struggles,companies:[],link:'',source_ids:[]};
+  const first=await request.post('/api/v2/plans/jobs',{data:body});expect(first.status()).toBe(202);
+  const job=await first.json();
+  const duplicate=await (await request.post('/api/v2/plans/jobs',{data:body})).json();
+  expect(duplicate.id).toBe(job.id);
+  await expect.poll(async()=> (await (await request.get(`/api/v2/jobs/${job.id}`)).json()).status).toBe('succeeded');
+  const done=await (await request.get(`/api/v2/jobs/${job.id}`)).json();
+  const plan=await (await request.get(`/api/v2/plans/${done.result.plan_id}`)).json();
+  expect(plan.skills.every((s:{score:number|null})=>s.score===null)).toBe(true);
+  expect(plan.tracks).toHaveLength(11);
+  const ready=plan.tracks.find((t:{ready:boolean})=>t.ready);
+  const session=await (await request.post('/api/v2/sessions',{data:{track_id:ready.id,consent:true}})).json();
+  return {plan,session};
+ };
+ const hardware=await build('Embedded firmware engineer','Debug a sensor power circuit.',['Circuits & power','Embedded C']);
+ const software=await build('Software engineer','Design a public API rate limiter.',['System design','Algorithms']);
+ expect(hardware.plan.primary_domain).toBe('hw');
+ expect(software.plan.primary_domain).toBe('sw');
+ expect(hardware.session.opening).not.toBe(software.session.opening);
+ expect(hardware.plan.foundations.length).toBeGreaterThan(0);
 });

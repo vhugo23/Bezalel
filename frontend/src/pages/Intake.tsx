@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { api } from '../api/client';
 import { useApp } from '../store';
@@ -8,8 +8,14 @@ import { SourceManager } from '../components/SourceManager';
 import { Badge, Button, ErrorNotice, Icon } from '../components/ui';
 export const domains:Record<string,{name:string;tag:string}>={infra:{name:'Infra',tag:'Linux, servers and networking'},hw:{name:'Hardware',tag:'Circuits and embedded C'},sw:{name:'Software',tag:'Web dev and algorithms'},comm:{name:'Communication',tag:'Behavioral stories and explaining your work'}};
 export function IntakePage(){
- const {intake,setIntake,setPlan}=useApp(); const nav=useNavigate();const [consent,setConsent]=useState(false);
- const mutation=useMutation({mutationFn:()=>api.createPlan(intake),onSuccess:p=>{setPlan(p.id);nav('/plan');}});
+ const {intake,setIntake,setPlan,planJobId,setPlanJob}=useApp(); const nav=useNavigate();const cache=useQueryClient();const [consent,setConsent]=useState(false);
+ const job=useQuery({queryKey:['job',planJobId],queryFn:()=>api.job(planJobId!),enabled:!!planJobId,refetchInterval:q=>['queued','running'].includes(q.state.data?.status||'')?700:false});
+ const working=['queued','running'].includes(job.data?.status||'');
+ const canRetry=!!job.data&&['failed','cancelled'].includes(job.data.status);
+ const limited=canRetry&&(job.data?.attempts||0)>=3;
+ const mutation=useMutation({mutationFn:()=>canRetry&&planJobId?api.retryJob(planJobId):api.createPlanJob(intake),onSuccess:j=>{setPlanJob(j.id);cache.setQueryData(['job',j.id],j);}});
+ const cancel=useMutation({mutationFn:()=>api.cancelJob(planJobId!),onSuccess:j=>cache.setQueryData(['job',j.id],j)});
+ useEffect(()=>{const pid=job.data?.result?.plan_id;if(job.data?.status==='succeeded'&&typeof pid==='string'){setPlan(pid);void cache.invalidateQueries({queryKey:['plan']});nav('/plan');}},[job.data,setPlan,cache,nav]);
  const toggle=(key:'companies'|'struggles',v:string)=>setIntake({[key]:intake[key].includes(v)?intake[key].filter(x=>x!==v):[...intake[key],v]});
  const chips=(key:'companies'|'struggles',all:string[])=>all.map(v=><button type="button" className={`ochip ${intake[key].includes(v)?'on':''}`} aria-pressed={intake[key].includes(v)} key={v} onClick={()=>toggle(key,v)}>{v}</button>);
  const text=[intake.question,...intake.struggles].join(' ').toLowerCase();
@@ -19,6 +25,6 @@ export function IntakePage(){
  <div className="osec"><div className="onum">2</div><div className="obox"><label>Where have you struggled before?</label><div className="ochips">{chips('struggles',['Debugging under pressure','Linux & servers','Networking','Circuits & power','Embedded C','Algorithms','System design','Behavioral'])}</div></div></div>
  <div className="osec"><div className="onum">3</div><div className="obox"><label htmlFor="question">A question that got you</label><textarea id="question" rows={4} value={intake.question} onChange={e=>setIntake({question:e.target.value})} placeholder="Paste a question from a failed interview, or describe where you froze."/><div className="ofoot"><Button type="button" variant="ghost" size="sm" onClick={()=>setIntake({question:''})}>Clear</Button><input aria-label="Resume or GitHub link" placeholder="Resume or GitHub link (optional)" value={intake.link} onChange={e=>setIntake({link:e.target.value})}/></div></div></div>
  <SourceManager userId={intake.user_id} selected={intake.source_ids||[]} onSelect={source_ids=>setIntake({source_ids})} consent={consent}/>
- <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> Save my answers and session transcript for this practice.</label><div className="row intake-footer"><span className="fine">Your plan is saved to your workspace.</span><Button size="lg" disabled={!consent||mutation.isPending}>{mutation.isPending?'Building your plan…':'Build my plan'}<Icon/></Button></div><ErrorNotice error={mutation.error}/></div></form>
+ <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> Save my answers and session transcript for this practice.</label><div className="row intake-footer"><span className="fine" role="status">{working?job.data?.stage:'Your plan is saved to your workspace.'}</span>{working?<Button type="button" variant="outline" disabled={cancel.isPending} onClick={()=>cancel.mutate()}>Cancel generation</Button>:<Button size="lg" disabled={!consent||mutation.isPending||limited}>{limited?'Attempt limit reached':mutation.isPending?'Saving your request…':canRetry?'Retry plan generation':'Build my plan'}<Icon/></Button>}</div>{working&&<p className="fine">You can return after a reload. Generation progress is saved.</p>}<ErrorNotice error={mutation.error||job.error||cancel.error||(job.data?.error?new Error(job.data.error):null)}/></div></form>
  <aside className="card obprev"><div className="ch"><div><h3>What PrepCrew picks up</h3><p>Updates as you type</p></div></div><div className="cb">{Object.entries(domains).sort(([a],[b])=>Number(matches[b])-Number(matches[a])).map(([id,d],i)=><div className={`pk ${matches[id]?'hot':''}`} key={id}><span className="pkic"><Icon name={id}/></span><div><b>{d.name}</b> {i===0&&matches[id]&&<Badge tone="acc">Start here</Badge>}<small>{matches[id]?`Your answers point to ${d.tag.toLowerCase()}.`:'No signal yet. Added as a lighter track.'}</small></div></div>)}<p className="fine top-gap">Every domain gets a skill circle. Your first assessment lights up the wedges.</p></div></aside></div></div></main></Shell>;
 }

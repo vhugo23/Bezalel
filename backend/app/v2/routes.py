@@ -21,6 +21,11 @@ async def health():
 @router.post('/plans', response_model=Plan)
 async def plan(body: Intake): return await s.create_plan(body)
 
+@router.post('/plans/jobs', response_model=WorkItem, status_code=202)
+async def plan_job(body: Intake):
+    from . import planning
+    return await planning.enqueue(body)
+
 @router.get('/plans/{pid}', response_model=Plan)
 async def get_plan(pid: str): return await s.get_plan(pid)
 

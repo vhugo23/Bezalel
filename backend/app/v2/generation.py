@@ -31,7 +31,7 @@ async def generate(kind: str, subject: str, prompt: str, schema: type[BaseModel]
     correction=''
     for attempt in range(1, 3):
         jid, start = str(uuid4()), time.perf_counter()
-        model = ({'evaluator':config.EVALUATOR_MODEL, 'evidence_check':config.EVALUATOR_MODEL, 'lesson':config.EVALUATOR_MODEL, 'lesson_check':config.EVALUATOR_MODEL, 'whiteboard_critique':config.WHITEBOARD_MODEL}.get(kind,config.INTERVIEWER_MODEL)) or config.GEMINI_MODEL
+        model = ({'evaluator':config.EVALUATOR_MODEL, 'evidence_check':config.EVALUATOR_MODEL, 'lesson':config.EVALUATOR_MODEL, 'lesson_check':config.EVALUATOR_MODEL, 'plan_check':config.EVALUATOR_MODEL, 'whiteboard_critique':config.WHITEBOARD_MODEL}.get(kind,config.INTERVIEWER_MODEL)) or config.GEMINI_MODEL
         version=kind+'-v1'
         fingerprint=hashlib.sha256(json.dumps({'kind':kind,'version':version,'model':model,
             'prompt':prompt+correction,'schema':schema.model_json_schema(),'user_id':user_id,

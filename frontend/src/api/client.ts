@@ -36,6 +36,7 @@ export const api = {
   },
   plan:(id:string)=>request('Plan',`/plans/${id}`),
   createPlan:(body:Intake)=>request('Plan','/plans',body,'Intake'),
+  createPlanJob:(body:Intake)=>request('WorkItem','/plans/jobs',body,'Intake'),
   start:(track_id:string)=>request('Session','/sessions',{track_id,consent:true},'Start'),
   session:(id:string)=>request('Session',`/sessions/${id}`),
   append:(id:string,body:Model<'EventInput'>)=>request('Event',`/sessions/${id}/events`,body,'EventInput'),

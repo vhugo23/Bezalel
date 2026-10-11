@@ -30,6 +30,8 @@ class Track(BaseModel):
     reason: str | None = None
     reason_session_id: str | None = None
     reason_evidence_seq: list[int] = Field(default_factory=list)
+    recommended: bool = False
+    priority_reason: str | None = None
 
 class Plan(BaseModel):
     id: str
@@ -38,6 +40,7 @@ class Plan(BaseModel):
     skills: list[Skill]
     tracks: list[Track]
     source: str
+    foundations: list[dict[str,str]] = Field(default_factory=list)
 
 class Start(BaseModel):
     track_id: str
@@ -291,3 +294,27 @@ class SourceConfirmation(BaseModel):
 
 class SourceList(BaseModel):
     sources: list[SourceDocument]
+
+class PlanPriority(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    template_id: str
+    reason: str = Field(min_length=10,max_length=300)
+
+class RateLimiterRequirements(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    requests_per_second: int = Field(ge=1,le=10000000)
+    identity: str = Field(min_length=3,max_length=100)
+    bursts: bool
+    availability: Literal['preferred','strict']
+    accuracy: str = Field(min_length=3,max_length=200)
+
+class DesignScenarioDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    prompt: str = Field(min_length=40,max_length=2000)
+    requirements: RateLimiterRequirements
+
+class PlanDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    primary_domain: Literal['infra','hw','sw','comm']
+    priorities: list[PlanPriority] = Field(min_length=1,max_length=20)
+    system_design: DesignScenarioDraft

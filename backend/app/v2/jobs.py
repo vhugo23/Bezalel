@@ -54,7 +54,7 @@ async def enqueue_lesson(sid):
 
 
 async def enqueue(kind, user_id, subject_id, payload):
-    if kind not in {'lesson', 'extract_source'}:
+    if kind not in {'lesson', 'extract_source', 'plan'}:
         raise HTTPException(422, 'Unsupported generation workflow')
     row = await db.one('''INSERT INTO work_items(id,user_id,kind,subject_id,cache_key,payload)
         VALUES($1,$2,$3,$4,$5,$6)
@@ -125,6 +125,9 @@ async def published(conn, result):
 
 
 async def handle(row):
+    if row['kind'] == 'plan':
+        from .planning import create
+        return await create(row)
     if row['kind'] == 'extract_source':
         from .sources import extract
         return await extract(row)

@@ -44,42 +44,57 @@ def infer(body):
               'comm':sum(w in text for w in ['behavioral','conflict','story'])}
     return max(scores,key=scores.get)
 
-async def create_plan(body: Intake):
-    from . import sources
+async def create_plan(body: Intake, proposal=None, job_id=None, check_job_id=None, provider=None):
+    from . import sources, jobs
     documents=await sources.selected(body.user_id,body.source_ids)
     resume='\n\n'.join(doc['body'] for doc in documents if doc['kind']=='resume')[:60000]
     pid = uid()
+    priorities={item.template_id:(i,item.reason) for i,item in enumerate(proposal.priorities)} if proposal else {}
+    inference={'source':('Recorded plan demonstration' if provider=='recorded' else 'Gemini + independent model review') if proposal else 'rules + authored catalog',
+        'priorities':{key:value[1] for key,value in priorities.items()},'check_job_id':check_job_id}
     async with (await db.pool()).acquire() as c, c.transaction():
+        await jobs.publication_guard(c)
         await c.execute('INSERT INTO users(id,display_name) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET display_name=$2',body.user_id,body.name)
         await c.execute('SELECT id FROM users WHERE id=$1 FOR UPDATE',body.user_id)
         await c.execute("INSERT INTO profiles(user_id,target_role,target_companies,struggles,links,resume_text) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id) DO UPDATE SET target_role=$2,target_companies=$3,struggles=$4,links=$5,resume_text=$6,updated_at=now()",body.user_id,body.role,body.companies,body.struggles,{'resume':body.link,'source_ids':body.source_ids},resume or None)
         version = await c.fetchval('SELECT coalesce(max(version),0)+1 FROM plans WHERE user_id=$1',body.user_id)
         await c.execute("UPDATE plans SET status='superseded' WHERE user_id=$1 AND status='ready'",body.user_id)
-        await c.execute("INSERT INTO plans(id,user_id,version,inputs,primary_domain,status) VALUES($1,$2,$3,$4,$5,'ready')",pid,body.user_id,version,body.model_dump(),infer(body))
+        await c.execute("INSERT INTO plans(id,user_id,version,inputs,primary_domain,status,inference,job_id) VALUES($1,$2,$3,$4,$5,'ready',$6,$7)",pid,body.user_id,version,body.model_dump(),proposal.primary_domain if proposal else infer(body),inference,job_id)
         if body.question.strip():
             await c.execute('INSERT INTO failed_questions(id,user_id,body) VALUES($1,$2,$3)',uid(),body.user_id,body.question)
-        await c.execute("INSERT INTO user_skills(user_id,skill_id,target) SELECT $1,s.id,coalesce((SELECT max(level) FROM skill_targets t WHERE t.skill_id=s.id AND (company=ANY($2::text[]) OR company='*')),70) FROM skills s ON CONFLICT(user_id,skill_id) DO UPDATE SET target=excluded.target",body.user_id,body.companies)
-        for t in await c.fetch('SELECT * FROM track_templates ORDER BY position'):
+        await c.execute("INSERT INTO user_skills(user_id,skill_id,target) SELECT $1,s.id,coalesce((SELECT max(level) FROM skill_targets t WHERE t.skill_id=s.id AND (company=ANY($2::text[]) OR company='*') AND (role='*' OR lower(role)=lower($3))),70) FROM skills s WHERE s.active AND (s.generated_for IS NULL OR s.generated_for=$1) ON CONFLICT(user_id,skill_id) DO UPDATE SET target=excluded.target",body.user_id,body.companies,body.role)
+        for t in await c.fetch('SELECT * FROM track_templates WHERE active ORDER BY position'):
             tid = uid()
             layer = await c.fetchval('SELECT layer FROM engines WHERE id=$1',t['engine_id'])
             ready = t['id'] == 'sw.sysdesign'
-            await c.execute("INSERT INTO tracks(id,user_id,plan_id,template_id,domain_id,engine_id,layer,title,summary,source,status,in_plan,position) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'onboarding',$10,true,$11)",tid,body.user_id,pid,t['id'],t['domain_id'],t['engine_id'],layer,t['title'],t['description'],'ready' if ready else 'proposed',t['position'])
+            position=priorities.get(t['id'],(t['position'],None))[0]
+            await c.execute("INSERT INTO tracks(id,user_id,plan_id,template_id,domain_id,engine_id,layer,title,summary,source,status,in_plan,position,recommended) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'onboarding',$10,true,$11,$12)",tid,body.user_id,pid,t['id'],t['domain_id'],t['engine_id'],layer,t['title'],t['description'],'ready' if ready else 'proposed',position,bool(proposal and position==0))
+            await c.execute('INSERT INTO track_skills(track_id,skill_id,weight) SELECT $1,skill_id,weight FROM template_skills WHERE template_id=$2',tid,t['id'])
             if ready:
                 # Authored conceptual drill; never claim a compiler/solver proved design correctness.
                 spec = {'steps':['Clarify requirements','Draw and explain','Defend the trade-offs'],'prompt':OPENING,
                         'requirements':{'requests_per_second':10000,'identity':'API key','bursts':True,'availability':'preferred','accuracy':'slight approximation acceptable'}}
                 assert len(spec['steps']) == 3 and spec['prompt']
+                validity={'kind':'authored_structure_check','semantic_guarantee':False,'label':'Authored conceptual exercise; no deterministic correctness guarantee'}
+                if proposal:
+                    spec.update(proposal.system_design.model_dump())
+                    spec['source_ids']=body.source_ids
+                    validity={'kind':'recorded_review' if provider=='recorded' else 'second_model_review','semantic_guarantee':False,
+                        'label':'Recorded conceptual demonstration' if provider=='recorded' else 'Model-reviewed conceptual exercise; no deterministic correctness guarantee',
+                        'check_job_id':check_job_id}
                 scenario_id=uid()
-                await c.execute("INSERT INTO scenarios(id,track_id,engine_id,engine_version,spec,validity,validity_report) VALUES($1,$2,'conceptual','1',$3,'passed',$4)",scenario_id,tid,spec,{'kind':'authored_structure_check','semantic_guarantee':False,'label':'Authored conceptual exercise; no deterministic correctness guarantee'})
+                await c.execute("INSERT INTO scenarios(id,track_id,engine_id,engine_version,spec,validity,validity_report,job_id) VALUES($1,$2,'conceptual','1',$3,'passed',$4,$5)",scenario_id,tid,spec,validity,job_id)
                 await engine.persist_steps(c,scenario_id,engine.parse_steps(spec))
+        await jobs.published(c,{'plan_id':pid})
     return await get_plan(pid)
 
 async def get_plan(pid):
     p = await db.one('SELECT * FROM plans WHERE id=$1',pid)
     if not p: raise HTTPException(404,'Plan not found')
     skills = [Skill(id=r['skill_id'],domain=r['domain_id'],name=r['name'],score=r['score'],target=r['target'],estimate=r['is_estimate']) for r in await db.fetch('SELECT * FROM v_skill_circle WHERE user_id=$1 ORDER BY domain_id,position',p['user_id'])]
-    tracks = [Track(id=r['id'],domain=r['domain_id'],title=r['title'],summary=r['summary'] or '',layer=r['layer'],ready=r['ready'],reason=r['reason'],reason_session_id=r['reason_session_id'],reason_evidence_seq=r['reason_evidence_seq']) for r in await db.fetch("SELECT t.*,c.session_id AS reason_session_id,coalesce(c.evidence_seq,'{}'::bigint[]) AS reason_evidence_seq, EXISTS(SELECT 1 FROM scenarios s WHERE s.track_id=t.id AND validity='passed' AND is_active) AND t.status='ready' AS ready FROM tracks t LEFT JOIN lessons l ON t.source='retest' AND l.id=t.source_ref LEFT JOIN claims c ON c.id=l.claim_id WHERE plan_id=$1 AND in_plan AND status<>'archived' ORDER BY position",pid)]
-    return Plan(id=pid,intake=Intake(**p['inputs']),primary_domain=p['primary_domain'],skills=skills,tracks=tracks,source='rules + authored catalog')
+    tracks = [Track(id=r['id'],domain=r['domain_id'],title=r['title'],summary=r['summary'] or '',layer=r['layer'],ready=r['ready'],reason=r['reason'],reason_session_id=r['reason_session_id'],reason_evidence_seq=r['reason_evidence_seq'],recommended=r['recommended'],priority_reason=p['inference'].get('priorities',{}).get(r['template_id'])) for r in await db.fetch("SELECT t.*,c.session_id AS reason_session_id,coalesce(c.evidence_seq,'{}'::bigint[]) AS reason_evidence_seq, EXISTS(SELECT 1 FROM scenarios s WHERE s.track_id=t.id AND validity='passed' AND is_active) AND t.status='ready' AS ready FROM tracks t LEFT JOIN lessons l ON t.source='retest' AND l.id=t.source_ref LEFT JOIN claims c ON c.id=l.claim_id WHERE plan_id=$1 AND in_plan AND status<>'archived' ORDER BY position",pid)]
+    foundations=[dict(r) for r in await db.fetch("SELECT DISTINCT s.id,s.name FROM tracks t JOIN track_skills ts ON ts.track_id=t.id JOIN skill_edges e ON e.to_skill=ts.skill_id AND e.kind='prereq' JOIN skills s ON s.id=e.from_skill WHERE t.plan_id=$1 AND t.domain_id=$2 ORDER BY s.id",pid,p['primary_domain'])]
+    return Plan(id=pid,intake=Intake(**p['inputs']),primary_domain=p['primary_domain'],skills=skills,tracks=tracks,source=p['inference'].get('source','rules + authored catalog'),foundations=foundations)
 
 async def start(body: Start):
     if not body.consent: raise HTTPException(400,'Transcript consent is required')

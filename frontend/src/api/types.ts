@@ -310,6 +310,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/plans/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Plan Job */
+        post: operations["plan_job_api_v2_plans_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/plans/{pid}": {
         parameters: {
             query?: never;
@@ -1271,6 +1288,10 @@ export interface components {
             tracks: components["schemas"]["Track"][];
             /** Source */
             source: string;
+            /** Foundations */
+            foundations?: {
+                [key: string]: string;
+            }[];
         };
         /** PlanRequest */
         PlanRequest: {
@@ -1761,6 +1782,13 @@ export interface components {
             reason_session_id?: string | null;
             /** Reason Evidence Seq */
             reason_evidence_seq?: number[];
+            /**
+             * Recommended
+             * @default false
+             */
+            recommended: boolean;
+            /** Priority Reason */
+            priority_reason?: string | null;
         };
         /** TurnInput */
         TurnInput: {
@@ -2385,6 +2413,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Plan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_job_api_v2_plans_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Intake"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItem"];
                 };
             };
             /** @description Validation Error */
