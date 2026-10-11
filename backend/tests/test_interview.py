@@ -275,6 +275,8 @@ def test_turn_prompt_contains_last_answer_persona_and_delimiters(monkeypatch):
     sid = new_session()["session_id"]
     seen = {}
     async def spy(prompt, system=None):
+        if '"findings"' in prompt:  # the gap check also calls the model
+            return "{}"
         seen["prompt"], seen["system"] = prompt, system
         return "And then?"
     patch_model(monkeypatch, spy)

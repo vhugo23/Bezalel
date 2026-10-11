@@ -15,6 +15,8 @@ class MeterState(BaseModel):
     score: float
     threshold: float
     level: Literal["ok", "wrapping_up", "ended"]
+    unanswered: int = Field(default=0, description="Questions the candidate ignored so far.")
+    checked: bool = Field(default=True, description="False when the check could not run for the latest answer (model error or timeout), so nothing was judged.")
 
 
 # ---- plans ----
@@ -67,7 +69,7 @@ class TurnResponse(BaseModel):
     degraded: bool = Field(default=False, description="True when the model failed and a planned question was used.")
     source: str = Field(default="model", description="model | fallback | fake | scripted. Only 'model' was written by the live model.")
     ended_early: bool = Field(default=False, description="True when the patience meter ended the interview. The session is then in debrief.")
-    meter: MeterState | None = Field(default=None, description="Null when the plan has no requirements (meter off).")
+    meter: MeterState | None = Field(default=None, description="Null only when no real model is in use (fake provider).")
 
 
 # ---- probe events (contracts/probe_event.schema.json) ----

@@ -28,8 +28,10 @@ def finding(rid, result, quote):
 
 class Script:
     """A stub model. `findings` maps an answer's text to the findings the assessor returns for it."""
-    def __init__(self, findings=None, plan=PLAN, reply="How far did it dip?", assessor_error=None, delay=0.0):
+    def __init__(self, findings=None, plan=PLAN, reply="How far did it dip?", assessor_error=None, delay=0.0,
+                 answered=None):
         self.findings, self.plan, self.reply = findings or {}, plan, reply
+        self.answered = answered or {}  # answer text -> {"result": ..., "evidence_quote": ...}
         self.assessor_error, self.delay = assessor_error, delay
         self.turn_prompts, self.assessor_prompts = [], []
 
@@ -41,7 +43,10 @@ class Script:
             if self.assessor_error:
                 raise self.assessor_error
             answer_text = prompt.split("<answer>\n", 1)[1].split("\n</answer>", 1)[0]
-            return json.dumps({"findings": self.findings.get(answer_text, [])})
+            out = {"findings": self.findings.get(answer_text, [])}
+            if answer_text in self.answered:
+                out["answered"] = self.answered[answer_text]
+            return json.dumps(out)
         if '"project"' in prompt:
             return json.dumps(self.plan)
         self.turn_prompts.append(prompt)
@@ -81,31 +86,31 @@ def after(*answers):
 
 
 def test_one_required_gap_starts_wrapping_up_but_one_preferred_gap_does_not():
-    assert meter.snapshot(after([finding("r1", "unknown", "a b")]), REQS, True)["level"] == "wrapping_up"
-    assert meter.snapshot(after([finding("r3", "unknown", "a b")]), REQS, True)["level"] == "ok"
+    assert meter.snapshot(after([finding("r1", "unknown", "a b")]), True)["level"] == "wrapping_up"
+    assert meter.snapshot(after([finding("r3", "unknown", "a b")]), True)["level"] == "ok"
 
 
 def test_two_required_gaps_end_it_and_preferred_gaps_alone_need_many():
     two = after([finding("r1", "unknown", "a b")], [finding("r2", "unknown", "c d")])
-    assert meter.snapshot(two, REQS, True)["level"] == "ended"
+    assert meter.snapshot(two, True)["level"] == "ended"
     prefs = after([finding("r3", "unknown", "a b")], [finding("r4", "unknown", "c d")])
-    assert meter.snapshot(prefs, REQS, True)["level"] == "ok"
+    assert meter.snapshot(prefs, True)["level"] == "ok"
     many = [{"id": f"p{i}", "text": f"skill {i}", "level": "preferred"} for i in range(10)]
     state = meter.new_state()
     for r in many:
         state = meter.apply(state, [finding(r["id"], "unknown", "a b")], many)
-    assert meter.snapshot(state, many, True)["level"] == "ended"
+    assert meter.snapshot(state, True)["level"] == "ended"
 
 
 def test_one_answer_can_never_end_an_interview():
     everything = [finding(r["id"], "unknown", "a b") for r in REQS]  # a single answer admitting every gap
     state = meter.apply(meter.new_state(), everything, REQS)
     assert state["score"] == config.MAX_PENALTY_PER_ANSWER < config.FAIL_THRESHOLD
-    assert meter.snapshot(state, REQS, True)["level"] == "wrapping_up"
+    assert meter.snapshot(state, True)["level"] == "wrapping_up"
     # the cap limits one answer, not the total: a later answer with a new gap can still end it
     later = [{"id": "r5", "text": "UART", "level": "required"}]
     state = meter.apply(state, [finding("r5", "unknown", "a b")], REQS + later)
-    assert meter.snapshot(state, REQS + later, True)["level"] == "ended"
+    assert meter.snapshot(state, True)["level"] == "ended"
 
 
 def test_each_requirement_counts_once_at_its_worst():
@@ -115,8 +120,9 @@ def test_each_requirement_counts_once_at_its_worst():
     assert state["score"] == meter.penalty("required", "unknown")  # the partial's 0.25 was replaced, not added
 
 
-def test_no_requirements_means_no_meter():
-    assert meter.snapshot(meter.new_state(), [], True) is None
+def test_the_meter_works_without_any_requirements():
+    state = meter.apply(meter.new_state(), [], [], {"evidence_quote": "um not sure"})
+    assert state["score"] == config.PENALTY_NON_ANSWER and state["unanswered"] == 1
 
 
 # ---- the assessor ----
@@ -131,34 +137,34 @@ def test_assessor_keeps_only_verbatim_quotes_for_real_requirements(monkeypatch):
         finding("r4", "unknown", "never"),                       # too short to count
     ]})
     patch_model(monkeypatch, script)
-    got = asyncio.run(assessor.assess(REQS, said))
+    got = asyncio.run(assessor.assess(REQS, said)).findings
     assert {(f["requirement_id"], f["result"]) for f in got} == {("r1", "unknown"), ("r2", "knows")}
 
 
 def test_assessor_failures_mean_no_findings(monkeypatch):
     for error in (ai.AIError("Gemini error 500"), asyncio.TimeoutError(), ValueError("bad")):
         patch_model(monkeypatch, Script(assessor_error=error))
-        assert asyncio.run(assessor.assess(REQS, "I never used SPI at all")) == []
+        assert asyncio.run(assessor.assess(REQS, "I never used SPI at all")) == assessor.Assessment(ok=False)
 
 
 def test_assessor_timeout_and_bad_json_mean_no_findings(monkeypatch):
     patch_model(monkeypatch, Script(delay=1.0))
     monkeypatch.setattr(config, "ASSESSOR_TIMEOUT_SECONDS", 0.05)
-    assert asyncio.run(assessor.assess(REQS, "I never used SPI at all")) == []
+    assert asyncio.run(assessor.assess(REQS, "I never used SPI at all")) == assessor.Assessment(ok=False)
 
     async def junk(prompt, system=None):
         return "not json"
     monkeypatch.setattr(ai, "generate_text", junk)
     monkeypatch.setattr(config, "ASSESSOR_TIMEOUT_SECONDS", 4)
-    assert asyncio.run(assessor.assess(REQS, "I never used SPI at all")) == []
+    assert asyncio.run(assessor.assess(REQS, "I never used SPI at all")) == assessor.Assessment(ok=False)
 
 
-def test_assessor_is_skipped_without_requirements_or_on_the_fake_provider(monkeypatch):
+def test_assessor_is_skipped_on_the_fake_provider_or_with_nothing_to_check(monkeypatch):
     script = Script()
     patch_model(monkeypatch, script)
-    assert asyncio.run(assessor.assess([], "anything")) == []
+    assert asyncio.run(assessor.assess([], "anything")) == assessor.Assessment()  # no skills and no question
     monkeypatch.setattr(config, "LLM_PROVIDER", "fake")
-    assert asyncio.run(assessor.assess(REQS, "I never used SPI")) == []
+    assert asyncio.run(assessor.assess(REQS, "I never used SPI", "Which part?")) == assessor.Assessment()
     assert script.assessor_prompts == []
 
 
@@ -196,9 +202,16 @@ def test_plan_requirements_are_cleaned(monkeypatch):
     assert all(len(r["text"]) <= interviewer.MAX_REQUIREMENT_CHARS for r in reqs)
 
 
-def test_plan_without_requirements_keeps_the_meter_off(monkeypatch):
+def test_plan_without_requirements_still_has_a_meter_for_non_answers(monkeypatch):
     plan, sid = start(monkeypatch, Script(plan={k: v for k, v in PLAN.items() if k != "requirements"}))
     assert plan["requirements"] == [] and plan["degraded"] is False
+    r = answer(sid, "I have never used SPI.").json()
+    assert r["meter"]["score"] == 0 and r["meter"]["unanswered"] == 0 and r["ended_early"] is False
+
+
+def test_the_meter_is_off_on_the_fake_provider():
+    plan_id = client.post("/api/plans", json={"job_posting": "j", "resume": "r"}).json()["plan_id"]
+    sid = client.post("/api/sessions", json={"plan_id": plan_id, "user_id": "u", "consent": True}).json()["session_id"]
     r = answer(sid, "I have never used SPI.").json()
     assert r["meter"] is None and r["ended_early"] is False
 
@@ -230,7 +243,7 @@ def test_one_required_gap_moves_the_meter_and_the_next_turn_wraps_up(monkeypatch
     _, sid = start(monkeypatch, script)
     first = answer(sid, SPI).json()
     assert first["meter"] == {"score": config.PENALTY_REQUIRED_UNKNOWN, "threshold": config.FAIL_THRESHOLD,
-                              "level": "wrapping_up"}
+                              "level": "wrapping_up", "unanswered": 0, "checked": True}
     assert first["ended_early"] is False and first["done"] is False
     answer(sid, "I mostly did the power stage.")
     assert interviewer.WRAP_UP_NOTE in script.turn_prompts[-1]
@@ -418,3 +431,114 @@ def test_gap_check_prompt_says_an_or_requirement_is_met_by_either(monkeypatch):
     patch_model(monkeypatch, script)
     asyncio.run(assessor.assess(REQS, "I've never used Altium, I only know KiCad."))
     assert "'A or B' is met if the candidate knows either one" in script.assessor_prompts[0]
+
+
+# ---- non-answers: the candidate ignores the question ----
+
+DODGE = "I mostly did the power stage."
+UM = "Um, not sure, idk."
+QUOTES = {DODGE: "mostly did the power stage", UM: "not sure"}
+
+
+def dodges(*said):
+    return {a: {"result": "no", "evidence_quote": QUOTES[a]} for a in said}
+
+
+def test_ignoring_the_question_moves_the_meter_every_time(monkeypatch):
+    _, sid = start(monkeypatch, Script(answered=dodges(DODGE, UM)))
+    first = answer(sid, DODGE).json()
+    assert first["meter"]["score"] == config.PENALTY_NON_ANSWER and first["meter"]["unanswered"] == 1
+    assert first["meter"]["level"] == "ok" and first["ended_early"] is False
+    second = answer(sid, UM).json()
+    assert second["meter"]["score"] == round(2 * config.PENALTY_NON_ANSWER, 6) and second["meter"]["unanswered"] == 2
+    assert second["meter"]["level"] == "wrapping_up"
+
+
+def test_three_unanswered_questions_end_a_strict_interview(monkeypatch):
+    third = "Honestly I would rather talk about something else."
+    script = Script(answered={**dodges(DODGE, UM), third: {"result": "no", "evidence_quote": "rather talk about something else"}})
+    _, sid = start(monkeypatch, script)
+    answer(sid, DODGE)
+    answer(sid, UM)
+    r = answer(sid, third).json()
+    assert r["ended_early"] is True and r["next_question"] in interviewer.CLOSINGS
+    gaps = state_of(sid)["end_gaps"]
+    assert [g["result"] for g in gaps] == ["no_answer"] * 3
+    assert gaps[0]["text"].startswith("did not answer: ") and gaps[0]["evidence_quote"] == "mostly did the power stage"
+
+
+def test_the_question_the_candidate_ignored_goes_to_the_gap_check(monkeypatch):
+    script = Script(answered=dodges(DODGE))
+    _, sid = start(monkeypatch, script)
+    opening = state_of(sid)["last_interviewer_text"]
+    answer(sid, DODGE)
+    assert f"<question>\n{opening}\n</question>" in script.assessor_prompts[0]
+    assert "asking the interviewer a clarifying question back is NOT" in script.assessor_prompts[0]
+
+
+def test_a_stated_gap_is_not_also_counted_as_a_non_answer(monkeypatch):
+    said = "Honestly I have never used SPI."
+    script = Script(findings={said: [finding("r1", "unknown", "never used SPI")]},
+                    answered={said: {"result": "no", "evidence_quote": "never used SPI"}})
+    _, sid = start(monkeypatch, script)
+    r = answer(sid, said).json()
+    assert r["meter"]["score"] == config.PENALTY_REQUIRED_UNKNOWN and r["meter"]["unanswered"] == 0
+
+
+@pytest.mark.parametrize("verdict", [
+    {"result": "yes", "evidence_quote": "mostly did the power stage"},
+    {"result": "partly", "evidence_quote": "mostly did the power stage"},
+    {"result": "no", "evidence_quote": "something the candidate never said"},   # made up
+    {"result": "no", "evidence_quote": ""},                                       # no evidence
+])
+def test_only_a_verified_no_counts(monkeypatch, verdict):
+    _, sid = start(monkeypatch, Script(answered={DODGE: verdict}))
+    r = answer(sid, DODGE).json()
+    assert r["meter"]["score"] == 0 and r["meter"]["unanswered"] == 0
+
+
+def test_a_clarifying_question_back_costs_nothing(monkeypatch):
+    ask = "Which rail do you mean?"
+    _, sid = start(monkeypatch, Script(answered={ask: {"result": "yes", "evidence_quote": "Which rail"}}))
+    assert answer(sid, ask).json()["meter"]["score"] == 0
+
+
+def test_non_answers_never_end_a_non_strict_interview(monkeypatch):
+    _, sid = start(monkeypatch, Script(answered=dodges(DODGE, UM)), strict=False)
+    for said in (DODGE, UM, DODGE, UM):
+        r = answer(sid, said).json()
+    assert r["ended_early"] is False and r["meter"]["level"] == "wrapping_up" and r["meter"]["unanswered"] == 4
+
+
+def test_one_non_answer_cannot_end_an_interview(monkeypatch):
+    _, sid = start(monkeypatch, Script(answered=dodges(DODGE)))
+    r = answer(sid, DODGE).json()
+    assert r["meter"]["score"] <= config.MAX_PENALTY_PER_ANSWER and r["ended_early"] is False
+
+
+def test_assessor_failure_means_no_non_answer_penalty(monkeypatch):
+    _, sid = start(monkeypatch, Script(assessor_error=ai.AIError("Gemini error 500")))
+    for _ in range(4):
+        r = answer(sid, DODGE).json()
+    assert r["meter"]["score"] == 0 and r["ended_early"] is False
+
+
+def test_voice_socket_meter_message_carries_the_unanswered_count(monkeypatch):
+    _, sid = start(monkeypatch, Script(answered=dodges(DODGE)))
+    from tests.test_voice_out import connect, recv_until
+    with connect(sid) as ws:
+        ws.send_json({"type": "text_answer", "text": DODGE})
+        msgs = recv_until(ws, "tts_done")
+    meter_msg = next(m for m in msgs if isinstance(m, dict) and m["type"] == "meter")
+    assert meter_msg["unanswered"] == 1 and meter_msg["score"] == config.PENALTY_NON_ANSWER
+
+
+def test_the_meter_says_when_it_could_not_check_an_answer(monkeypatch):
+    _, sid = start(monkeypatch, Script(assessor_error=ai.AIError("Gemini error 500")))
+    r = answer(sid, DODGE).json()
+    assert r["meter"]["checked"] is False and r["meter"]["score"] == 0
+
+
+def test_the_meter_says_it_checked_when_it_did(monkeypatch):
+    _, sid = start(monkeypatch, Script())
+    assert answer(sid, DODGE).json()["meter"]["checked"] is True

@@ -2,6 +2,7 @@
 the interview. A gap on a PREFERRED skill pushes only a little. Pure functions, no model and no storage.
 
 The weights and thresholds in config.py are starting values chosen by hand. They are not validated.
+Two things move the meter: a stated gap on a skill from the posting, and an answer that ignores the question.
 Each requirement counts once, at its worst result, so repeating "I don't know SPI" cannot stack. There is no recovery.
 One answer can add at most MAX_PENALTY_PER_ANSWER, so ending an interview always takes at least two answers."""
 from app import config
@@ -40,21 +41,27 @@ def level(value: float, strict: bool) -> str:
     return "wrapping_up" if value >= config.WRAP_UP_AT else "ok"
 
 
+def counts_as_no_answer(findings: list[dict], no_answer: dict | None) -> bool:
+    """An answer that admits a gap on a skill ("I've never used SPI") answered the question, honestly. The gap is
+    already penalized, so it is not also counted as a non-answer."""
+    return no_answer is not None and not any(f["result"] in ("unknown", "partial") for f in findings)
+
+
 def new_state() -> dict:
-    """items: worst result per requirement. raw: what items add up to. score: the running total after the per-answer cap."""
-    return {"items": {}, "raw": 0.0, "score": 0.0}
+    """items: worst result per requirement. unanswered: questions the candidate ignored. raw: what those add up to.
+    score: the running total after the per-answer cap."""
+    return {"items": {}, "unanswered": 0, "raw": 0.0, "score": 0.0}
 
 
-def apply(state: dict, findings: list[dict], requirements: list[dict]) -> dict:
-    """Fold one answer's findings into the state. Returns a new state."""
+def apply(state: dict, findings: list[dict], requirements: list[dict], no_answer: dict | None = None) -> dict:
+    """Fold one answer into the state. Returns a new state."""
     items = update(state["items"], findings)
-    raw = score(items, requirements)
+    unanswered = state.get("unanswered", 0) + (1 if counts_as_no_answer(findings, no_answer) else 0)
+    raw = round(score(items, requirements) + unanswered * config.PENALTY_NON_ANSWER, 6)
     gained = min(max(0.0, raw - state["raw"]), config.MAX_PENALTY_PER_ANSWER)
-    return {"items": items, "raw": raw, "score": round(state["score"] + gained, 6)}
+    return {"items": items, "unanswered": unanswered, "raw": raw, "score": round(state["score"] + gained, 6)}
 
 
-def snapshot(state: dict, requirements: list[dict], strict: bool) -> dict | None:
-    """None when there are no requirements: the meter is off and the interview never ends early."""
-    if not requirements:
-        return None
-    return {"score": state["score"], "threshold": config.FAIL_THRESHOLD, "level": level(state["score"], strict)}
+def snapshot(state: dict, strict: bool) -> dict:
+    return {"score": state["score"], "threshold": config.FAIL_THRESHOLD, "level": level(state["score"], strict),
+            "unanswered": state.get("unanswered", 0)}

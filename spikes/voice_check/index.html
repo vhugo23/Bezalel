@@ -35,12 +35,33 @@
 
   <section>
     <label>Backend <input id="base" value="127.0.0.1:8000"></label>
-    <label>Job posting <textarea id="posting">Embedded hardware intern: PCB debugging, oscilloscope, UART, SPI.</textarea></label>
-    <label>Resume <textarea id="resume">Built a 3-axis motor controller PCB. Debugged a brownout on the 5V rail with a scope.</textarea></label>
+    <label>Job posting <textarea id="posting">Hardware Engineering Intern, Motor Controls
+Join our drives team building compact brushless motor controllers for robotics. You will bring up new PCB
+revisions, debug power and gate-drive problems on the bench, and write test firmware in C for STM32 parts.
+Requirements: coursework in circuits and digital logic; hands-on experience with oscilloscopes and
+multimeters; familiarity with I2C, SPI and UART; experience reading schematics and datasheets; C or C++.
+Nice to have: KiCad or Altium, buck converters, MOSFET gate drivers, EMI basics, version control for hardware.
+You will work with two senior engineers and present your findings at weekly design reviews.</textarea></label>
+    <label>Resume <textarea id="resume">Alex Rivera, Computer Engineering, third year.
+Projects
+- Three-axis motor controller PCB (team of 3): designed a 4-layer board in KiCad with an STM32G4, three
+  half-bridge gate drivers and a 12V to 5V buck converter. Brought it up and found a brownout that reset the
+  MCU when the motors started; traced it with a scope to the 5V rail dipping under load and added bulk
+  capacitance and a larger inductor.
+- Weather station: ESP32 with an I2C humidity sensor and an SPI flash logger, firmware in C. Fixed a bus
+  lockup by adding pull-up resistors and a timeout in the driver.
+- Digital logic lab: built a traffic light FSM on an FPGA board in Verilog, tested with a self-checking bench.
+Experience: lab assistant for intro circuits, helped students debug breadboards (floating grounds, swapped LED polarity).
+Skills: KiCad, C, Python, oscilloscope, logic analyzer, soldering SMD parts.</textarea></label>
+    <label><input type="checkbox" id="strict" checked style="width:auto"> Strict: the patience meter can end the interview (untick to only watch it)</label>
     <div class="row">
       <button id="begin" class="primary">1. Start session</button>
       <button id="open" disabled>2. Speak opening question</button>
     </div>
+  </section>
+
+  <section id="reqsBox" hidden>
+    <div id="reqs"></div>
   </section>
 
   <section>
@@ -58,6 +79,8 @@
   <section>
     <dl>
       <dt>Session</dt><dd id="sid">none</dd>
+      <dt>State</dt><dd id="t_state">none</dd>
+      <dt>Patience meter</dt><dd id="t_meter">off until a session starts</dd>
       <dt>Audio format</dt><dd>16-bit mono PCM, 16000 Hz</dd>
       <dt>Server: reply ready</dt><dd id="t_turn">not measured</dd>
       <dt>Server: speech to text</dt><dd id="t_stt">not measured</dd>
@@ -116,6 +139,10 @@ function playChunk(arrayBuffer) {
 function onMessage(ev) {
   if (ev.data instanceof ArrayBuffer) return playChunk(ev.data);
   const m = JSON.parse(ev.data);
+  if (m.type === "meter") $("t_meter").textContent = m.score + " of " + m.threshold + ", " + m.level
+    + (m.unanswered ? ", " + m.unanswered + " unanswered" : "")
+    + (m.checked === false ? "  (could not check that answer, the AI was too slow or busy)" : "");
+  if (m.type === "state") $("t_state").textContent = m.state + (m.reason ? " (" + m.reason + ")" : "");
   if (m.type === "transcript_final") {
     $("t_said").textContent = m.text;
     $("you").hidden = false; $("you").textContent = "You: " + m.text;
@@ -140,11 +167,16 @@ $("begin").onclick = async () => {
     const plan = await (await fetch(http + "/api/plans", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ job_posting: $("posting").value, resume: $("resume").value, user_id: "voice-check" }) })).json();
     const res = await fetch(http + "/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan_id: plan.plan_id, user_id: "voice-check", consent: true }) });
+      body: JSON.stringify({ plan_id: plan.plan_id, user_id: "voice-check", consent: true, strict: $("strict").checked }) });
     if (!res.ok) throw new Error("session " + res.status + " " + await res.text());
     const s = await res.json();
     $("sid").textContent = s.session_id;
     log("plan degraded=" + plan.degraded + " (true means generic questions, no model plan)");
+    $("reqsBox").hidden = false;
+    $("reqs").textContent = plan.requirements.length
+      ? "Skills from the posting: " + plan.requirements.map((r) => r.text + " [" + r.level + "]").join(", ")
+      : "No skills were read from the posting, so the patience meter is off.";
+    $("t_meter").textContent = plan.requirements.length ? "0 of 1.0, ok" : "off";
     if (ws) ws.close();
     ws = new WebSocket("ws://" + $("base").value + "/ws/voice/" + s.session_id);
     ws.binaryType = "arraybuffer";

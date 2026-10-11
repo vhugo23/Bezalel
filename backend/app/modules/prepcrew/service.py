@@ -21,6 +21,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
+from app import config
 from app.core import bus, store
 from app.modules.prepcrew import assessor, evaluators, interviewer, meter, simulator, topic_graph
 
@@ -137,15 +138,23 @@ async def handle_answer(session_id: str, text: str) -> dict:
             requirements = plan["data"].get("requirements", [])
             strict = bool(d.get("strict", True))
             state = d.get("meter_state") or meter.new_state()
-            before = meter.snapshot(state, requirements, strict)
+            enabled = config.LLM_PROVIDER != "fake"  # the check needs a real model
+            before = meter.snapshot(state, strict) if enabled else None
             pressure = "wrapping_up" if before and before["level"] != "ok" else "normal"  # one turn behind, see api.md
-            # The gap check runs next to the reply, so it adds cost but not waiting time.
-            reply, findings = await asyncio.gather(
+            question_asked = d.get("last_interviewer_text") or ""
+            # The check runs next to the reply, so it adds cost but not waiting time.
+            reply, assessment = await asyncio.gather(
                 interviewer.next_question(plan["data"], await _interview_turns(session_id), pressure=pressure),
-                assessor.assess(requirements, text))
-            state = meter.apply(state, findings, requirements)
-            snap = meter.snapshot(state, requirements, strict)
-            all_findings = list(d.get("meter_findings") or []) + [{**f, "turn": turn} for f in findings]
+                assessor.assess(requirements, text, question_asked))
+            findings = assessment.findings
+            counted_no_answer = meter.counts_as_no_answer(findings, assessment.no_answer)
+            state = meter.apply(state, findings, requirements, assessment.no_answer)
+            snap = {**meter.snapshot(state, strict), "checked": assessment.ok} if enabled else None
+            new = [{**f, "turn": turn} for f in findings]
+            if counted_no_answer:
+                new.append({"kind": "no_answer", "turn": turn, "question": question_asked,
+                            "evidence_quote": assessment.no_answer["evidence_quote"]})
+            all_findings = list(d.get("meter_findings") or []) + new
             update.update(meter_state=state, meter_findings=all_findings)
             question, source, shape, violations = reply.text, reply.source, reply.shape, reply.violations
             if snap and snap["level"] == "ended":
@@ -182,9 +191,13 @@ def _gap_list(requirements: list[dict], items: dict[str, str], findings: list[di
         if result == "knows" or rid not in by_id:
             continue
         quote = next((f["evidence_quote"] for f in reversed(findings)
-                      if f["requirement_id"] == rid and f["result"] == result), "")
+                      if f.get("requirement_id") == rid and f.get("result") == result), "")
         gaps.append({"requirement_id": rid, "text": by_id[rid]["text"], "level": by_id[rid]["level"],
                      "result": result, "evidence_quote": quote})
+    for f in findings:  # questions the candidate ignored
+        if f.get("kind") == "no_answer":
+            gaps.append({"requirement_id": None, "text": f"did not answer: {f['question']}", "level": None,
+                         "result": "no_answer", "evidence_quote": f["evidence_quote"]})
     return gaps
 
 

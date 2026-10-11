@@ -76,3 +76,6 @@ PENALTY_PREFERRED_PARTIAL = float(os.getenv("PENALTY_PREFERRED_PARTIAL", "0.05")
 ASSESSOR_TIMEOUT_SECONDS = float(os.getenv("ASSESSOR_TIMEOUT_SECONDS", "4"))
 # One answer can add at most this much to the meter, so no single sentence (or one speech-to-text slip) ends an interview.
 MAX_PENALTY_PER_ANSWER = float(os.getenv("MAX_PENALTY_PER_ANSWER", "0.6"))
+# An answer that ignores the interviewer's question. Counts every time (a new question each time), unlike a skill.
+# 0.35 means the second one starts the wrap-up and the third ends a strict interview. Hand-picked, not validated.
+PENALTY_NON_ANSWER = float(os.getenv("PENALTY_NON_ANSWER", "0.35"))

@@ -148,3 +148,23 @@ doubles the model calls per turn. Check the key's rate limits before a demo with
 
 **Not yet done.** The false-end rate on about 10 scripted answers is only a smoke test here (my labels). Before the
 first tester session, hand-check it with a second person's labels.
+
+## Patience meter, answers that ignore the question (`spikes/e2e_nonanswer.py`, gemini-3.5-flash-lite)
+
+Sat Oct 10, 2026, one run. Added after a tester noticed the meter did not move when they simply did not answer.
+Before this the meter only reacted to someone saying they did not know a skill from the posting.
+
+**Judging 14 question and answer pairs I wrote and labeled** (my labels, not independent): it agreed on 14 of 14.
+It flagged 7 of 7 real dodges ("I mostly did the power stage" to a question about capacitor sizing, "Um, not sure, idk",
+"I'd rather talk about the firmware", "I don't know", an off-topic remark about the project, pizza, "Next question please")
+and none of the 7 real answers, including a short unsure answer, a clarifying question back, and a half answer.
+Every flag came with a quote of the candidate's own words. A sample this small only shows it can do the job.
+
+**Live interview where the candidate keeps dodging.** The first dodge moved the meter to 0.35 as designed. The next
+two turns timed out on Gemini (assessor limit 4 s, reply limit 5 s), so nothing was judged, the meter stayed at 0.35, and
+the replies fell back to planned questions. So in this run the "third strike ends it" did not get a live demonstration.
+The tests cover it with a stubbed model. The meter message now carries `checked`, false when the check could not run.
+
+**Honest caveat.** When Gemini is slow or busy the meter silently under-counts. It errs toward not ending an interview,
+and with `checked` the UI can say so. If that happens often in a demo, the options are a faster or paid model, a second
+fallback model, or applying a late result on the next turn.
