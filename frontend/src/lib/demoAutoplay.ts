@@ -61,9 +61,9 @@ export function supportsDemo(session:{engine_id:string;opening?:string;title?:st
 }
 
 export function demoBoardSkeletons():ExcalidrawElementSkeleton[] {
- return legacyToSkeletons((sample as Stroke[]).map(s=>s.kind==='rect'?{...s,label:''}:s)).concat(
+ return legacyToSkeletons((sample as Stroke[]).map(s=>s.kind==='rect'?{...s,label:''}:s)).map(s=>s.type==='rectangle'?{...s,boundElements:[{id:`${s.id}-label`,type:'text' as const}]}:s).concat(
   (sample as Stroke[]).filter(s=>s.kind==='rect'&&s.label).map(s=>({
-   type:'text' as const,id:`${s.id}-label`,x:s.points[0].x+10,y:s.points[0].y+23,text:s.label,fontSize:16,
+   type:'text' as const,id:`${s.id}-label`,containerId:s.id,x:s.points[0].x+10,y:s.points[0].y+23,text:s.label,fontSize:16,
   })));
 }
 
@@ -75,7 +75,8 @@ export async function demoBoardItems():Promise<BoardItem[]> {
 
 export async function demoBoardPng(items:BoardItem[]):Promise<string> {
  const {exportToBlob}=await import('@excalidraw/excalidraw');
- const elements=items.map(item=>item.element) as unknown as import('@excalidraw/excalidraw/element/types').ExcalidrawElement[];
+ // Export may measure text and adjust element metrics; never mutate the saved snapshot.
+ const elements=structuredClone(items.map(item=>item.element)) as unknown as import('@excalidraw/excalidraw/element/types').ExcalidrawElement[];
  const blob=await exportToBlob({elements,files:{},mimeType:'image/png',maxWidthOrHeight:1600,exportPadding:24,
   appState:{exportBackground:true,viewBackgroundColor:'#ffffff',exportWithDarkMode:false}});
  const png=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error('Could not snapshot the demo drawing.'));reader.readAsDataURL(blob);});
