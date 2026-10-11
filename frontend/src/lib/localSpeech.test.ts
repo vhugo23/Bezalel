@@ -45,10 +45,11 @@ it('forwards aggregated model progress and ignores malformed progress',()=>{
  expect(progress).toHaveBeenCalledWith({model:'Parakeet',stage:'download',loaded:5e8,total:1e9,cached:false});
  expect(worker.terminate).not.toHaveBeenCalled();speech.close();
 });
-it('keeps a loaded model worker across voice restarts and frees it after idling',()=>{
+it('keeps a loaded model worker across voice restarts and frees it after idling',async()=>{
  vi.useFakeTimers();
  try{
-  const first=acquireSpeech('tts',()=>{});releaseSpeech(first);
+  const first=acquireSpeech('tts',()=>{});const loading=first.load();
+  FakeWorker.all[0].reply({id:1,ready:true});await loading;releaseSpeech(first);
   const progress=vi.fn(),again=acquireSpeech('tts',progress);
   expect(again).toBe(first);expect(FakeWorker.all).toHaveLength(1);
   FakeWorker.all[0].reply({type:'progress',model:'Kokoro',stage:'download',loaded:1,total:2,cached:true});expect(progress).toHaveBeenCalled();
@@ -56,4 +57,17 @@ it('keeps a loaded model worker across voice restarts and frees it after idling'
   expect(FakeWorker.all[0].terminate).toHaveBeenCalled();
   expect(acquireSpeech('tts',()=>{})).not.toBe(first);
  }finally{vi.useRealTimers();}
+});
+it('terminates an unfinished model download immediately when voice stops',async()=>{
+ const speech=acquireSpeech('stt',()=>{}),worker=FakeWorker.all[0];
+ const loading=expect(speech.load()).rejects.toThrow('Continue by typing');
+ releaseSpeech(speech);await loading;
+ expect(worker.terminate).toHaveBeenCalled();expect(speech.closed).toBe(true);
+});
+it('discards a failed download so a restart can acquire a fresh worker',async()=>{
+ const speech=acquireSpeech('stt',()=>{}),worker=FakeWorker.all[0];
+ const loading=expect(speech.load()).rejects.toThrow('WebGPU');
+ worker.reply({id:1,error:'WebGPU unavailable. Continue by typing.'});await loading;
+ expect(worker.terminate).toHaveBeenCalled();
+ const replacement=acquireSpeech('stt',()=>{});expect(replacement).not.toBe(speech);replacement.close();
 });

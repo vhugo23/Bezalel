@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, apiFetch, socketUrl, type Event, type Model } from '../api/client';
+import { api, apiFetch, openSessionSocket, type Event, type Model } from '../api/client';
 import { voiceMessage } from './voiceProtocol';
 import { acquireSpeech, releaseSpeech, type LocalSpeech, type LoadProgress } from './localSpeech';
 import { LocalUtterance } from './localUtterance';
@@ -69,7 +69,12 @@ export function useVoiceConversation(options:Options) {
           if(!blob){
             setStatus('loading');
             note('ElevenLabs quota reached. Loading Kokoro on your GPU; first use downloads model files.');
-            if(!tts.current){tts.current=acquireSpeech('tts',track);try{await tts.current.load();}finally{track(null);}}
+            if(!tts.current){
+              const speech=acquireSpeech('tts',track);tts.current=speech;
+              try{await speech.load();}
+              catch(e){speech.close();if(tts.current===speech)tts.current=null;throw e;}
+              finally{if(stamp===clipEpoch.current)track(null);}
+            }
             if(stamp!==clipEpoch.current)return;
             const output=await tts.current.infer(opts.current.id,{seq:event.seq});
             if(!output.wav)throw new Error('Kokoro returned no audio.');
@@ -107,6 +112,7 @@ export function useVoiceConversation(options:Options) {
     }
   };
   const startLocal=async(epoch:number,opening?:Event)=>{
+    if(local.current.mode!=='cloud')return;
     setPartial('');
     clearTimeout(timer.current);local.current.mode='loading';
     // Keep Stop/Mute available during downloads, including quota before handshake.
@@ -114,7 +120,7 @@ export function useVoiceConversation(options:Options) {
     note('ElevenLabs quota reached. Loading Parakeet on your GPU. Large first download; speak after Listening appears.');
     opts.current.onError(null);
     try{
-      stt.current=acquireSpeech('stt',track);try{await stt.current.load();}finally{track(null);}
+      stt.current=acquireSpeech('stt',track);try{await stt.current.load();}finally{if(epoch===state.current.epoch)track(null);}
       if(epoch!==state.current.epoch)return;
       gate.current=new LocalUtterance((pcm,final)=>void recognize(pcm,final,epoch));local.current.mode='local';
       note('Microphone: Parakeet · local WebGPU encoder / WASM decoder');idle();
@@ -151,7 +157,9 @@ export function useVoiceConversation(options:Options) {
       if(epoch!==state.current.epoch)return;
       const capture=new AudioWorkletNode(ctx,'pcm-capture');worklet.current=capture;
       ctx.createMediaStreamSource(stream).connect(capture);capture.connect(ctx.destination);
-      const ws=new WebSocket(socketUrl(`/ws/v2/voice/${opts.current.id}`));socket.current=ws;
+      const ws=await openSessionSocket(`/ws/v2/voice/${opts.current.id}`,opts.current.id,'voice');
+      if(epoch!==state.current.epoch||!state.current.alive){ws.close();return;}
+      socket.current=ws;
       capture.port.onmessage=({data}:{data:{pcm:ArrayBuffer;level:number}})=>{
         if(epoch!==state.current.epoch||!state.current.active)return;
         setLevel(state.current.muted?0:Math.min(1,data.level*12));

@@ -9,6 +9,7 @@ export type Intake = Model<'Intake'>;
 export type Plan = Model<'Plan'>;
 export type Session = Model<'Session'>;
 export const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/,'');
+const SOCKET_API = (import.meta.env.VITE_WS_URL || '').replace(/\/$/,'');
 let accountEpoch=0;
 const responseEpoch=new WeakMap<Response,number>();
 export function invalidateAccountRequests(){++accountEpoch;}
@@ -96,4 +97,11 @@ export const pairMessage = z.union([eventMessage,
  z.object({type:z.literal('ack'),ids:z.array(z.string()),seq:z.number().int(),batch:z.string().optional()}),
  z.object({type:z.literal('review'),review:z.union([schemas.BoardResult,z.null()])}),
  z.object({type:z.literal('error'),message:z.string(),batch:z.string().optional()})]);
-export function socketUrl(path:string) { const url=new URL(API||location.origin); url.protocol=url.protocol==='https:'?'wss:':'ws:'; url.pathname=path.split('?')[0]; url.search=path.split('?')[1]||''; return url.toString(); }
+export function socketUrl(path:string) { const url=new URL(SOCKET_API||API||location.origin); url.protocol=url.protocol==='https:'?'wss:':url.protocol==='http:'?'ws:':url.protocol; url.pathname=path.split('?')[0]; url.search=path.split('?')[1]||''; return url.toString(); }
+export async function openSessionSocket(path:string,sid:string,channel:'events'|'voice') {
+  if(!SOCKET_API)return new WebSocket(socketUrl(path));
+  const response=await apiFetch(`/sessions/${encodeURIComponent(sid)}/socket-ticket`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel})});
+  if(!response.ok)throw new Error('Could not authorize the connection. Reopen your workspace and retry.');
+  const ticket=z.object({token:z.string().regex(/^[A-Za-z0-9_-]{43}$/)}).parse(await apiJson(response));
+  return new WebSocket(socketUrl(path),['prepcrew',`prepcrew-ticket.${ticket.token}`]);
+}

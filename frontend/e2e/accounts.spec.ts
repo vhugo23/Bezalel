@@ -36,6 +36,36 @@ test('accounts isolate plans, sessions, sources, jobs and sockets and restore cr
  const b=await browser.newContext({baseURL});const bPage=await b.newPage();
  const bRegistration=await b.request.post('/api/v2/auth/register',{headers:protection,data:{name:'Synthetic account B',email:`b-${stamp}@example.test`,password}});
  expect(bRegistration.status()).toBe(201);const bUser=(await bRegistration.json()).user;
+ const aExportResponse=await page.request.get('/api/v2/account/export');
+ expect(aExportResponse.ok()).toBe(true);expect(aExportResponse.headers()['cache-control']).toBe('no-store');
+ const aExport=await aExportResponse.json();
+ expect(aExport.account.id).toBe(a.id);expect(aExport.account.email).toBe(a.email);
+ expect(aExport.data.source_documents.some((s:{id:string})=>s.id===source.id)).toBe(true);
+ expect(aExport.data.sessions.some((s:{id:string})=>s.id===interview.id)).toBe(true);
+ expect(aExport.manifest.limits.truncated).toBe(false);
+ expect(JSON.stringify(aExport)).not.toContain('password_hash');
+ expect(JSON.stringify(aExport)).not.toContain('token_hash');
+ const bExport=await (await b.request.get('/api/v2/account/export')).json();
+ expect(bExport.account.id).toBe(bUser.id);expect(bExport.data.sessions).toEqual([]);
+ expect(JSON.stringify(bExport)).not.toContain(source.id);expect(JSON.stringify(bExport)).not.toContain(interview.id);
+ expect((await b.request.post(`/api/v2/sessions/${interview.id}/socket-ticket`,{headers:protection,data:{channel:'events'}})).status()).toBe(404);
+ const ticketResponse=await page.request.post(`/api/v2/sessions/${interview.id}/socket-ticket`,{headers:protection,data:{channel:'events'}});
+ expect(ticketResponse.ok()).toBe(true);const ticket=await ticketResponse.json();expect(ticket.expires_in_seconds).toBe(45);
+ const direct=await browser.newContext({baseURL:process.env.PREPCREW_E2E_ORIGIN!});const directPage=await direct.newPage();await directPage.goto('/privacy');
+ async function upgrade(token:string,channel='sessions'){
+  return directPage.evaluate(({token,sid,channel})=>new Promise<boolean>(resolve=>{
+   const ws=new WebSocket(`ws://127.0.0.1:18000/ws/v2/${channel}/${sid}`,['prepcrew',`prepcrew-ticket.${token}`]);
+   ws.onopen=()=>{resolve(true);ws.close();};ws.onclose=()=>resolve(false);ws.onerror=()=>resolve(false);
+  }),{token,sid:interview.id,channel});
+ }
+ expect(await upgrade(ticket.token,'voice')).toBe(false);
+ const claimed=await Promise.all([upgrade(ticket.token),upgrade(ticket.token)]);expect(claimed.filter(Boolean)).toHaveLength(1);
+ expect(await upgrade(ticket.token)).toBe(false);
+ await page.getByRole('link',{name:'Account',exact:true}).click();
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Download my data'}).click();
+ expect((await download).suggestedFilename()).toBe('prepcrew-account.json');
+ await expect(page.getByRole('status')).toContainText('Your export is ready.');
+ await page.screenshot({path:'../.artifacts/e2e/accounts-export.png',fullPage:true});
  for(const path of [`/plans/${plan.id}`,`/sessions/${interview.id}`,`/sessions/${interview.id}/events`,`/sessions/${interview.id}/report`,`/sessions/${interview.id}/metrics`,`/sources/${source.id}`,`/jobs/${job.id}`,`/users/${a.id}/sources`]){
   expect((await b.request.get('/api/v2'+path)).status(),path).toBe(404);
  }
@@ -57,8 +87,11 @@ test('accounts isolate plans, sessions, sources, jobs and sockets and restore cr
  await expect(secondPage).toHaveURL(new RegExp(`/session/${interview.id}$`));
  // Cookie theft/replay cannot revive a revoked login session.
  const oldCookies=await page.context().cookies();
+ const revokeTicket=await (await page.request.post(`/api/v2/sessions/${interview.id}/socket-ticket`,{headers:protection,data:{channel:'events'}})).json();
  await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Welcome back.'})).toBeVisible();
+ expect(await upgrade(revokeTicket.token)).toBe(false);await direct.close();
  expect((await page.request.get(`/api/v2/sessions/${interview.id}`)).status()).toBe(401);
+ expect((await page.request.get('/api/v2/account/export')).status()).toBe(401);
  const replay=await browser.newContext({baseURL});await replay.addCookies(oldCookies);
  expect((await replay.request.get('/api/v2/history')).status()).toBe(401);await replay.close();
  // Other devices remain signed in when only this device signs out.

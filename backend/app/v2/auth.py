@@ -98,12 +98,15 @@ def check_origin(connection):
 
 
 async def current(connection):
-    token=connection.cookies.get(COOKIE,'')
-    if not re.fullmatch(r'[A-Za-z0-9_-]{43}',token):return None
+    token_hash=connection.scope.get('state',{}).get('_socket_auth_hash') if connection.scope['type']=='websocket' else None
+    if not token_hash:
+        token=connection.cookies.get(COOKIE,'')
+        if not re.fullmatch(r'[A-Za-z0-9_-]{43}',token):return None
+        token_hash=digest(token)
     return await db.one('''SELECT a.user_id AS id,a.email,coalesce(u.display_name,'') AS name
         FROM auth_sessions s JOIN accounts a ON a.user_id=s.user_id
         JOIN users u ON u.id=a.user_id
-        WHERE s.token_hash=$1 AND s.expires_at>now() AND u.deleted_at IS NULL''',digest(token))
+        WHERE s.token_hash=$1 AND s.expires_at>now() AND u.deleted_at IS NULL''',token_hash)
 
 
 async def require_owner(user_id,table,resource_id):
@@ -250,6 +253,18 @@ class AccessBoundary:
                     raise HTTPException(403,'Missing request protection header.')
             public=path.startswith('/api/v2/auth/') or path=='/api/v2/health' or path.startswith('/ws/v2/pair/') or (not socket and scope['method']=='OPTIONS')
             if public:return await self.app(scope,receive,send)
+            if socket:
+                tickets=[p.strip()[len('prepcrew-ticket.'):]
+                    for p in connection.headers.get('sec-websocket-protocol','').split(',')
+                    if p.strip().startswith('prepcrew-ticket.')]
+                if tickets:
+                    target=re.fullmatch(r'/ws/v2/(sessions|voice)/([^/]+)',path)
+                    if len(tickets)!=1 or not target or 'prepcrew' not in connection.scope.get('subprotocols',[]):
+                        raise HTTPException(401,'Invalid connection ticket.')
+                    from .socket_tickets import consume
+                    token_hash=await consume(tickets[0],unquote(target[2]),'events' if target[1]=='sessions' else 'voice')
+                    if not token_hash:raise HTTPException(401,'Connection ticket expired. Reconnect from your workspace.')
+                    scope.setdefault('state',{})['_socket_auth_hash']=token_hash
             account=await current(connection)
             if not account:raise HTTPException(401,'Sign in to open your workspace.')
             scope.setdefault('state',{})['account']=dict(account)
@@ -282,6 +297,8 @@ class AccessBoundary:
                     await send({'type':'websocket.close','code':4401})
                     return
         async def guarded_send(message):
+            if message['type']=='websocket.accept' and scope.get('state',{}).get('_socket_auth_hash'):
+                message={**message,'subprotocol':'prepcrew'}
             if not closed:await send(message)
         task=asyncio.create_task(self.app(scope,receive,guarded_send))
         watcher=asyncio.create_task(monitor())

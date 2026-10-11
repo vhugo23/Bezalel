@@ -71,6 +71,6 @@ export function SignIn(){
  {register&&<label>Your name<input autoComplete="name" required maxLength={80} value={name} onChange={e=>setName(e.target.value)}/></label>}
  <label>Email<input type="email" autoComplete="email" required maxLength={254} value={email} onChange={e=>setEmail(e.target.value)}/></label>
  <label>Password<input type="password" autoComplete={register?'new-password':'current-password'} required minLength={12} maxLength={256} value={password} onChange={e=>setPassword(e.target.value)}/></label>
- {register&&<p className="fine">Use at least 12 characters.</p>}<ErrorNotice error={error}/><Button size="lg" disabled={busy}>{busy?'Opening…':register?'Create account':'Sign in'}<Icon/></Button>
- </form><Button variant="ghost" disabled={busy} onClick={()=>{setRegister(!register);setError(undefined);setPassword('');}}>{register?'Already have an account? Sign in':'New here? Create an account'}</Button></section><Link to="/story?next=/plan" className="story-link">▶ Watch the story</Link></main>;
+ {register&&<p className="fine">Use at least 12 characters. Creating an account saves your practice on the server. <Link to="/privacy">Read about your data</Link>.</p>}<ErrorNotice error={error}/><Button size="lg" disabled={busy}>{busy?'Opening…':register?'Create account':'Sign in'}<Icon/></Button>
+ </form><Button variant="ghost" disabled={busy} onClick={()=>{setRegister(!register);setError(undefined);setPassword('');}}>{register?'Already have an account? Sign in':'New here? Create an account'}</Button></section><Link to="/privacy">Your practice data</Link><Link to="/story?next=/plan" className="story-link">▶ Watch the story</Link></main>;
 }

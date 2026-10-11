@@ -1,6 +1,6 @@
 import asyncio
 import secrets
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Request
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 from app import config
@@ -8,9 +8,26 @@ from . import db, service as s, auth
 from .models import *
 from .generation import DEMO
 from .local_speech import LocalSpeechStart, LocalSpeechFinish, LocalSpeechJob
+from .socket_tickets import SocketTicketInput, SocketTicket
 
 router = APIRouter(prefix='/api/v2', tags=['PrepCrew v2.3'])
 ws_router = APIRouter()
+
+@router.post('/sessions/{sid}/socket-ticket', response_model=SocketTicket)
+async def socket_ticket(sid: str, body: SocketTicketInput, request: Request):
+    if not auth.enabled():raise HTTPException(403, 'Sign in to connect to your session.')
+    from .socket_tickets import issue
+    return await issue(request.state.account['id'],auth.digest(request.cookies.get(auth.COOKIE,'')),sid,body.channel)
+
+@router.get('/account/export', tags=['Accounts'])
+async def account_export(request: Request, response: Response):
+    if not auth.enabled():
+        raise HTTPException(403, 'Sign in to export your account.')
+    from .account_export import export_account
+    result = await export_account(request.state.account['id'])
+    response.headers['Content-Disposition'] = 'attachment; filename="prepcrew-account.json"'
+    response.headers['Cache-Control'] = 'no-store'
+    return result
 
 @router.post('/sessions/{sid}/local-speech/jobs',response_model=LocalSpeechJob)
 async def local_speech_start(sid:str,body:LocalSpeechStart):
