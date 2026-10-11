@@ -35,6 +35,8 @@ Routes keep the existing `/api` prefix. The brief's sketch had no prefix, so `/a
 3. Output must pass `evaluator_output.schema.json`. `core.ai.generate_json` retries once with the error text. Second failure: store `needs_review: true`, emit `evaluator_failed` with `bad_json`.
 4. Quote check (reference code in `contracts/check_contracts.py`): `transcript[start:end] == evidence_quote` for every criterion, and scores within `0..score_max`. One mismatch rejects the whole result, retry once, then `needs_review: true` with `quote_mismatch`.
 5. Passing results write one `answer_scores` row per criterion with `score / score_max`. Results with `needs_review` are stored but excluded from the mastery aggregate.
+   Built: `backend/sql/timeseries.sql` creates `answer_scores`, `probe_events` and `mastery_daily` (real-time), and `GET /api/mastery` reads the aggregate.
+7. Criteria with `uses_probe_log` may cite probe steps as evidence in `evidence_probe_seqs` (seq numbers from this session's probe log) instead of a quote. Cited steps must exist in the log, and only process criteria may cite them.
 6. Reported durations are measured with `perf_counter`. Nothing is estimated.
 
 ## Live interview notes

@@ -146,3 +146,67 @@ def test_end_to_end_needs_review_reported_and_kept_out_of_mastery(monkeypatch, t
     rep = client.get(f"/api/sessions/{sid}/report").json()
     assert rep["results"] and rep["results"][0]["needs_review"] is True
     assert client.get("/api/mastery", params={"user_id": "rev"}).json()["series"] == []
+
+
+# ---- probe-step evidence for process criteria ----
+PROBES = [{"seq": 0, "action": "probe_voltage", "node": "n1", "value": 5.0, "unit": "V"},
+          {"seq": 1, "action": "probe_voltage", "node": "n2", "value": 5.0, "unit": "V"},
+          {"seq": 2, "action": "swap_part", "node": "D1", "value": None, "unit": "none"}]
+
+
+def test_process_criterion_can_cite_probe_steps_instead_of_a_quote(monkeypatch):
+    draft = {"confidence": 0.8, "criteria": [
+        {"id": "supply_first", "score": 2, "evidence_quote": "", "evidence_probe_seqs": [0], "rationale": "Probed n1 first."},
+        {"id": "hypothesis", "score": 0, "evidence_quote": "", "rationale": "None."}]}
+    fake, calls = scripted(draft)
+    monkeypatch.setattr(ai, "generate_text", fake)
+    out = run(evaluators.run_evaluator(RUBRIC, ANSWER, "", PROBES))
+    c = out["criteria"][0]
+    assert out["needs_review"] is False and c["evidence_probe_seqs"] == [0] and c["evidence_span"] == [0, 0]
+    assert '"supply_first" [process' in calls[0]["prompt"] and '"hypothesis" [process' not in calls[0]["prompt"]
+
+
+@pytest.mark.parametrize("bad_crit", [
+    {"id": "supply_first", "score": 2, "evidence_quote": "", "evidence_probe_seqs": [7], "rationale": ""},  # no such step
+    {"id": "hypothesis", "score": 2, "evidence_quote": "", "evidence_probe_seqs": [0], "rationale": ""},     # not a process criterion
+])
+def test_bad_probe_citations_are_rejected(monkeypatch, bad_crit):
+    other = {"id": "hypothesis" if bad_crit["id"] == "supply_first" else "supply_first",
+             "score": 0, "evidence_quote": "", "rationale": ""}
+    draft = {"confidence": 0.5, "criteria": [bad_crit, other]}
+    fake, _ = scripted(draft, draft)
+    monkeypatch.setattr(ai, "generate_text", fake)
+    assert run(evaluators.run_evaluator(RUBRIC, ANSWER, "", PROBES))["needs_review"] is True
+
+
+def test_probe_evidence_reaches_the_report(monkeypatch, tmp_path):
+    (tmp_path / "r.json").write_text(json.dumps({**RUBRIC, "module": "interview"}))
+    monkeypatch.setattr(evaluators, "RUBRICS_DIR", tmp_path)
+    draft = {"confidence": 0.8, "criteria": [
+        {"id": "supply_first", "score": 2, "evidence_quote": "", "evidence_probe_seqs": [0], "rationale": "r"},
+        {"id": "hypothesis", "score": 0, "evidence_quote": "", "rationale": "r"}]}
+
+    async def fake_eval(rubric, answer, transcript, probe_log):
+        out, problems = evaluators._assemble(rubric, answer, draft, PROBES)
+        assert problems == []
+        return out
+
+    monkeypatch.setattr(evaluators, "run_evaluator", fake_eval)
+    plan = client.post("/api/plans", json={"job_posting": "p", "resume": "r", "user_id": "pe"}).json()
+    sid = client.post("/api/sessions", json={"plan_id": plan["plan_id"], "user_id": "pe", "consent": True}).json()["session_id"]
+    client.post(f"/api/sessions/{sid}/turns", json={"answer": "hello"})
+    client.post(f"/api/sessions/{sid}/end")
+    with client.stream("GET", f"/api/sessions/{sid}/events") as r:
+        list(r.iter_lines())
+    crit = client.get(f"/api/sessions/{sid}/report").json()["results"][0]["criteria"][0]
+    assert crit["evidence_probe_seqs"] == [0]
+
+
+# ---- Tiger time-series is a no-op without a database ----
+def test_timeseries_does_nothing_without_a_database():
+    from app.modules.prepcrew import timeseries
+    assert run(timeseries.write_probe({"event_id": "e", "seq": 0, "session_id": "s", "scenario_id": "x",
+                                       "action": "power_cycle"})) is False
+    assert run(timeseries.write_scores([{"user_id": "u"}])) == 0
+    assert run(timeseries.mastery_series("u")) is None
+    assert run(timeseries.delete_session("s")) == 0

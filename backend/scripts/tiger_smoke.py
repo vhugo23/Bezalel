@@ -80,7 +80,8 @@ async def setup_schema(dsn: str, schema: str, ext_schema: str | None, no_timesca
         # create_hypertable and friends resolve.
         await conn.execute(f'SET search_path TO "{schema}", "{ext_schema or "public"}"')
         ok = True
-        for f in ("sql/schema.sql", "sql/prepcrew.sql"):
+        files = sorted(Path("sql").glob("*.sql"), key=lambda p: (p.name != "schema.sql", p.name))  # init_db order
+        for f in (str(p).replace("\\", "/") for p in files):
             text = Path(f).read_text(encoding="utf-8")
             if no_timescale:
                 text = strip_timescale(text)
@@ -89,6 +90,10 @@ async def setup_schema(dsn: str, schema: str, ext_schema: str | None, no_timesca
                 check(f"{f} runs", True)
             except Exception as e:
                 ok = check(f"{f} runs", False, f"{type(e).__name__}: {e}") and ok
+        if no_timescale:  # plain stand-in for the continuous aggregate so the app's mastery read still works
+            await conn.execute("create or replace view mastery_daily as select date_trunc('day', time) as day, "
+                               "user_id, skill_id, avg(score) as mastery, count(*) as n from answer_scores "
+                               "where needs_review = false group by 1, 2, 3")
         tables = await conn.fetchval(
             "select count(*) from information_schema.tables where table_schema=$1 and table_type='BASE TABLE'", schema)
         print(f"         {tables} tables created in {schema}")
@@ -98,8 +103,10 @@ async def setup_schema(dsn: str, schema: str, ext_schema: str | None, no_timesca
             caggs = [r[0] for r in await conn.fetch(
                 "select view_name from timescaledb_information.continuous_aggregates where view_schema=$1 order by 1", schema)]
             check("hypertables created", len(hts) > 0, hts)
+            check("answer_scores and probe_events are hypertables", {"answer_scores", "probe_events"} <= set(hts), hts)
             print(f"         hypertables: {hts}")
             check("continuous aggregates created", len(caggs) > 0, caggs)
+            check("mastery_daily continuous aggregate exists", "mastery_daily" in caggs, caggs)
             print(f"         continuous aggregates: {caggs}")
         return ok
     finally:
@@ -138,6 +145,8 @@ async def drive(dsn_schema: str, schema: str, has_scenario: bool):
                 p1 = (await c.post(f"/api/sessions/{sid}/probe", json={"action": "swap_part", "node": "D1",
                                                                          "scenario_id": "led_reversed"})).json()
                 check("probe events numbered by the server (0, 1)", (p0.get("seq"), p1.get("seq")) == (0, 1), (p0, p1))
+                n = await db.fetchval(f'select count(*) from "{schema}".probe_events where session_id=$1', sid)
+                check("probes written to the probe_events hypertable", n == 2, n)
             e = (await c.post(f"/api/sessions/{sid}/end")).json()
             check("end returns at once", e.get("status") == "grading", e)
             events = []
@@ -164,8 +173,38 @@ async def drive(dsn_schema: str, schema: str, has_scenario: bool):
             plan_left = await db.fetchval(f'select count(*) from "{schema}".records where id=$1', plan["plan_id"])
             check("deletion removed the session's events", left == 0, left)
             check("deletion removed the plan (resume text)", plan_left == 0, plan_left)
+            if has_scenario:
+                n = await db.fetchval(f'select count(*) from "{schema}".probe_events where session_id=$1', sid)
+                check("deletion removed the session's probe_events rows", n == 0, n)
     finally:
         await db.close()
+
+
+async def timeseries_checks(dsn_schema: str, schema: str):
+    """Scores into the answer_scores hypertable, read back through mastery_daily (real-time aggregate), then deleted."""
+    from app import db
+    from app.modules.prepcrew import timeseries
+    config.DATABASE_URL = dsn_schema
+    db._pool = None
+    try:
+        rows = [{"user_id": "smoke_ts_user", "session_id": "smoke_ts_session", "answer_id": "a1", "module": "debug",
+                 "skill_id": skill, "criterion_id": crit, "score": score, "source": "evaluator", "needs_review": nr}
+                for skill, crit, score, nr in [("circuits1.grounding", "verified_ground", 0.0, False),
+                                               ("circuits1.dc_measurement", "supply_first", 1.0, False),
+                                               ("circuits1.dc_measurement", "supply_first_dup", 0.5, True)]]
+        check("scores written to the answer_scores hypertable", await timeseries.write_scores(rows) == 3)
+        series = await timeseries.mastery_series("smoke_ts_user")
+        got = {s["skill_id"]: s["points"][-1]["mastery"] for s in (series or [])}
+        check("mastery_daily returns new scores at once (real-time aggregate)",
+              got == {"circuits1.grounding": 0.0, "circuits1.dc_measurement": 1.0}, series)
+        check("needs_review scores are kept out of mastery", got.get("circuits1.dc_measurement") == 1.0, got)
+        check("consent deletion clears the hypertables", await timeseries.delete_session("smoke_ts_session") == 3)
+        after = await timeseries.mastery_series("smoke_ts_user")
+        check("mastery is empty after deletion", after == [], after)
+    finally:
+        if db._pool is not None:
+            await db._pool.close()
+            db._pool = None
 
 
 async def drop_schema(dsn: str, schema: str):
@@ -231,6 +270,8 @@ def main():
         if not check("server started", wait_for_server(proc), "see scripts/tiger_smoke_server.log"):
             return
         asyncio.run(drive(with_search_path(dsn, path), schema, scenario_dst.exists()))
+        print("\n2b. Tiger time-series (scores -> hypertable -> continuous aggregate)")
+        asyncio.run(timeseries_checks(with_search_path(dsn, path), schema))
     finally:
         if proc and proc.poll() is None:
             proc.terminate()

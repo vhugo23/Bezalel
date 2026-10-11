@@ -4,38 +4,85 @@
   "title": "Evaluator output",
   "description": "What one evaluator call returns for one answer. Schema failure: retry once (core.ai.generate_json does this), then store with needs_review true. Quote failure: see evidence_checker rules in api.md.",
   "type": "object",
-  "required": ["answer_id", "rubric_id", "criteria", "skill_flags", "confidence"],
+  "required": [
+    "answer_id",
+    "rubric_id",
+    "criteria",
+    "skill_flags",
+    "confidence"
+  ],
   "additionalProperties": false,
   "properties": {
-    "answer_id": { "type": "string" },
-    "rubric_id": { "type": "string" },
+    "answer_id": {
+      "type": "string"
+    },
+    "rubric_id": {
+      "type": "string"
+    },
     "criteria": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "score", "evidence_quote", "evidence_span", "rationale"],
+        "required": [
+          "id",
+          "score",
+          "evidence_quote",
+          "evidence_span",
+          "rationale"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "score": { "type": "integer", "minimum": 0, "description": "Upper bound is the rubric's score_max, checked in code because JSON Schema cannot see the rubric." },
+          "id": {
+            "type": "string"
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Upper bound is the rubric's score_max, checked in code because JSON Schema cannot see the rubric."
+          },
           "evidence_quote": {
             "type": "string",
-            "description": "Exact text copied from the transcript. Empty string only when score is 0 and nothing in the answer addresses the criterion."
+            "description": "Exact text copied from the transcript. Empty string only when score is 0 and nothing addresses the criterion, or when evidence_probe_seqs carries the evidence."
           },
           "evidence_span": {
             "type": "array",
-            "items": { "type": "integer", "minimum": 0 },
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
             "minItems": 2,
             "maxItems": 2,
             "description": "[start, end) character offsets into the transcript string given to the evaluator. [0, 0] when evidence_quote is empty."
           },
-          "rationale": { "type": "string", "maxLength": 600 }
+          "rationale": {
+            "type": "string",
+            "maxLength": 600
+          },
+          "evidence_probe_seqs": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "uniqueItems": true,
+            "description": "Steps from the ordered probe log (their seq) that support the score. Only for criteria with uses_probe_log. With steps cited, evidence_quote may be empty and the score still above 0."
+          }
         }
       }
     },
-    "skill_flags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "skill_flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "needs_review": {
       "type": "boolean",
       "default": false,

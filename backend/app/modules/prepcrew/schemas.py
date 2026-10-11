@@ -109,6 +109,7 @@ class CriterionResult(BaseModel):
     score: int = Field(ge=0)
     evidence_quote: str
     evidence_span: list[int] = Field(min_length=2, max_length=2)
+    evidence_probe_seqs: list[int] = Field(default_factory=list, description="Probe log steps (seq) that support the score, for process criteria. Show as 'you measured n1, then n2, then swapped D1'.")
     rationale: str = Field(max_length=600)
 
 

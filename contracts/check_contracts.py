@@ -25,11 +25,12 @@ def check_evidence(output: dict, transcript: str, score_max: int) -> list[str]:
     problems = []
     for c in output["criteria"]:
         q, (s, e) = c["evidence_quote"], c["evidence_span"]
+        seqs = c.get("evidence_probe_seqs") or []
         if c["score"] > score_max:
             problems.append(f"{c['id']}: score {c['score']} above score_max {score_max}")
         if q == "":
-            if c["score"] != 0 or [s, e] != [0, 0]:
-                problems.append(f"{c['id']}: empty quote needs score 0 and span [0, 0]")
+            if (c["score"] != 0 and not seqs) or [s, e] != [0, 0]:
+                problems.append(f"{c['id']}: empty quote needs score 0 and span [0, 0], unless probe steps are cited")
         elif transcript[s:e] != q:
             problems.append(f"{c['id']}: quote does not match transcript[{s}:{e}]")
     return problems

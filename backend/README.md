@@ -37,6 +37,14 @@ Nothing else. A test fails if a route is added outside these.
 `python scripts/tiger_smoke.py` builds every table in a throwaway schema on the real database, runs the whole
 flow against it with fake AI and voice, and drops the schema. It never touches your real tables.
 
+## Tiger Data time-series
+`sql/timeseries.sql` (from `contracts/db.sql`) adds two hypertables and a continuous aggregate. Every circuit probe is
+also written to `probe_events`, every graded criterion to `answer_scores` (score 0..1), and `GET /api/mastery` reads the
+`mastery_daily` continuous aggregate (real-time, so new scores show at once; `needs_review` rows never count).
+`DELETE /api/sessions/{id}` deletes the session's rows from both and refreshes the aggregate. Writes are best effort:
+without a database or before `init_db.py` has created the tables, the app logs one warning and carries on.
+`scripts/tiger_smoke.py` checks all of this on the real database in a throwaway schema.
+
 ## Removed on purpose
 No HTML pages or static files (React owns the UI). No open `/api/records`, `/api/events` or `/api/ai` endpoints:
 they let anyone read a session's answers or spend the AI key. The store they wrapped is still used internally.

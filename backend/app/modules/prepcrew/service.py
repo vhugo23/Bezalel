@@ -23,7 +23,8 @@ from datetime import datetime, timezone
 
 from app import config
 from app.core import bus, memory, store
-from app.modules.prepcrew import assessor, debrief, evaluators, interviewer, meter, simulator, topic_graph
+from app.modules.prepcrew import (assessor, debrief, evaluators, interviewer, meter, simulator, timeseries,
+                                  topic_graph)
 
 PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
 _seq_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -259,6 +260,7 @@ async def record_probe(session_id: str, action: str, node: str | None, scenario_
             "node": node, "value": value, "unit": unit,
         }
         await store.add_event(session_id, "probe", value=value, data=event)
+    await timeseries.write_probe(event)  # Tiger hypertable; best effort, never blocks the probe
     return event
 
 
@@ -287,6 +289,8 @@ async def run_grading(session_id: str) -> None:
 
     rubrics = {r["rubric_id"]: r for r in evaluators.load_rubrics(only_reviewed=False)}
     flags: set[str] = set()
+    ts_rows: list[dict] = []  # mirrored into the Tiger answer_scores hypertable
+    source = "retest" if session["data"].get("kind") == "retest" else "evaluator"
     for result in out["results"]:
         flags.update(result.get("skill_flags", []))
         rubric = rubrics.get(result["rubric_id"])
@@ -294,10 +298,14 @@ async def run_grading(session_id: str) -> None:
             continue
         crit_skill = {c["id"]: c["skill_id"] for c in rubric["criteria"]}
         for c in result["criteria"]:
-            await store.add_event(session_id, "score", value=c["score"] / rubric["score_max"], data={
-                "user_id": session["data"]["user_id"], "answer_id": result["answer_id"],
-                "skill_id": crit_skill.get(c["id"], "unknown"), "criterion_id": c["id"],
-                "needs_review": bool(result.get("needs_review")), "source": "evaluator"})
+            row = {"user_id": session["data"]["user_id"], "session_id": session_id, "answer_id": result["answer_id"],
+                   "module": rubric.get("module", "interview"), "skill_id": crit_skill.get(c["id"], "unknown"),
+                   "criterion_id": c["id"], "score": c["score"] / rubric["score_max"], "source": source,
+                   "needs_review": bool(result.get("needs_review"))}
+            ts_rows.append(row)
+            await store.add_event(session_id, "score", value=row["score"], data={
+                k: row[k] for k in ("user_id", "answer_id", "skill_id", "criterion_id", "needs_review", "source")})
+    await timeseries.write_scores(ts_rows)  # best effort; the events above keep the data either way
     await store.add_event(session_id, "timing", value=out["total_ms"], data={"stage": "evaluator_fleet"})
     await store.update_record(session_id, {"status": "graded", "results": out["results"],
                                            "skill_flags": sorted(flags), "total_ms": out["total_ms"]})
@@ -330,6 +338,9 @@ async def skills(user_id: str | None) -> list[dict]:
 
 
 async def mastery_series(user_id: str) -> list[dict]:
+    from_tiger = await timeseries.mastery_series(user_id)  # mastery_daily continuous aggregate, when available
+    if from_tiger is not None:
+        return from_tiger
     buckets: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for e in await _user_scores(user_id):
         buckets[e["data"]["skill_id"]][e["created_at"][:10]].append(e["value"])
@@ -376,6 +387,7 @@ async def delete_session(session_id: str) -> int:
     refs = [r["data"]["ref"] for r in await store.find_records("memory_ref", "session_id", session_id, limit=10000)]
     removed = await memory.forget(refs)
     removed += await store.delete_linked(session_id)  # also removes the memory_ref records (data.session_id)
+    removed += await timeseries.delete_session(session_id)  # Tiger hypertables + aggregate refresh
     if plan_id and not await store.find_records("session", "plan_id", plan_id, limit=1):
         removed += await store.delete_record(plan_id)
     bus.clear(channel(session_id))

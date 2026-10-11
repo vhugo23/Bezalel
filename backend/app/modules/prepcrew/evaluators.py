@@ -40,11 +40,12 @@ def check_evidence(output: dict, transcript: str, score_max: int) -> list[str]:
     problems = []
     for c in output["criteria"]:
         q, (s, e) = c["evidence_quote"], c["evidence_span"]
+        seqs = c.get("evidence_probe_seqs") or []
         if c["score"] > score_max:
             problems.append(f"{c['id']}: score {c['score']} above score_max {score_max}")
         if q == "":
-            if c["score"] != 0 or [s, e] != [0, 0]:
-                problems.append(f"{c['id']}: empty quote needs score 0 and span [0, 0]")
+            if (c["score"] != 0 and not seqs) or [s, e] != [0, 0]:
+                problems.append(f"{c['id']}: empty quote needs score 0 and span [0, 0], unless probe steps are cited")
         elif transcript[s:e] != q:
             problems.append(f"{c['id']}: quote does not match transcript[{s}:{e}]")
     return problems
@@ -54,6 +55,7 @@ class _CriterionDraft(BaseModel):
     id: str
     score: int = Field(ge=0)
     evidence_quote: str = ""
+    evidence_probe_seqs: list[int] = Field(default_factory=list)
     rationale: str = Field(default="", max_length=600)
 
 
@@ -69,9 +71,11 @@ SYSTEM = ("You grade one answer from a hardware engineering interview against a 
 
 def _prompt(rubric: dict, answer_text: str, probe_log: list[dict]) -> str:
     crits = []
+    has_probes = bool(probe_log)
     for c in rubric["criteria"]:
         anchors = "; ".join(f"{k}: {v}" for k, v in sorted(c["anchors"].items()))
-        crits.append(f'- id "{c["id"]}": {c["description"]} Score levels: {anchors}')
+        tag = " [process: you may cite probe steps]" if c.get("uses_probe_log") and has_probes else ""
+        crits.append(f'- id "{c["id"]}"{tag}: {c["description"]} Score levels: {anchors}')
     probes = ""
     if any(c.get("uses_probe_log") for c in rubric["criteria"]) and probe_log:
         steps = [f'{p["seq"]}. {p["action"]} {p.get("node") or ""} -> {p.get("value")} {p.get("unit", "")}'.strip()
@@ -83,18 +87,22 @@ def _prompt(rubric: dict, answer_text: str, probe_log: list[dict]) -> str:
         + "\n".join(crits) + "\n" + probes +
         f"\n<answer>\n{answer_text}\n</answer>\n\n"
         "Reply with JSON only: "
-        '{"criteria": [{"id": str, "score": int, "evidence_quote": str, "rationale": str}], "confidence": number}. '
+        '{"criteria": [{"id": str, "score": int, "evidence_quote": str, "evidence_probe_seqs": [int], '
+        '"rationale": str}], "confidence": number}. '
         "Include every criterion id above exactly once. evidence_quote must be copied character for character from "
-        "the answer: one short continuous piece that supports the score. If nothing in the answer addresses a "
-        "criterion, give score 0 and an empty evidence_quote. rationale is one sentence. "
-        "confidence is 0 to 1, how sure you are of the scores."
+        "the answer: one short continuous piece that supports THIS criterion. Never reuse a sentence that is about "
+        "a different criterion. For criteria marked [process], when the evidence is what the candidate did on the "
+        "circuit, list the step numbers in evidence_probe_seqs and leave evidence_quote empty unless they also said "
+        "it. Otherwise evidence_probe_seqs is []. If nothing supports a criterion, give score 0 with no evidence. "
+        "rationale is one sentence. confidence is 0 to 1, how sure you are of the scores."
     )
 
 
-def _assemble(rubric: dict, answer: dict, draft: dict) -> tuple[dict, list[str]]:
+def _assemble(rubric: dict, answer: dict, draft: dict, probe_log: list[dict] | None = None) -> tuple[dict, list[str]]:
     """Build the contract output from the model's draft. Spans are found by us in the answer text, so the
     model never has to count characters. Returns (output, problems); any problem rejects the result."""
     text, smax = answer["text"], rubric["score_max"]
+    valid_seqs = {p["seq"] for p in (probe_log or [])}
     want = {c["id"]: c for c in rubric["criteria"]}
     got = {c["id"]: c for c in draft["criteria"]}
     problems = [f"missing criterion {cid}" for cid in want if cid not in got]
@@ -112,8 +120,14 @@ def _assemble(rubric: dict, answer: dict, draft: dict) -> tuple[dict, list[str]]
                 problems.append(f'{cid}: quote is not in the answer word for word: "{quote[:80]}"')
         else:
             span = [0, 0]
+        seqs = sorted(set(c.get("evidence_probe_seqs") or []))
+        if seqs and not want[cid].get("uses_probe_log"):
+            problems.append(f"{cid}: cites probe steps but is not a process criterion")
+        bad = [s for s in seqs if s not in valid_seqs]
+        if bad:
+            problems.append(f"{cid}: probe steps {bad} are not in the probe log")
         criteria.append({"id": cid, "score": c["score"], "evidence_quote": quote, "evidence_span": span,
-                         "rationale": c["rationale"][:600]})
+                         "evidence_probe_seqs": seqs, "rationale": c["rationale"][:600]})
     output = {
         "answer_id": answer["answer_id"], "rubric_id": rubric["rubric_id"], "criteria": criteria,
         # a criterion scoring at or below half marks flags its skill for a lesson
@@ -141,7 +155,7 @@ async def run_evaluator(rubric: dict, answer: dict, transcript: str, probe_log: 
             prompt + "\n\nYour previous grading was rejected: " + "; ".join(problems)
             + ". Copy quotes exactly from the answer, or leave them empty with score 0.")
         draft = await retry.once(lambda: ai.generate_json(ask, model=_Draft, system=SYSTEM, **opts))
-        output, problems = _assemble(rubric, answer, draft)
+        output, problems = _assemble(rubric, answer, draft, probe_log)
         if not problems:
             return output
         log.warning("evaluator %s on %s rejected: %s", rubric["rubric_id"], answer["answer_id"], problems[:3])

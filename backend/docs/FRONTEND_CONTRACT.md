@@ -57,6 +57,13 @@ Calling the backend directly also works: CORS allows localhost:5173 and localhos
 - **Errors on the voice socket never close it:** `bad_answer`, `no_audio`, `too_short`, `no_speech`, `stt_failed`, `audio_too_long`, `tts_failed`. Offer the typed fallback after `stt_failed`.
 - Full message list: `contracts/ws_messages.md`. Routes and fields: `contracts/api.md`.
 
+## Evidence in the report
+Each graded criterion has `evidence_quote` (the candidate's exact words, with `evidence_span`) and
+`evidence_probe_seqs` (steps from the circuit probe log, for process criteria such as "isolated before swapping").
+Either can be empty. Show probe evidence as the steps themselves, e.g. "you measured n1, then n2, then swapped D1",
+using the probe events you already have. Results with `needs_review: true` are unchecked: label them, and they
+never count toward mastery.
+
 ## Memory from earlier sessions
 `POST /api/plans` returns `memories` and `POST /api/sessions` returns `recalled`: short notes about this user's earlier
 sessions (gaps with their own words, strengths). Empty on a first session. Good spot for a "Picking up from last
