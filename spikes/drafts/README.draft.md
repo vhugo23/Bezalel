@@ -1,7 +1,8 @@
 <!--
 REVIEW NOTES (delete this block before this replaces README.md). Checked against the repo at 4f2b84d.
 - "docker compose up --build" and "cp .env.example .env": there is no Dockerfile, no compose file and no root .env.example
-  (find found only backend/.env.example and frontend/.env.example). backend/app/config.py reads the ROOT .env.
+  (find found only backend/.env.example and frontend/.env.example). At 4f2b84d backend/app/config.py reads only the ROOT .env;
+  origin/main has since moved to 43fbf15, where c891d23 makes it read process env, then root .env, then backend/.env.
 - API table: every legacy route is under /api (routes.py, prefix="/api"); the lesson route is GET /api/lessons/{skill_id}
   (routes.py get_lesson). The React app uses /api/v2 (v2/routes.py). The sockets are /ws/voice/{id} and /ws/board/{id}.
 - docs/architecture/ does not exist; docs/ holds GRADING_REVIEW.md and IMPLEMENTATION_ROADMAP.md only.
@@ -126,7 +127,7 @@ The tests use fake providers and blank the database setting themselves.
 
 ### The voice interviewer
 
-Put your keys in a file called `.env` in the **repository root** (not in `backend/`; `backend/app/config.py` reads the root file). `backend/.env.example` lists every variable and is a good template. Never commit `.env`. Leave `DATABASE_URL` out of it for this app, which then keeps everything in memory.
+Put your keys in a file called `.env` in the **repository root**. (Before commit `c891d23` the backend read only that file. Since then it also falls back to `backend/.env`, with the root file winning; check `GET /api/health` either way.) `backend/.env.example` lists every variable and is a good template. Never commit `.env`. Leave `DATABASE_URL` out of it for this app, which then keeps everything in memory.
 
 | Variable | Used for |
 |---|---|

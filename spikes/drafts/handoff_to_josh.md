@@ -68,7 +68,7 @@ How to check, from `backend/`:
 .venv\Scripts\python -m pytest -q
 ```
 
-At the branch tip I measured 83 passed for the first command and 412 passed for the second (329 on `main` at `4f2b84d` before these files), fake providers, no keys and no database. `git diff --stat origin/main..lane1-entrypoint` lists added files only.
+At the branch tip I measured 83 passed for the first command and 412 passed for the second (329 on `main` at `4f2b84d` before these files), fake providers, no keys and no database. I also copied the five code and data files onto a scratch export of `origin/main` at `43fbf15` (which includes `c891d23` and `859fc57`) and got 417 passed. `git diff --stat 4f2b84d..lane1-entrypoint` lists added files only, so it merges without conflicts.
 
 ## What I need from you
 Reply yes or no: will you wire `hardware_interview` into `start()` and `respond()` for one hardware track before noon Central? If yes, name the track and I will write the matching scenario spec (the project interview step with a synthetic posting and resume) as a file under `contracts/examples/` for you to load.
