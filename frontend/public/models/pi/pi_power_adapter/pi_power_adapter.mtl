@@ -1,0 +1,33 @@
+newmtl plastic_black
+Ka 0.0 0.0 0.0
+Kd 1.0 1.0 1.0
+Ks 0.15 0.15 0.15
+Ns 57
+d 1.0
+illum 2
+Pr 0.62
+Pm 0.0
+map_Kd plastic.png
+
+newmtl rubber_black
+Ka 0.0 0.0 0.0
+Kd 1.0 1.0 1.0
+Ks 0.15 0.15 0.15
+Ns 15
+d 1.0
+illum 2
+Pr 0.8
+Pm 0.0
+map_Kd rubber.png
+
+newmtl metal_shell
+Ka 0.0 0.0 0.0
+Kd 1.0 1.0 1.0
+Ks 0.9 0.9 0.9
+Ns 169
+d 1.0
+illum 2
+Pr 0.35
+Pm 1.0
+map_Kd metal.png
+

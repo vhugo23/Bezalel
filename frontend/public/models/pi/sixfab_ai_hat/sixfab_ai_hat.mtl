@@ -1,0 +1,141 @@
+newmtl pcb
+Ka 0.0 0.0 0.0
+Kd 1.0 1.0 1.0
+map_Kd sixfab_ai_hat_pcb.png
+Ks 0.15 0.15 0.15
+Ns 121
+d 1.0
+illum 2
+Pr 0.45
+Pm 0.0
+
+newmtl header
+Ka 0.0 0.0 0.0
+Kd 0.1098 0.1098 0.1176
+Ks 0.15 0.15 0.15
+Ns 100
+d 1.0
+illum 2
+Pr 0.5
+Pm 0.0
+
+newmtl header_holes
+Ka 0.0 0.0 0.0
+Kd 0.0157 0.0157 0.0157
+Ks 0.15 0.15 0.15
+Ns 144
+d 1.0
+illum 2
+Pr 0.4
+Pm 0.0
+
+newmtl chip_substrate
+Ka 0.0 0.0 0.0
+Kd 0.1176 0.1490 0.1333
+Ks 0.15 0.15 0.15
+Ns 64
+d 1.0
+illum 2
+Pr 0.6
+Pm 0.0
+
+newmtl chip_lid
+Ka 0.0 0.0 0.0
+Kd 0.7686 0.6196 0.5294
+Ks 0.9 0.9 0.9
+Ns 195
+d 1.0
+illum 2
+Pr 0.3
+Pm 0.9
+
+newmtl standoffs
+Ka 0.0 0.0 0.0
+Kd 0.0863 0.0863 0.0941
+Ks 0.15 0.15 0.15
+Ns 80
+d 1.0
+illum 2
+Pr 0.55
+Pm 0.0
+
+newmtl screws
+Ka 0.0 0.0 0.0
+Kd 0.1176 0.1176 0.1255
+Ks 0.9 0.9 0.9
+Ns 144
+d 1.0
+illum 2
+Pr 0.4
+Pm 0.8
+
+newmtl fpc_body
+Ka 0.0 0.0 0.0
+Kd 0.0941 0.0941 0.1020
+Ks 0.15 0.15 0.15
+Ns 100
+d 1.0
+illum 2
+Pr 0.5
+Pm 0.0
+
+newmtl fpc_latch
+Ka 0.0 0.0 0.0
+Kd 0.8039 0.6471 0.3137
+Ks 0.9 0.9 0.9
+Ns 169
+d 1.0
+illum 2
+Pr 0.35
+Pm 0.8
+
+newmtl ribbon
+Ka 0.0 0.0 0.0
+Kd 0.0784 0.0784 0.0784
+Ks 0.15 0.15 0.15
+Ns 80
+d 1.0
+illum 2
+Pr 0.55
+Pm 0.0
+
+newmtl jst
+Ka 0.0 0.0 0.0
+Kd 0.9216 0.9216 0.9020
+Ks 0.15 0.15 0.15
+Ns 100
+d 1.0
+illum 2
+Pr 0.5
+Pm 0.0
+
+newmtl smd_ics
+Ka 0.0 0.0 0.0
+Kd 0.0549 0.0549 0.0627
+Ks 0.15 0.15 0.15
+Ns 121
+d 1.0
+illum 2
+Pr 0.45
+Pm 0.0
+
+newmtl smd_tantalum
+Ka 0.0 0.0 0.0
+Kd 0.8392 0.5490 0.1569
+Ks 0.15 0.15 0.15
+Ns 100
+d 1.0
+illum 2
+Pr 0.5
+Pm 0.0
+
+newmtl smd_caps
+Ka 0.0 0.0 0.0
+Kd 0.6588 0.5176 0.3529
+Ks 0.15 0.15 0.15
+Ns 100
+d 1.0
+illum 2
+Pr 0.5
+Pm 0.0
+

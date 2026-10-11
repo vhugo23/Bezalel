@@ -1,0 +1,102 @@
+newmtl pcb
+Ka 0.0 0.0 0.0
+Kd 1.0 1.0 1.0
+map_Kd pi_camera_cable_pcb.png
+Ks 0.15 0.15 0.15
+Ns 121
+d 1.0
+illum 2
+Pr 0.45
+Pm 0.0
+
+newmtl pads
+Ka 0.0 0.0 0.0
+Kd 0.8863 0.7451 0.2745
+Ks 0.9 0.9 0.9
+Ns 195
+d 1.0
+illum 2
+Pr 0.3
+Pm 0.8
+
+newmtl edge_contacts
+Ka 0.0 0.0 0.0
+Kd 0.8863 0.7451 0.2745
+Ks 0.9 0.9 0.9
+Ns 195
+d 1.0
+illum 2
+Pr 0.3
+Pm 0.8
+
+newmtl housing
+Ka 0.0 0.0 0.0
+Kd 0.0627 0.0627 0.0706
+Ks 0.15 0.15 0.15
+Ns 80
+d 1.0
+illum 2
+Pr 0.55
+Pm 0.0
+
+newmtl barrel
+Ka 0.0 0.0 0.0
+Kd 0.0471 0.0471 0.0549
+Ks 0.15 0.15 0.15
+Ns 100
+d 1.0
+illum 2
+Pr 0.5
+Pm 0.0
+
+newmtl lens_ring
+Ka 0.0 0.0 0.0
+Kd 0.1882 0.1882 0.2118
+Ks 0.15 0.15 0.15
+Ns 144
+d 1.0
+illum 2
+Pr 0.4
+Pm 0.4
+
+newmtl lens_glass
+Ka 0.0 0.0 0.0
+Kd 0.0863 0.1020 0.2510
+Ks 0.15 0.15 0.15
+Ns 361
+d 1.0
+illum 2
+Pr 0.05
+Pm 0.1
+
+newmtl caps
+Ka 0.0 0.0 0.0
+Kd 0.6588 0.5176 0.3529
+Ks 0.15 0.15 0.15
+Ns 100
+d 1.0
+illum 2
+Pr 0.5
+Pm 0.0
+
+newmtl ribbon
+Ka 0.0 0.0 0.0
+Kd 1.0 1.0 1.0
+map_Kd pi_camera_cable_ribbon.png
+Ks 0.15 0.15 0.15
+Ns 144
+d 1.0
+illum 2
+Pr 0.4
+Pm 0.0
+
+newmtl ribbon_contacts
+Ka 0.0 0.0 0.0
+Kd 0.8392 0.6980 0.3137
+Ks 0.9 0.9 0.9
+Ns 195
+d 1.0
+illum 2
+Pr 0.3
+Pm 0.8
+
