@@ -1,0 +1,38 @@
+{
+  "synthetic": true,
+  "purpose": "The answer key for the LED step of hw_circuit_debug.two_step.v2.json. Store it as scenarios.params for the scenario made from that file, for the DC engine to read. Do not put any part of it in scenarios.spec, scenarios.rubric, scenario_steps, a step config or hint, or any prompt: the planted fault must stay out of what the interviewer model, the evaluator model and the browser can see.",
+  "for_scenario": "hw_circuit_debug.two_step.v2.json",
+  "store_as": "scenarios.params",
+  "circuit": {
+    "source_scenario_id": "led_reversed",
+    "kind": "debug",
+    "ground_net": "gnd",
+    "parts": [
+      { "id": "V1", "type": "supply", "value": 5 },
+      { "id": "R1", "type": "resistor", "value": 330 },
+      { "id": "D1", "type": "led", "value": 2.0, "orientation": "reversed" }
+    ],
+    "nets": [
+      { "id": "n1", "pins": ["V1.plus", "R1.1"], "label": "VCC" },
+      { "id": "n2", "pins": ["R1.2", "D1.anode"] },
+      { "id": "gnd", "pins": ["V1.minus", "D1.cathode"], "label": "GND" }
+    ],
+    "fault": { "type": "led_reversed", "part": "D1" },
+    "expected_voltages": {
+      "healthy": { "n1": 5.0, "n2": 2.0, "gnd": 0.0 },
+      "faulted": { "n1": 5.0, "n2": 5.0, "gnd": 0.0 }
+    }
+  },
+  "assumptions": [
+    {
+      "id": "led_forward_drop",
+      "paths": ["/circuit/parts/2/value", "/circuit/expected_voltages/healthy/n2"],
+      "statement": "The LED forward drop is assumed to be 2.0 V. It is not a datasheet value and it was not measured. contracts/README.md already calls it an assumption. The healthy reading at n2 is that same number."
+    },
+    {
+      "id": "reversed_led_passes_no_current",
+      "paths": ["/circuit/expected_voltages/faulted/n2"],
+      "statement": "The faulted reading at n2 of 5.0 V assumes the reversed LED passes no current, so there is no drop across R1. Reverse leakage and breakdown were not modelled or measured. This is a modelling assumption added by the converter, not stated in the source file."
+    }
+  ]
+}

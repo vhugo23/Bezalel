@@ -2,12 +2,12 @@
 No grading here. Grading happens after the session (evaluators.py).
 
 The live path never fails the user: if the model errors or times out, the next planned
-question is asked instead and the turn's source is "fallback".
+question is asked instead and the turn's source is "fallback". If GEMINI_BACKUP_MODEL is set and the primary model is
+busy or times out, the backup model gets one try first (retry.py), and a question it writes has source "model_backup".
 
 Sounding human: a spoken-style persona with examples, a different "shape" for each turn (so every reply is not
 "restate what you said, then one long question"), variant pools instead of fixed sentences, and a cheap checker
 (humanness.py) whose violations are counted on every live reply."""
-import asyncio
 import logging
 import random
 from dataclasses import dataclass, field
@@ -116,8 +116,9 @@ WRAP_UP_NOTE = ("The candidate has shown gaps on skills this job requires, so th
                 "Keep this turn short, do not dig into the topics they could not answer, and ask at most one more "
                 "simple question. Do not tell them how they are doing.")
 
-# Where a question came from. Only "model" means the live model wrote it.
-MODEL, FALLBACK, FAKE = "model", "fallback", "fake"
+# Where a question came from. "model" and "model_backup" mean the live model wrote it ("model_backup": the primary
+# was busy or timed out and the model named in GEMINI_BACKUP_MODEL wrote it, see retry.py).
+MODEL, FALLBACK, FAKE, BACKUP = "model", "fallback", "fake", "model_backup"
 
 _rng = random.Random()
 
@@ -125,9 +126,10 @@ _rng = random.Random()
 @dataclass
 class Reply:
     text: str | None                      # None when the interview part is over
-    source: str                           # model | fallback | fake
+    source: str                           # model | model_backup | fallback | fake
     shape: str | None = None              # which turn shape the model was asked for
     violations: list[str] = field(default_factory=list)  # humanness.check codes, counted not blocked
+    backup_model: str | None = None       # the backup model's name when source is model_backup, else None
 
 
 class RequirementDraft(BaseModel):
@@ -185,9 +187,17 @@ def _clean_questions(questions: list[str]) -> list[str]:
     return cleaned[:MAX_QUESTIONS]
 
 
-async def _plan_call(prompt: str) -> dict:
-    """The plan call retries once on a busy provider (the pause is longer than for live turns)."""
-    return await retry.once(lambda: ai.generate_json(prompt, model=PlanDraft, system=PLAN_SYSTEM), pause=1.0)
+def _plan_one(prompt: str, model: str | None):
+    """One plan call. model is None for the primary, and then the arguments are exactly what they always were."""
+    extra = {"llm_model": model} if model else {}
+    return ai.generate_json(prompt, model=PlanDraft, system=PLAN_SYSTEM, **extra)
+
+
+async def _plan_call(prompt: str) -> tuple[dict, str | None]:
+    """The plan call retries once on a busy provider (the pause is longer than for live turns), then tries the backup
+    model once if there is one. Returns (plan, backup model name or None). The whole thing has TASK_TIMEOUT_SECONDS."""
+    return await retry.with_backup(lambda model: _plan_one(prompt, model), timeout=config.TASK_TIMEOUT_SECONDS,
+                                   pause=1.0, label="plan")
 
 
 async def build_plan(job_posting: str, resume: str) -> dict:
@@ -209,12 +219,15 @@ async def build_plan(job_posting: str, resume: str) -> dict:
         f"<posting>\n{job_posting}\n</posting>\n\n<resume>\n{resume}\n</resume>"
     )
     try:
-        plan = await asyncio.wait_for(_plan_call(prompt), timeout=config.TASK_TIMEOUT_SECONDS)
+        plan, backup = await _plan_call(prompt)
         questions = _clean_questions(plan["questions"])
         if questions:
-            return {"project": plan["project"].strip()[:MAX_QUESTION_CHARS], "topics": plan["topics"][:MAX_QUESTIONS],
+            made = {"project": plan["project"].strip()[:MAX_QUESTION_CHARS], "topics": plan["topics"][:MAX_QUESTIONS],
                     "questions": questions, "requirements": _clean_requirements(plan["requirements"]),
                     "degraded": False}
+            if backup:  # only present when the backup model wrote the plan, so the default result is unchanged
+                made["backup_model"] = backup
+            return made
         log.warning("plan fallback: model returned no usable questions")
     except Exception as e:  # model error, timeout, bad JSON after retry, or not implemented
         log.warning("plan fallback: %s", type(e).__name__)
@@ -260,11 +273,17 @@ def choose_shape(previous: str | None, answer: str, n_answers: int, has_planned:
     return (rng or _rng).choice(pool or ["dig"])
 
 
+def _live_one(prompt: str, model: str | None):
+    """One live turn call. model is None for the primary, and then the arguments are exactly what they always were."""
+    return ai.generate_text(prompt, PERSONA) if not model else ai.generate_text(prompt, PERSONA, llm_model=model)
+
+
 async def next_question(plan: dict, turns: list[dict], rng: random.Random | None = None,
                         pressure: str = "normal") -> Reply:
     """turns holds interviewer and candidate turns so far, the newest being a candidate answer.
     Returns a Reply. reply.text is None when the interview part is over.
-    source is "model", "fallback" (planned question used because the model failed) or "fake"."""
+    source is "model", "model_backup" (the primary model was busy or timed out and the backup model wrote it),
+    "fallback" (planned question used because the model failed) or "fake"."""
     n_answers = sum(1 for t in turns if t["role"] == "candidate")
     if n_answers >= MAX_ANSWERS:
         return Reply(None, MODEL)
@@ -286,14 +305,14 @@ async def next_question(plan: dict, turns: list[dict], rng: random.Random | None
         "words: if it went unanswered, rephrase it once or move on. Reply with the spoken line only."
     )
     try:
-        raw = await asyncio.wait_for(retry.once(lambda: ai.generate_text(prompt, PERSONA)),
-                                     timeout=config.LIVE_TURN_TIMEOUT_SECONDS)
+        raw, backup = await retry.with_backup(lambda model: _live_one(prompt, model),
+                                              timeout=config.LIVE_TURN_TIMEOUT_SECONDS, label="live_turn")
         text = _spoken(humanness.sanitize(raw))
         if text:
             found = humanness.check(text, last_answer, [t["text"] for t in interviewer_turns])
             if found:
                 log.info("humanness violations: %s", ",".join(found))
-            return Reply(text, MODEL, shape, found)
+            return Reply(text, BACKUP if backup else MODEL, shape, found, backup)
         log.warning("turn fallback: model returned empty text")
     except Exception as e:  # model error, timeout, or not implemented: never fail the live turn
         log.warning("turn fallback: %s", type(e).__name__)

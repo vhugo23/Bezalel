@@ -5,8 +5,10 @@ Runs next to the next-question call (asyncio.gather in service.py), so it adds c
 
 Anything it reports only counts when the model's evidence quote appears word for word in the answer, so an invented
 quote cannot cost someone their interview. Any failure (error, timeout, bad JSON, fake provider) means "nothing found",
-never a penalty. Not mentioning a skill is never a gap."""
-import asyncio
+never a penalty. Not mentioning a skill is never a gap.
+
+If GEMINI_BACKUP_MODEL is set and the primary model is busy or times out, the backup model gets one try (retry.py).
+Its answer goes through the same quote checks, so a backup model cannot cost anyone more than the primary could."""
 import logging
 import re
 from dataclasses import dataclass, field
@@ -48,6 +50,7 @@ class Assessment:
     findings: list[dict] = field(default_factory=list)   # [{requirement_id, result, evidence_quote}], verified
     no_answer: dict | None = None                         # {evidence_quote} when the answer ignored the question, verified
     ok: bool = True                                       # False when the check failed or timed out: nothing was judged
+    backup_model: str | None = None                       # the backup model's name when it made this check, else None
 
 
 def _norm(text: str) -> str:
@@ -83,6 +86,12 @@ def verify_no_answer(draft: AssessDraft, answer: str) -> dict | None:
     return {"evidence_quote": a.evidence_quote.strip()}
 
 
+def _assess_one(prompt: str, model: str | None):
+    """One gap check call. model is None for the primary, and then the arguments are exactly what they always were."""
+    extra = {"llm_model": model} if model else {}
+    return ai.generate_json(prompt, model=AssessDraft, system=ASSESSOR_SYSTEM, **extra)
+
+
 async def assess(requirements: list[dict], answer: str, question: str = "") -> Assessment:
     """Returns verified findings and a verified non-answer flag. Never raises."""
     if config.LLM_PROVIDER == "fake" or (not requirements and not question):
@@ -113,11 +122,12 @@ async def assess(requirements: list[dict], answer: str, question: str = "") -> A
         + (', "answered": {"result": "yes" | "partly" | "no", "evidence_quote": str}}' if question else "}")
     )
     try:
-        draft = await asyncio.wait_for(
-            retry.once(lambda: ai.generate_json(prompt, model=AssessDraft, system=ASSESSOR_SYSTEM)),
-            timeout=config.ASSESSOR_TIMEOUT_SECONDS)
+        draft, backup = await retry.with_backup(lambda model: _assess_one(prompt, model),
+                                                timeout=config.ASSESSOR_TIMEOUT_SECONDS, label="gap_check")
         draft = AssessDraft.model_validate(draft)
-        return Assessment(verify(draft, requirements, answer), verify_no_answer(draft, answer) if question else None)
+        # The quote checks run on the backup model's answer exactly as on the primary's.
+        return Assessment(verify(draft, requirements, answer), verify_no_answer(draft, answer) if question else None,
+                          backup_model=backup)
     except Exception as e:  # error, timeout, bad JSON after retry: nothing found, no penalty
         log.warning("assessor gave no findings: %s", type(e).__name__)
         return Assessment(ok=False)

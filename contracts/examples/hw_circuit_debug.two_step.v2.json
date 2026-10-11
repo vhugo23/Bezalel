@@ -1,0 +1,85 @@
+{
+  "synthetic": true,
+  "provenance": {
+    "track_template": "hw.circuit_debug",
+    "engine_id": "dc_solver",
+    "format": "A scenario spec as read by backend/app/v2/engine.py (steps) and backend/app/v2/rubrics.py (rubric), laid out like contracts/e2e-two-step.json: the whole file may be stored as scenarios.spec, the rubric key also as scenarios.rubric, each steps entry as a scenario_steps row. Everything in this file is shown to the interviewer model and the evaluator model. Nothing secret is in it.",
+    "reviewed_by_a_person": false,
+    "answer_key": {
+      "file": "hw_circuit_debug.answer_key.json",
+      "store_as": "scenarios.params",
+      "holds_marked_assumptions": true
+    },
+    "see": "contracts/examples/hw_circuit_debug.two_step.v2.md"
+  },
+  "prompt": "Tell me about a project on your resume that you're proud of.",
+  "project_interview": {
+    "synthetic": true,
+    "label": "SYNTHETIC EXAMPLE. The posting and the resume below are invented text for testing. They are not a real job posting, employer, person or resume, and they contain no measured results. Replace them with the candidate's own imported text when it exists.",
+    "posting": "SYNTHETIC EXAMPLE: invented text, not a real job posting and not from any real employer.\nHardware Engineering Intern, Motor Controls\nJoin our drives team building compact brushless motor controllers for robotics. You will bring up new PCB\nrevisions, debug power and gate-drive problems on the bench, and write test firmware in C for STM32 parts.\nRequirements: coursework in circuits and digital logic; hands-on experience with oscilloscopes and\nmultimeters; familiarity with I2C, SPI and UART; experience reading schematics and datasheets; C or C++.\nNice to have: KiCad or Altium, buck converters, MOSFET gate drivers, EMI basics, version control for hardware.\nYou will work with two senior engineers and present your findings at weekly design reviews.",
+    "resume": "SYNTHETIC EXAMPLE: invented text, not a real person's resume.\nSample Candidate, Computer Engineering, third year.\nProjects\n- Three-axis motor controller PCB (team of 3): designed a 4-layer board in KiCad with an STM32G4, three\n  half-bridge gate drivers and a 12V to 5V buck converter. Brought it up and found a brownout that reset the\n  MCU when the motors started; traced it with a scope to the 5V rail dipping under load and added bulk\n  capacitance and a larger inductor.\n- Weather station: ESP32 with an I2C humidity sensor and an SPI flash logger, firmware in C. Fixed a bus\n  lockup by adding pull-up resistors and a timeout in the driver.\n- Digital logic lab: built a traffic light FSM on an FPGA board in Verilog, tested with a self-checking bench.\nExperience: lab assistant for intro circuits, helped students debug breadboards (floating grounds, loose jumper wires).\nSkills: KiCad, C, Python, oscilloscope, logic analyzer, soldering SMD parts."
+  },
+  "steps": [
+    {
+      "idx": 0,
+      "title": "Project interview",
+      "surface": "voice",
+      "task": "Talk through one project from your resume. Expect follow-up questions on the skills this role asks for.",
+      "config": {
+        "driver": "hardware_interview",
+        "inputs": "project_interview",
+        "strict": false,
+        "strict_why": "In a strict session the patience meter can end the interview early. A wrong 'you have not used this skill' reading would end a real person's practice, and the early-end behaviour has no human calibration yet. Non-strict still shows the meter and lets the interviewer wrap up, but it never ends the interview."
+      },
+      "success": {"min_turns": 2}
+    },
+    {
+      "idx": 1,
+      "title": "LED does not light",
+      "surface": "voice",
+      "task": "A 5 V supply feeds a 330 ohm resistor and an LED to ground. The LED is dark. Walk me through how you'd debug it.",
+      "hints": [
+        "What do you expect the voltage to be across the resistor if the LED is on?",
+        "What does the reading at n2 tell you about whether current is flowing?"
+      ],
+      "success": {"min_turns": 2}
+    }
+  ],
+  "rubric": {
+    "version": "hw-circuit-debug-draft-v0",
+    "status": "draft",
+    "reviewed_by": null,
+    "evaluators": {
+      "Debug process": [
+        {
+          "id": "checked_supply_first",
+          "skill_id": "hw.power_rails",
+          "description": "Verifies the supply rail before suspecting any other part.",
+          "rules": ["quoted_turn"],
+          "steps": [1]
+        },
+        {
+          "id": "verified_ground",
+          "skill_id": "hw.circuit_probing",
+          "description": "Confirms the ground reference is connected before trusting readings.",
+          "rules": ["quoted_turn"],
+          "steps": [1]
+        },
+        {
+          "id": "isolated_before_swapping",
+          "skill_id": "hw.circuit_probing",
+          "description": "Narrows the fault to a section or part before replacing anything.",
+          "rules": ["quoted_turn"],
+          "steps": [1]
+        },
+        {
+          "id": "stated_hypothesis",
+          "skill_id": "hw.circuit_probing",
+          "description": "States what they think is wrong and what reading would confirm it.",
+          "rules": ["quoted_turn"],
+          "steps": [1]
+        }
+      ]
+    }
+  }
+}
