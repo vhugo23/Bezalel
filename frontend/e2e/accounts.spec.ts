@@ -27,7 +27,7 @@ test('accounts isolate plans, sessions, sources, jobs and sockets and restore cr
  const track=plan.tracks.find((t:{title:string})=>t.title==='System design: whiteboard');
  const started=await page.request.post('/api/v2/sessions',{headers:protection,data:{track_id:track.id,consent:true}});expect(started.ok()).toBe(true);const interview=await started.json();
  await page.goto(`/session/${interview.id}`);await expect(page.getByRole('log',{name:'Interview transcript'})).toBeVisible();
- await page.getByRole('link',{name:'Practice history'}).click();
+ await page.getByRole('link',{name:'History',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Pick up where you left off.'})).toBeVisible();
  await expect(page.getByRole('link',{name:'Resume interview'})).toBeVisible();
  await page.screenshot({path:'../.artifacts/e2e/accounts-history.png',fullPage:true});
@@ -83,12 +83,12 @@ test('accounts isolate plans, sessions, sources, jobs and sockets and restore cr
  const second=await browser.newContext({baseURL});const secondPage=await second.newPage();
  const loggedIn=await second.request.post('/api/v2/auth/login',{headers:protection,data:{email:a.email,password}});expect(loggedIn.ok()).toBe(true);
  await secondPage.goto('/plan');await expect(secondPage.getByRole('heading',{name:`Your plan, ${a.name}.`})).toBeVisible();
- await secondPage.getByRole('link',{name:'Practice history'}).click();await secondPage.getByRole('link',{name:'Resume interview'}).click();
+ await secondPage.getByRole('link',{name:'History',exact:true}).click();await secondPage.getByRole('link',{name:'Resume interview'}).click();
  await expect(secondPage).toHaveURL(new RegExp(`/session/${interview.id}$`));
  // Cookie theft/replay cannot revive a revoked login session.
  const oldCookies=await page.context().cookies();
  const revokeTicket=await (await page.request.post(`/api/v2/sessions/${interview.id}/socket-ticket`,{headers:protection,data:{channel:'events'}})).json();
- await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Welcome back.'})).toBeVisible();
+ await page.locator('summary[aria-label="Account menu"]').click();await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Welcome back.'})).toBeVisible();
  expect(await upgrade(revokeTicket.token)).toBe(false);await direct.close();
  expect((await page.request.get(`/api/v2/sessions/${interview.id}`)).status()).toBe(401);
  expect((await page.request.get('/api/v2/account/export')).status()).toBe(401);
@@ -97,7 +97,7 @@ test('accounts isolate plans, sessions, sources, jobs and sockets and restore cr
  // Other devices remain signed in when only this device signs out.
  expect((await second.request.get('/api/v2/history')).status()).toBe(200);
  await page.getByLabel('Email',{exact:true}).fill(bUser.email);await page.getByLabel('Password',{exact:true}).fill(password);
- await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('link',{name:'Practice history'}).click();
+ await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('link',{name:'History',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Your first practice starts here.'})).toBeVisible();
  const browserState=await page.evaluate(()=>JSON.parse(localStorage.getItem('prepcrew-profile-v2')!).state);
  expect(browserState.intake.user_id).toBe(bUser.id);expect(browserState.planId).toBeNull();expect(browserState.intake.source_ids).toEqual([]);
