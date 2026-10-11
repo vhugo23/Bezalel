@@ -1,9 +1,61 @@
 import asyncio
+import json
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 import pytest
 from app.v2 import realtime as rt, service, generation
 from app.v2.models import Event, Reply, TurnResult
+
+
+@pytest.mark.parametrize('initial_failure',[False,True])
+def test_quota_failure_before_or_after_handshake_is_actionable_and_audited(monkeypatch,initial_failure):
+    from types import SimpleNamespace
+    monkeypatch.setattr(rt.config,'ELEVENLABS_API_KEY','synthetic-key')
+    monkeypatch.setattr(rt.s,'require_session',AsyncMock(return_value={'status':'live','step':0,'engine_state':{}}))
+    monkeypatch.setattr(rt.s.engine,'context',AsyncMock(return_value={'steps':[SimpleNamespace()]}))
+    monkeypatch.setattr(rt.voice,'job',AsyncMock(return_value='synthetic-stt-job'))
+    audit=AsyncMock();monkeypatch.setattr(rt.db,'execute',audit)
+    candidate=AsyncMock();monkeypatch.setattr(rt.s,'record_candidate',candidate)
+    failed={'message_type':'quota_exceeded','error':'PROVIDER_PRIVATE_CANARY'}
+    class Upstream:
+        async def recv(self):return json.dumps(failed if initial_failure else {'message_type':'session_started'})
+        def __aiter__(self):return self
+        async def __anext__(self):return json.dumps(failed)
+    @asynccontextmanager
+    async def connect(*args,**kwargs):yield Upstream()
+    monkeypatch.setattr(rt,'connect',connect)
+    class Browser:
+        def __init__(self):self.messages=[];self.closed=False
+        async def accept(self):pass
+        async def send_json(self,value):self.messages.append(value)
+        async def receive(self):await asyncio.Future()
+        async def close(self):self.closed=True
+    browser=Browser();asyncio.run(rt.serve(browser,'synthetic-session'))
+    error=next(m for m in browser.messages if m['type']=='error')
+    assert error['fatal'] and 'quota is exhausted' in error['message'] and 'typing' in error['message']
+    assert 'PROVIDER_PRIVATE_CANARY' not in str(browser.messages)
+    assert browser.closed and 'synthetic-session' not in rt.ACTIVE
+    candidate.assert_not_awaited()
+    saved=audit.call_args.args
+    assert saved[1:]==('synthetic-stt-job','failed',error['message'],'Realtime stream failed')
+    assert 'PROVIDER_PRIVATE_CANARY' not in str(saved)
+
+
+@pytest.mark.parametrize('kind,phrase',[
+    ('auth_error','credentials'),('rate_limited','rate limit'),('unaccepted_terms','terms'),
+    ('input_error','microphone audio'),('session_time_limit_exceeded','time limit'),
+])
+def test_provider_errors_are_specific_and_never_forward_raw_bodies(kind,phrase):
+    with pytest.raises(rt.ProviderStreamError) as error:
+        rt.check_provider_message({'message_type':kind,'error':'PROVIDER_PRIVATE_CANARY'})
+    assert phrase in rt.failure_message(error.value)
+    assert 'CANARY' not in rt.failure_message(error.value)
+
+
+@pytest.mark.parametrize('kind',['session_started','warning','partial_transcript','committed_transcript'])
+def test_normal_provider_messages_are_not_misclassified_as_errors(kind):
+    rt.check_provider_message({'message_type':kind,'text':''})
 
 
 def event(seq=1,actor='candidate',text='Can we support bursts?'):

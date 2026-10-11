@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import json
+import logging
 import re
 import time
 from urllib.parse import urlencode
@@ -10,6 +11,7 @@ from pydantic import BaseModel, Field, ValidationError
 from typing import Literal
 from fastapi import WebSocket, WebSocketDisconnect, HTTPException
 from websockets.asyncio.client import connect
+from websockets.exceptions import InvalidStatus, ConnectionClosed
 from app import config
 from . import db, service as s, voice
 from .models import TurnInput
@@ -21,6 +23,43 @@ PARAMS = {
     'filter_background_audio':'true', 'keepalive_interval_ms':'1000',
 }
 ACTIVE = set()  # The local app runs one uvicorn worker.
+logger=logging.getLogger(__name__)
+
+
+class ProviderStreamError(HTTPException):
+    def __init__(self,code,message):
+        super().__init__(503,message)
+        self.code=code
+
+
+def check_provider_message(message):
+    """Provider error bodies may contain sensitive data; return only authored text."""
+    messages={
+        'quota_exceeded':'ElevenLabs speech-to-text quota is exhausted. Add credits or use a key with available quota, then restart voice. You can keep working by typing.',
+        'auth_error':'ElevenLabs rejected the speech-to-text credentials. Check the server API key and its speech-to-text permissions.',
+        'rate_limited':'ElevenLabs speech-to-text rate limit reached. Wait a moment before restarting voice, or type your answer.',
+        'throttled':'ElevenLabs has too many active voice sessions. Close another voice session before trying again.',
+        'unaccepted_terms':'Accept the speech-to-text terms in your ElevenLabs account before starting voice.',
+        'session_time_limit_exceeded':'This ElevenLabs voice session reached its time limit. Restart voice to continue; your transcript is saved.',
+        'insufficient_audio_activity':'ElevenLabs ended the stream because it received too little audio. Restart voice, or continue by typing.',
+        'input_error':'ElevenLabs could not process the microphone audio. Restart voice, or continue by typing.',
+        'invalid_request':'ElevenLabs rejected the realtime voice settings. Your transcript is saved; continue by typing.',
+        'chunk_size_exceeded':'ElevenLabs rejected an oversized audio frame. Restart voice, or continue by typing.',
+    }
+    kind=message.get('message_type','')
+    if kind in messages:raise ProviderStreamError(kind,messages[kind])
+    if kind in {'error','queue_overflow','resource_exhausted','transcriber_error'}:
+        raise ProviderStreamError(kind,'ElevenLabs could not continue transcription. Try again shortly, or type your answer. Your transcript is saved.')
+
+
+def failure_message(exc):
+    if isinstance(exc,HTTPException):return str(exc.detail)
+    if isinstance(exc,InvalidStatus):return str(voice.provider_error(exc.response.status_code).detail)
+    if isinstance(exc,TimeoutError):return 'ElevenLabs voice connection timed out. Check your connection and restart voice, or type your answer.'
+    if isinstance(exc,(ConnectionClosed,OSError)):
+        return 'The ElevenLabs voice connection closed. Restart voice to reconnect; your saved turns are still here.'
+    if isinstance(exc,ValidationError):return 'The voice client sent an invalid control message. Reload this page before restarting voice; your transcript is saved.'
+    return 'Voice connection lost. Restart voice to reconnect; saved turns will stay in the conversation.'
 
 
 class Command(BaseModel):
@@ -158,7 +197,7 @@ async def serve(ws: WebSocket,sid: str):
     async def send(value):
         async with lock:await ws.send_json(value)
     conversation=Conversation(sid,send)
-    reader=None;jid=None;outcome='succeeded';registered=False
+    reader=None;jid=None;outcome='succeeded';registered=False;failure=None
     try:
         if sid in ACTIVE:raise HTTPException(409,'Voice is already open for this session. End it in the other tab first.')
         ACTIVE.add(sid);registered=True
@@ -172,6 +211,7 @@ async def serve(ws: WebSocket,sid: str):
         async with connect('wss://api.elevenlabs.io/v1/speech-to-text/realtime?'+urlencode(PARAMS),
                            additional_headers={'xi-api-key':config.ELEVENLABS_API_KEY},open_timeout=10,max_size=1_000_000) as upstream:
             initial=json.loads(await asyncio.wait_for(upstream.recv(),10))
+            check_provider_message(initial)
             if initial.get('message_type')!='session_started':
                 raise HTTPException(503,'ElevenLabs realtime transcription could not start. Check speech-to-text permissions and quota.')
             await send({'type':'ready','revision':0})
@@ -179,6 +219,7 @@ async def serve(ws: WebSocket,sid: str):
             async def receive_transcripts():
                 async for raw in upstream:
                     message=json.loads(raw);kind=message.get('message_type')
+                    check_provider_message(message)
                     if kind=='partial_transcript':await conversation.transcript(message.get('text',''))
                     elif kind=='committed_transcript':await conversation.transcript(message.get('text',''),True)
                     elif kind not in ('session_started','warning','committed_transcript_with_timestamps'):
@@ -226,11 +267,12 @@ async def serve(ws: WebSocket,sid: str):
     except (WebSocketDisconnect,):pass
     except Exception as exc:
         outcome='failed'
-        message=str(exc.detail) if isinstance(exc,HTTPException) else 'Voice connection lost. Restart voice to reconnect; saved turns will stay in the conversation.'
-        with suppress(Exception):await send({'type':'error','message':message,'fatal':True})
+        failure=failure_message(exc)
+        logger.warning('Voice relay failed: %s (%s)',type(exc).__name__,exc.code if isinstance(exc,ProviderStreamError) else 'see audited error')
+        with suppress(Exception):await send({'type':'error','message':failure,'fatal':True})
     finally:
         if registered:ACTIVE.discard(sid)
         await conversation.close()
         if jid:
-            await db.execute("UPDATE generation_jobs SET status=$2,stage='Realtime stream closed',finished_at=now() WHERE id=$1",jid,outcome)
+            await db.execute("UPDATE generation_jobs SET status=$2,error=$3,stage=$4,finished_at=now() WHERE id=$1",jid,outcome,failure,'Realtime stream failed' if failure else 'Realtime stream closed')
         with suppress(Exception):await ws.close()
