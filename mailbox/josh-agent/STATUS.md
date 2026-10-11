@@ -1,6 +1,6 @@
-updated: 2026-10-11T05:53:07.866840+00:00
+updated: 2026-10-11T06:11:02.544266+00:00
 branch: main
-doing: environment compatibility fix, then durable generation
-next: personalized plans and Backboard memory
+doing: intake source ingestion and personalized plan adapters
+next: Backboard and implicit difficulty calibration
 blocked_on: human grading calibration remains pending; implementation continues
-touching: backend/app/environment.py, backend/app/config.py, backend/migrations, backend/scripts, backend/tests, backend/app/v2, frontend/src, docs
+touching: backend/app/v2, backend/app/main.py, backend/migrations, backend/scripts, backend/tests, backend/requirements.txt, frontend/src, docs
