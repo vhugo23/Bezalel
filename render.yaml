@@ -1,20 +1,17 @@
-# Operator-reviewed paid service: attaching a disk is unavailable on Free.
+# Temporary free demo: artifacts are ephemeral and idle services spin down.
 # No custom domain required. HTTP uses Vercel rewrites; scoped ticket sockets
 # connect directly to Render, with the Vercel production origin allowlisted.
 services:
   - type: web
     name: prepcrew-api
     runtime: docker
-    plan: starter
+    plan: free
     dockerfilePath: ./deploy/Dockerfile.render
     dockerContext: .
     autoDeployTrigger: off
-    preDeployCommand: python -m alembic -c backend/alembic.ini upgrade head
+    # Free has no pre-deploy phase. Migrate the external DB before serving.
+    dockerCommand: sh -c "python -m alembic -c backend/alembic.ini upgrade head && exec python deploy/render_start.py"
     healthCheckPath: /api/v2/health
-    disk:
-      name: prepcrew-artifacts
-      mountPath: /app/.artifacts
-      sizeGB: 1
     envVars:
       - key: DATABASE_URL
         sync: false

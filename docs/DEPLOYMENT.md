@@ -15,18 +15,22 @@ channel. Pairing retains its existing capability flow. Do not move API requests
 directly to Render or weaken cookie policy. Do not log ticket headers or put
 session credentials in URLs.
 
-## Render setup
+## Render Free setup for today's temporary demo
 
-Import the repo's `render.yaml` as a Blueprint after reviewing the billed plan.
-It prepares a paid Starter service with a 1 GB artifact disk; no service is
-created by these files. Review current charges in the dashboard and
-[Render pricing](https://render.com/pricing). The currently listed smallest paid
-web-service compute is $7/month and disks are $0.25/GB/month: the prepared 1 GB
-configuration totals approximately **$7.25/month**, excluding usage overages,
-taxes, database and AI/voice provider charges. Verify the dashboard quote before
-creating it; these files do not authorize a purchase. Free services cannot attach disks,
-lose local images on restarts/redeploys and sleep after 15 minutes of inactivity;
-they do not meet this release's persistence goal. See
+Import the repo's `render.yaml` as a Blueprint and select Free. It prepares a
+single free web service with **no persistent disk and no paid pre-deploy step**.
+These files create no resources themselves. This is a temporary demo: whiteboard
+PNG files under `/app/.artifacts` disappear on restarts, redeploys and idle
+spin-down, while relational history remains in the external Tiger database.
+Older image references can consequently stop opening after a restart. This
+configuration does not meet the durable-artifact release goal.
+
+Render Free spins down after 15 minutes without traffic; the next request can
+take about a minute to wake it. Free instances can also restart and have monthly
+usage limits. Open the backend health URL shortly before presenting, wait for
+readiness, then run the smoke CLI: its eight-second request timeout can fail
+during cold start. Do not represent Free compute as always available. Database
+and AI/voice usage retain their own charges. See
 [free-service limits](https://render.com/docs/free).
 
 Supply `DATABASE_URL` for the existing Tiger/Timescale database, provider keys,
@@ -34,18 +38,31 @@ available model/voice IDs, and the final Vercel origin for **both**
 `PUBLIC_BASE_URL` and `CORS_ORIGINS`. Never select a plain Render PostgreSQL
 database without confirming required Timescale extensions. The backend image
 includes `backend/` and `contracts/` using the repository root build context.
-Its launcher uses Render's `PORT`, prepares disk ownership and drops privileges
+Its launcher uses Render's `PORT`, prepares the local artifact directory and drops privileges
 before starting one uvicorn process. See [Docker on Render](https://render.com/docs/docker).
 
-The pre-deploy migration runs against the external database; it never needs the
-disk. Paid Render services support this migration phase even when a disk is
-attached; the migration runner reads only image-bundled SQL/data and the database.
-See [pre-deploy commands](https://render.com/docs/deploys#pre-deploy-command).
-`/api/v2/health` is the readiness endpoint. Render's disk is mounted at
-`/app/.artifacts`, and cannot be accessed from pre-deploy commands or one-off
-jobs. An attached disk prevents multiple replicas and zero-downtime deployment.
-See [persistent disk limitations](https://render.com/docs/disks) and
+Free has no paid pre-deploy phase. The Blueprint's Docker Command is:
+
+```sh
+sh -c "python -m alembic -c backend/alembic.ini upgrade head && exec python deploy/render_start.py"
+```
+
+Every instance start checks/applies migrations against the external database
+before starting the API. A migration failure prevents serving traffic. Keep a
+single instance and one deployment pointed at this schema; do not run concurrent
+migration commands. Back up an existing database before deploying schema changes.
+`/api/v2/health` is the database-readiness endpoint. See
 [health checks](https://render.com/docs/health-checks).
+
+For a later durable release, optionally upgrade to paid compute and a persistent
+disk at `/app/.artifacts`, then move migrations to `preDeployCommand`. Paid
+pre-deploy tasks run separately without disk access, which is safe for these
+database-only migrations. The currently listed smallest paid web compute is
+$7/month and a 1 GB disk is $0.25/month, approximately $7.25/month before taxes,
+overages, database and provider charges. No upgrade is authorized for today's
+free demo. See [Render pricing](https://render.com/pricing),
+[pre-deploy commands](https://render.com/docs/deploys#pre-deploy-command) and
+[disk limitations](https://render.com/docs/disks).
 
 ## Vercel setup and release gate
 
@@ -77,14 +94,18 @@ proxy. See [proxy limits](https://vercel.com/docs/limits) and
 
 ## Hosted operations
 
-Set an external uptime check on the final origin's `/api/v2/health`, review
-Render events/logs and disk usage, and verify saved images after a Render restart.
-Back up the Tiger database and artifact disk together during maintenance. Use
-Render service shell/SSH to archive the attached disk; a one-off job cannot see
-it. Keep encrypted off-host copies and test restoration on a separate service.
-Render disk snapshots do not replace matched database/artifact backups. Before
-migrations retain the prior image/release and a matched backup; destructive
-schema downgrades are intentionally unavailable.
+For today's Free demo, inspect Render events/logs and readiness before presenting.
+After any restart, verify login/history and create a fresh whiteboard snapshot;
+previous local PNGs are expected to be gone. Free has no service shell/SSH or
+persistent-disk backup. Back up Tiger data, but do not describe that as a complete
+image backup. Do not rely on automatic uptime polling to make Free always-on.
+
+After a future paid upgrade, monitor the final origin's `/api/v2/health` and disk
+usage. Back up Tiger and the artifact disk together during maintenance, using
+service shell/SSH for the disk (one-off jobs cannot see it). Keep encrypted
+off-host copies and test restoration on a separate service. Disk snapshots do
+not replace matched backups. Retain the previous release and a database backup
+before migrations; destructive schema downgrades are intentionally unavailable.
 
 ## Alternate single-host Docker deployment
 
