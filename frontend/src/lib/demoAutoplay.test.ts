@@ -1,8 +1,22 @@
-import {describe,expect,it} from 'vitest';
-import {demoStep,demoBoardSkeletons,supportsDemo} from './demoAutoplay';
+import {describe,expect,it,vi} from 'vitest';
+import {demoStep,demoBoardSkeletons,demoBoardPng,supportsDemo} from './demoAutoplay';
 import {schemas} from '../api/schemas';
+import type {BoardItem} from './boardElements';
+
+vi.mock('@excalidraw/excalidraw',()=>({exportToBlob:async({elements}:{elements:{width:number}[]})=>{
+ elements[0].width=999;return new Blob(['synthetic PNG']);
+}}));
 
 describe('authored demo candidate',()=>{
+ it('keeps the saved candidate snapshot unchanged when PNG export adjusts text metrics',async()=>{
+  vi.stubGlobal('FileReader',class {result='data:image/png;base64,cG5n';onload?:()=>void;readAsDataURL(){this.onload?.();}});
+  try{
+   const items:BoardItem[]=[{id:'label',version:1,element:{id:'label',type:'text',version:1,isDeleted:false,x:0,y:0,width:80,height:20,angle:0,text:'Redis'}}];
+   const saved=structuredClone(items);
+   expect(await demoBoardPng(items)).toContain('data:image/png');
+   expect(items).toEqual(saved);
+  }finally{vi.unstubAllGlobals();}
+ });
  it('refuses changed retests even when their engine and step titles are reused',()=>{
   const original={engine_id:'conceptual',opening:'Design a rate limiter for a public API. Before you draw anything, ask me what you need to know.',steps:['Clarify requirements','Draw and explain','Defend the trade-offs'].map(title=>({title}))};
   expect(supportsDemo(original)).toBe(true);
@@ -34,6 +48,8 @@ describe('authored demo candidate',()=>{
   expect(new Set(first.map(s=>s.id)).size).toBe(first.length);
   expect(first.some(s=>s.id==='redis-label')).toBe(true);
   expect(first.filter(s=>s.type==='rectangle').every(s=>!('label' in s))).toBe(true);
+  expect(first.find(s=>s.id==='redis-label')).toMatchObject({containerId:'redis'});
+  expect(first.find(s=>s.id==='redis')).toMatchObject({boundElements:[{id:'redis-label',type:'text'}]});
  });
  it('returns independent action and answer collections so playback cannot change another run',()=>{
   const first=demoStep('linux_fault',0)!;
