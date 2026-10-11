@@ -51,7 +51,9 @@ def main():
                     inspect_health(raw)
                 if kind == 'html' and (b'<html' not in raw.lower() or b'<script' not in raw.lower()):
                     raise ValueError('Frontend HTML/script missing')
-                if kind == 'private' and response.headers.get('Cache-Control') != 'no-store':
+                cache_directives = {value.strip().lower() for value in
+                                    response.headers.get('Cache-Control', '').split(',')}
+                if kind == 'private' and 'no-store' not in cache_directives:
                     raise ValueError('Private response missing no-store policy')
             print(f'PASS {path}')
         except (URLError, OSError, ValueError, TimeoutError) as error:
