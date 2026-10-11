@@ -3,8 +3,7 @@
   <desc id="desc">PrepCrew wordmark with an indigo progress P symbol.</desc>
   <g transform="translate(0 4)">
     <path fill="#4F46E5" d="M12 54V18a10 10 0 0 1 10-10h15c12.15 0 22 9.85 22 22s-9.85 22-22 22H29V40h8a10 10 0 1 0 0-20H24v34H12Z"/>
-    <path d="m32 32 7-7" stroke="#4F46E5" stroke-width="6" stroke-linecap="round"/>
-    <path d="M34 25h5v5" stroke="#4F46E5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="m30 36 12-12m-9 0h9v9" stroke="#4F46E5" stroke-width="3.5" stroke-linecap="square" stroke-linejoin="miter"/>
   </g>
   <text x="78" y="49" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="40" font-weight="650" letter-spacing="-1.8">PrepCrew</text>
 </svg>
