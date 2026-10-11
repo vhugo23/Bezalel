@@ -406,3 +406,107 @@ class PlanDraft(BaseModel):
     primary_domain: Literal['infra','hw','sw','comm']
     priorities: list[PlanPriority] = Field(min_length=1,max_length=20)
     system_design: DesignScenarioDraft
+
+# Resume ATS review and job tailoring. See docs/RESUME_ATS.md.
+AtsCategory = Literal['format','sections','keywords','impact','clarity']
+RequirementLevel = Literal['required','preferred']
+
+class JobRequirementDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    quote: str = Field(min_length=5,max_length=400)
+    term: str = Field(min_length=1,max_length=40)
+    level: RequirementLevel
+
+class JobScanDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    requirements: list[JobRequirementDraft] = Field(max_length=20)
+
+class JobRequirement(BaseModel):
+    # Saved only after quote and term were found verbatim in the posting.
+    quote: str
+    term: str
+    level: RequirementLevel
+
+class AtsFindingDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    issue: str = Field(min_length=5,max_length=300)
+    quote: str | None = Field(default=None,max_length=400)
+
+class AtsCategoryDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    id: AtsCategory
+    rating: int = Field(ge=0,le=4)
+    findings: list[AtsFindingDraft] = Field(max_length=4)
+
+class AtsSuggestionDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    category: AtsCategory
+    original: str = Field(min_length=5,max_length=600)
+    replacement: str = Field(min_length=1,max_length=800)
+    reason: str = Field(min_length=5,max_length=300)
+
+class AtsEvidenceDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    term: str = Field(min_length=1,max_length=40)
+    resume_quote: str | None = Field(default=None,max_length=400)
+
+class AtsDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    categories: list[AtsCategoryDraft] = Field(min_length=5,max_length=5)
+    suggestions: list[AtsSuggestionDraft] = Field(max_length=12)
+    evidence: list[AtsEvidenceDraft] = Field(default_factory=list,max_length=20)
+
+class AtsFinding(BaseModel):
+    issue: str
+    quote: str | None = None  # kept only when it is verbatim resume text
+
+class AtsCategoryResult(BaseModel):
+    id: AtsCategory
+    rating: int = Field(ge=0,le=4)
+    weight: int
+    findings: list[AtsFinding]
+
+class AtsSuggestion(BaseModel):
+    id: int
+    category: AtsCategory
+    original: str
+    replacement: str
+    reason: str
+    start: int  # offsets into the resume body, computed locally
+    end: int
+
+class AtsCoverage(BaseModel):
+    quote: str
+    term: str
+    level: RequirementLevel
+    mentioned: bool  # literal, case-insensitive match of term in the resume
+    resume_quote: str | None = None
+    status: Literal['found','evidence','missing']
+
+class AtsFacts(BaseModel):
+    words: int
+    email: bool
+    phone: bool
+    sections: list[str]
+
+class AtsReview(BaseModel):
+    resume_id: str
+    job_id: str | None = None
+    job_title: str | None = None
+    score: int | None = Field(default=None,ge=0,le=100)  # computed in code; None for a recorded example
+    categories: list[AtsCategoryResult]
+    facts: AtsFacts
+    suggestions: list[AtsSuggestion]
+    rejected: int  # suggestions dropped by the local guards
+    coverage: list[AtsCoverage] = Field(default_factory=list)
+    provider: str
+    rubric_version: str
+    source_job_id: str
+    created_at: datetime
+
+class AtsRequest(BaseModel):
+    job_id: str | None = Field(default=None,min_length=1,max_length=100)
+
+class AtsApply(BaseModel):
+    job_id: str | None = Field(default=None,min_length=1,max_length=100)
+    suggestion_ids: list[int] = Field(min_length=1,max_length=12)

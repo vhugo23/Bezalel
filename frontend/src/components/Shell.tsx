@@ -18,13 +18,13 @@ export function Shell({children,crumb,exit,wide=false}:{children:ReactNode;crumb
   return <div className={`app-shell ${wide?'wide':''}`}>
     <header className="bar workspace-bar">
       <div className="header-brand"><Link to="/plan" className="logo"><img src="/prepcrew.svg" width="27" height="27" alt="" aria-hidden="true"/>PrepCrew</Link>{crumb&&<span className="crumb">{crumb}</span>}</div>
-      {user&&<nav className="header-nav" aria-label="Main navigation"><NavLink to="/plan">Workspace</NavLink><NavLink to="/history">History</NavLink></nav>}
+      {user&&<nav className="header-nav" aria-label="Main navigation"><NavLink to="/plan">Workspace</NavLink><NavLink to="/resume">Resume</NavLink><NavLink to="/history">History</NavLink></nav>}
       <div className="header-actions">
         <span className={`connection-status ${health.isError?'unavailable':health.data?'connected':''}`} role="status" title={status}><i aria-hidden="true"/><span>{status}</span></span>
         {exit&&<Button asChild variant="outline" size="sm"><Link to="/plan">Exit session</Link></Button>}
         {user&&<details ref={menu} className="account-menu" onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
           <summary aria-label="Account menu"><span className="profile-avatar">{user.name[0]?.toUpperCase()||'P'}</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3 3 3-3"/></svg></summary>
-          <div className="account-popover" onClick={event=>{if(event.target instanceof Element&&event.target.closest('a,button')&&menu.current)menu.current.open=false;}}><div className="account-menu-name">{user.name}</div><Link to="/plan">Workspace</Link><Link to="/history">Practice history</Link><Link to="/account">Account &amp; data</Link><button type="button" onClick={()=>void auth?.logout().catch(()=>{})}>Sign out</button></div>
+          <div className="account-popover" onClick={event=>{if(event.target instanceof Element&&event.target.closest('a,button')&&menu.current)menu.current.open=false;}}><div className="account-menu-name">{user.name}</div><Link to="/plan">Workspace</Link><Link to="/resume">Resume check</Link><Link to="/history">Practice history</Link><Link to="/account">Account &amp; data</Link><button type="button" onClick={()=>void auth?.logout().catch(()=>{})}>Sign out</button></div>
         </details>}
       </div>
     </header>

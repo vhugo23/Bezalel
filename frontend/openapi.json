@@ -1301,6 +1301,258 @@
         }
       }
     },
+    "/api/v2/sources/{source_id}/scan": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Source Scan",
+        "operationId": "source_scan_api_v2_sources__source_id__scan_post",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/sources/{source_id}/ats": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Ats Start",
+        "operationId": "ats_start_api_v2_sources__source_id__ats_post",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AtsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Ats Read",
+        "operationId": "ats_read_api_v2_sources__source_id__ats_get",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AtsReview"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Ats Read Api V2 Sources  Source Id  Ats Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/sources/{source_id}/ats/apply": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Ats Apply",
+        "operationId": "ats_apply_api_v2_sources__source_id__ats_apply_post",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AtsApply"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDocument"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/sources/{source_id}/pdf": {
+      "get": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Source Pdf",
+        "operationId": "source_pdf_api_v2_sources__source_id__pdf_get",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/sources/{source_id}/confirm": {
       "post": {
         "tags": [
@@ -2778,6 +3030,355 @@
           "event_seq"
         ],
         "title": "Annotation"
+      },
+      "AtsApply": {
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "suggestion_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Suggestion Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "suggestion_ids"
+        ],
+        "title": "AtsApply"
+      },
+      "AtsCategoryResult": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "format",
+              "sections",
+              "keywords",
+              "impact",
+              "clarity"
+            ],
+            "title": "Id"
+          },
+          "rating": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Rating"
+          },
+          "weight": {
+            "type": "integer",
+            "title": "Weight"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/AtsFinding"
+            },
+            "type": "array",
+            "title": "Findings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "rating",
+          "weight",
+          "findings"
+        ],
+        "title": "AtsCategoryResult"
+      },
+      "AtsCoverage": {
+        "properties": {
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          },
+          "term": {
+            "type": "string",
+            "title": "Term"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "required",
+              "preferred"
+            ],
+            "title": "Level"
+          },
+          "mentioned": {
+            "type": "boolean",
+            "title": "Mentioned"
+          },
+          "resume_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Quote"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "found",
+              "evidence",
+              "missing"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quote",
+          "term",
+          "level",
+          "mentioned",
+          "status"
+        ],
+        "title": "AtsCoverage"
+      },
+      "AtsFacts": {
+        "properties": {
+          "words": {
+            "type": "integer",
+            "title": "Words"
+          },
+          "email": {
+            "type": "boolean",
+            "title": "Email"
+          },
+          "phone": {
+            "type": "boolean",
+            "title": "Phone"
+          },
+          "sections": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sections"
+          }
+        },
+        "type": "object",
+        "required": [
+          "words",
+          "email",
+          "phone",
+          "sections"
+        ],
+        "title": "AtsFacts"
+      },
+      "AtsFinding": {
+        "properties": {
+          "issue": {
+            "type": "string",
+            "title": "Issue"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote"
+          }
+        },
+        "type": "object",
+        "required": [
+          "issue"
+        ],
+        "title": "AtsFinding"
+      },
+      "AtsRequest": {
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          }
+        },
+        "type": "object",
+        "title": "AtsRequest"
+      },
+      "AtsReview": {
+        "properties": {
+          "resume_id": {
+            "type": "string",
+            "title": "Resume Id"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "job_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Title"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/AtsCategoryResult"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "facts": {
+            "$ref": "#/components/schemas/AtsFacts"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/AtsSuggestion"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          },
+          "rejected": {
+            "type": "integer",
+            "title": "Rejected"
+          },
+          "coverage": {
+            "items": {
+              "$ref": "#/components/schemas/AtsCoverage"
+            },
+            "type": "array",
+            "title": "Coverage"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "rubric_version": {
+            "type": "string",
+            "title": "Rubric Version"
+          },
+          "source_job_id": {
+            "type": "string",
+            "title": "Source Job Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resume_id",
+          "categories",
+          "facts",
+          "suggestions",
+          "rejected",
+          "provider",
+          "rubric_version",
+          "source_job_id",
+          "created_at"
+        ],
+        "title": "AtsReview"
+      },
+      "AtsSuggestion": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "format",
+              "sections",
+              "keywords",
+              "impact",
+              "clarity"
+            ],
+            "title": "Category"
+          },
+          "original": {
+            "type": "string",
+            "title": "Original"
+          },
+          "replacement": {
+            "type": "string",
+            "title": "Replacement"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "start": {
+            "type": "integer",
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "title": "End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "original",
+          "replacement",
+          "reason",
+          "start",
+          "end"
+        ],
+        "title": "AtsSuggestion"
       },
       "AuthState": {
         "properties": {

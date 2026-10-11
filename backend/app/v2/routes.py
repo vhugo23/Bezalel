@@ -114,6 +114,35 @@ async def source_extract(source_id: str):
     from . import sources
     return await sources.enqueue(source_id)
 
+@router.post('/sources/{source_id}/scan', response_model=WorkItem, status_code=202)
+async def source_scan(source_id: str):
+    from . import resume
+    return await resume.enqueue_scan(source_id)
+
+@router.post('/sources/{source_id}/ats', response_model=WorkItem, status_code=202)
+async def ats_start(source_id: str, body: AtsRequest):
+    from . import resume
+    return await resume.enqueue_review(source_id,body.job_id)
+
+@router.get('/sources/{source_id}/ats', response_model=AtsReview | None)
+async def ats_read(source_id: str, job_id: str | None = Query(None,min_length=1,max_length=100)):
+    from . import resume
+    return await resume.read_review(source_id,job_id)
+
+@router.post('/sources/{source_id}/ats/apply', response_model=SourceDocument, status_code=201)
+async def ats_apply(source_id: str, body: AtsApply):
+    from . import resume
+    return await resume.apply(source_id,body)
+
+@router.get('/sources/{source_id}/pdf')
+async def source_pdf(source_id: str):
+    from . import sources, resume_pdf
+    row=await sources.read(source_id)
+    if row['kind']!='resume':raise HTTPException(422,'Only a resume can be downloaded as a PDF.')
+    async with sources._pdf_slots:  # rendering is CPU-bound; share the cap PDF extraction uses
+        data=await asyncio.to_thread(resume_pdf.render,row['title'] or 'Resume',row['body'])
+    return Response(data,media_type='application/pdf',headers={'Content-Disposition':'attachment; filename="resume.pdf"','Cache-Control':'private, no-store'})
+
 @router.post('/sources/{source_id}/confirm', response_model=SourceDocument)
 async def source_confirm(source_id: str, body: SourceConfirmation):
     from . import sources
