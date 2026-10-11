@@ -19,6 +19,10 @@ def main():
         os.setgroups([])
         os.setgid(10001)
         os.setuid(10001)
+    # setuid does not update HOME. asyncpg discovers optional PostgreSQL TLS
+    # files there; /root remains inaccessible after dropping privileges.
+    # Explicit DSN/PGSSLROOTCERT certificate settings remain untouched.
+    os.environ['HOME'] = '/home/prepcrew'
     if not os.access(artifacts, os.W_OK):
         raise PermissionError('Artifact disk is not writable')
     os.execv(sys.executable, [sys.executable, '-m', 'uvicorn', 'app.main:app',
