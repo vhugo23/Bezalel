@@ -3164,6 +3164,11 @@
             "type": "boolean",
             "title": "Retest Ready",
             "default": false
+          },
+          "validation_label": {
+            "type": "string",
+            "title": "Validation Label",
+            "default": "Model-reviewed conceptual exercise; no deterministic correctness guarantee"
           }
         },
         "type": "object",

@@ -215,6 +215,7 @@ class Lesson(BaseModel):
     ai_generated: bool = False
     practice: str = ''
     retest_ready: bool = False
+    validation_label: str = 'Model-reviewed conceptual exercise; no deterministic correctness guarantee'
 
 class CriterionDraft(BaseModel):
     model_config = ConfigDict(extra='forbid')

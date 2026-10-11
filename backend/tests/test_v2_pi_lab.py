@@ -12,7 +12,7 @@ def run(s,text):return pi.apply(s,'command',text)
 @pytest.mark.parametrize('variant',[0,1])
 def test_broken_scenario_and_full_reference_solution_are_checked(variant):
     data=pi.definition(variant)
-    assert data['validity_report']['checks']==['broken_symptoms_reproduced','five_reference_goals_pass','historical_power_flags_retained']
+    assert data['validity_report']['checks']==['broken_symptoms_reproduced' if variant==0 else 'changed_variant_conditions_reproduced','five_reference_goals_pass','historical_power_flags_retained']
     assert len(engine.parse_steps(data['spec']))==5
     assert rubrics.load(data['rubric'],'linux_fault').version.startswith('pi-linux-practice-v1:')
     assert pi.website(pi.initial(variant))==502
@@ -61,6 +61,23 @@ def test_chown_directory_without_recursion_does_not_change_file_owner():
     s=pi.initial();s,_=run(s,'sudo chown www-data:www-data /var/www/site')
     assert s['owner']=='root' and not pi.readable(s)
     s,_=run(s,'sudo chown -R www-data:www-data /var/www/site');assert pi.readable(s)
+
+
+def test_asset_directory_repair_does_not_change_its_nontraversable_parent():
+    s=pi.initial(1);s['active_port']=4000
+    s,_=run(s,'sudo chmod -R 755 /var/www/site/assets');assert not pi.readable(s)
+    s,_=run(s,'sudo chmod 755 /var/www/site');assert pi.readable(s)
+
+
+def test_retest_changes_permissions_log_lifecycle_and_power_interpretation():
+    parent=pi.initial(0);s=pi.initial(1)
+    assert s['app_port']!=parent['app_port'] and s['dir_mode']!=parent['dir_mode']
+    assert parent['log_exists'] and not s['log_exists']
+    s,output=run(s,'du -sh /var/log/*');assert 'absent' in output and not s['seen'].get('large_log')
+    s,output=run(s,'lsof +L1');assert '(deleted)' in output and s['seen']['large_log']
+    assert pi.throttled(parent)&0xf and not pi.throttled(s)&0xf
+    assert not pi.goal(s,4)
+    s,_=run(s,'vcgencmd get_throttled');assert pi.goal(s,4)
 
 
 def test_unlinking_open_log_keeps_disk_allocated_until_descriptor_closes():

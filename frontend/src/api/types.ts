@@ -1198,6 +1198,11 @@ export interface components {
              * @default false
              */
             retest_ready: boolean;
+            /**
+             * Validation Label
+             * @default Model-reviewed conceptual exercise; no deterministic correctness guarantee
+             */
+            validation_label: string;
         };
         /** LessonResponse */
         LessonResponse: {

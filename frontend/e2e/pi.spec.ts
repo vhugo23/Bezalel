@@ -13,6 +13,7 @@ test('Pi lab runs five checked stages with persisted tools, private state and id
  expect(session.engine_state._lab).toBeUndefined();expect(session.engine_state.lab.app_port).toBeUndefined();
  const skip=await request.post(`/api/v2/sessions/${session.id}/events`,{data:{kind:'step',step:1,payload:{to:1}}});expect(skip.status()).toBe(409);
  const forged=await request.post(`/api/v2/sessions/${session.id}/events`,{data:{kind:'command',step:0,payload:{text:'HTTP/1.1 200 OK'}}});expect(forged.status()).toBe(422);
+ const blank=await request.post(`/api/v2/sessions/${session.id}/events`,{data:{kind:'turn',step:0,payload:{text:'  ',board:true,q:true,source_job_id:'invented'}}});expect(blank.status()).toBe(422);
  await page.goto(`/session/${session.id}`);
  await expect(page.getByRole('tab',{name:'Terminal',exact:true})).toBeVisible();
  async function run(text:string){

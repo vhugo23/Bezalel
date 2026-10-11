@@ -16,7 +16,15 @@ The rubric covers proxy, permission, disk/log, power and debugging reasoning. `t
 
 No Linux process, nginx, Node app, hardware, browser request to a Pi, or candidate shell runs. This reducer has a documented command subset (`help`). Unsupported commands do nothing. The configuration checker accepts a restricted server-block grammar; it is not the nginx compiler. Power, temperature, filesystem sizes, service state, uptime and response times are synthetic fixtures, explicitly labelled in the UI. They are never inserted into Tiger's measured latency metrics. The Pi view is an SVG illustration with a functional supply/cable swap, not the prototype's interactive 3D model or a real device connection.
 
-The recorded grading mode exercises the plumbing without publishing ability scores. Live interviewer/evaluator calls use the existing audited Gemini integration. This slice did not run paid providers or establish grading quality, real hardware behavior or human audio performance. Lessons and changed executable retests for this engine remain a following slice; the current lesson generator still supports the conceptual system-design engine only.
+The recorded grading mode exercises the plumbing without publishing ability scores. Live interviewer/evaluator calls use the existing audited Gemini integration. These slices did not run paid providers or establish grading quality, real hardware behavior or human audio performance.
+
+## Learning and changed retests
+
+A complete review with a verified gap can now produce a persisted lesson and a checked Pi retest through the existing durable queue. Gemini writes coaching within an engine-owned contract; a second audited job reviews the lesson and prompt. Rejection publishes no lesson/track. Successful publication atomically saves the lesson, new scenario, same rubric and original gap/parent links. The UI shows the actual validation label for executable and conceptual retests.
+
+The second authored deployment changes conditions for every Pi criterion: a different app port, a non-traversable site directory, an already-unlinked open access log, and historical throttle flags with an adequate current supply. It requires the candidate to investigate again, rather than repeat the original fixes. The historical-warning step asks for interpretation rather than declaring the already-fast site slow. A deterministic reference run checks each variant before it is offered. Repeat retests alternate these two authored variants; this is a bounded practice set, not unlimited generation of Linux faults.
+
+The rubric is retained so the source gap's criterion remains comparable. The existing grading/mastery/memory pipeline still requires supported candidate evidence; producing or completing a retest does not by itself establish that the gap is resolved. Recorded acceptance fixtures establish publication/retry and replay behavior, not live teaching quality or human learning outcomes.
 
 ## Technical references checked
 
@@ -29,4 +37,4 @@ The recorded grading mode exercises the plumbing without publishing ability scor
 
 Use the normal root `.env`, apply Alembic `upgrade head`, then run FastAPI on 8000 and Vite on 5173 as documented in `mailbox/josh-agent/STATUS.md`. Docker is not needed.
 
-`python -m pytest backend/tests/test_v2_pi_lab.py -q` tests the simulator, safety boundaries, reference solutions and evidence validation. `python backend/scripts/e2e.py --grep "Pi lab"` runs the complete synthetic browser journey against its own freshly migrated Tiger schema with paid providers disabled. The journey includes reload, stage gates, forged-event rejection, idempotence, competing writes, pause, and grading. Logs/screenshots remain ignored under `.artifacts/e2e`.
+`python -m pytest backend/tests/test_v2_pi_lab.py backend/tests/test_v2_learning_variants.py -q` tests the simulator, safety boundaries, reference solutions, changed variants and evidence validation. `python backend/scripts/e2e.py --grep "Pi lab"` runs the complete synthetic browser journey against its own freshly migrated Tiger schema with paid providers disabled. The harness also runs `verify_pi_learning.py`: a synthetic verified gap, rejected recorded review, audited retry, atomic publication, same rubric, new reference-tested variant, source citations and idempotent retest start. The browser journey includes reload, stage gates, forged-event rejection, idempotence, competing writes, pause, and grading. Logs/screenshots remain ignored under `.artifacts/e2e`.

@@ -34,12 +34,15 @@ def initial(variant=0):
     app_port = 3000 if variant == 0 else 4000
     return {'version':VERSION,'variant':variant,'revision':0,'config':CONFIG,
             'app_port':app_port,'active_port':3001,'config_revision':0,'tested_revision':None,
-            'owner':'root','mode':0o600,'dir_owner':'root','dir_mode':0o755,'log_exists':True,'allocated':True,'log_open':True,
-            'supply':'weak','history':True,'seen':{},'verified':{},'risky':[]}
+            'owner':'root','mode':0o600,'dir_owner':'root','dir_mode':0o755 if variant==0 else 0o700,
+            'asset_owner':'root','asset_mode':0o755,'log_exists':variant==0,'allocated':True,'log_open':True,
+            'supply':'weak' if variant==0 else 'good','history':True,'seen':{},'verified':{},'risky':[]}
 
 
 def readable(s):
-    return bool(s['mode'] & (0o400 if s['owner']=='www-data' else 0o004)) and bool(s['dir_mode'] & (0o100 if s['dir_owner']=='www-data' else 0o001))
+    return (bool(s['mode'] & (0o400 if s['owner']=='www-data' else 0o004)) and
+            bool(s['dir_mode'] & (0o100 if s['dir_owner']=='www-data' else 0o001)) and
+            bool(s.get('asset_mode',0o755) & (0o100 if s.get('asset_owner','root')=='www-data' else 0o001)))
 
 
 def website(s, path='/', method='GET'):
@@ -58,7 +61,7 @@ def goal(s, step):
     return [
         bool(seen.get('proxy_error') and seen.get('upstream')),
         s['active_port']==s['app_port'] and bool(verified.get('proxy')),
-        readable(s) and not (s['mode'] & 0o002 or s['dir_mode'] & 0o002) and bool(verified.get('css')),
+        readable(s) and not (s['mode'] & 0o002 or s['dir_mode'] & 0o002 or s.get('asset_mode',0)&0o002) and bool(verified.get('css')),
         not s['allocated'] and bool(seen.get('disk') and seen.get('large_log') and verified.get('form')),
         s['supply']=='good' and bool(seen.get('power') and verified.get('power')),
     ][step] if 0<=step<5 else False
@@ -152,30 +155,34 @@ def command(s, text):
     if p[:2]==['ls','-l'] and len(p)==3 and p[2] in (WEB_PATH,WEB_PATH+'/assets',WEB_PATH+'/assets/app.css'):
         s['seen']['permissions']=True
         mode=oct(s['mode'])[2:];bits=''.join(('r' if s['mode'] & (4<<shift) else '-')+('w' if s['mode'] & (2<<shift) else '-')+('x' if s['mode'] & (1<<shift) else '-') for shift in (6,3,0))
-        return f"-{bits} {s['owner']} {s['owner']} 2048 app.css (mode {mode}, simulated)\nParent directories: {s['dir_owner']}, mode {s['dir_mode']:o}"
+        return f"-{bits} {s['owner']} {s['owner']} 2048 app.css (mode {mode}, simulated)\n/var/www/site: {s['dir_owner']}, mode {s['dir_mode']:o}\n/var/www/site/assets: {s.get('asset_owner','root')}, mode {s.get('asset_mode',0o755):o}"
     if p[0] in ('chown','chmod'):
         if not sudo:return 'Permission denied: use sudo.'
         args=[arg for arg in p[1:] if arg!='-R']
         if len(args)!=2 or args[1] not in (WEB_PATH,WEB_PATH+'/assets',WEB_PATH+'/assets/app.css'):return 'This lab only permits scoped permission changes under /var/www/site.'
         file_target=args[1].endswith('/app.css')
         affects_file=file_target or '-R' in p
+        root_target=args[1]==WEB_PATH
+        asset_target=not file_target and (not root_target or '-R' in p)
         if p[0]=='chown':
             if args[0]!='www-data:www-data':return 'Supported owner: www-data:www-data.'
             if affects_file:s['owner']='www-data'
-            if not file_target:s['dir_owner']='www-data'
+            if root_target:s['dir_owner']='www-data'
+            if asset_target:s['asset_owner']='www-data'
         else:
             if args[0] not in ('600','644','755','777','a+rX'):return 'Supported modes: 600, 644, 755, 777, a+rX.'
             if affects_file:s['mode']=(s['mode']|0o444|(0o111 if s['mode']&0o111 else 0)) if args[0]=='a+rX' else int(args[0],8)
-            if not file_target:s['dir_mode']=(s['dir_mode']|0o555) if args[0]=='a+rX' else int(args[0],8)
-            if s['mode'] & 0o002 or s['dir_mode'] & 0o002:s['risky'].append('world_writable')
+            if root_target:s['dir_mode']=(s['dir_mode']|0o555) if args[0]=='a+rX' else int(args[0],8)
+            if asset_target:s['asset_mode']=(s.get('asset_mode',0o755)|0o555) if args[0]=='a+rX' else int(args[0],8)
+            if s['mode'] & 0o002 or s['dir_mode'] & 0o002 or s.get('asset_mode',0)&0o002:s['risky'].append('world_writable')
         s['verified'].pop('css',None)
         return 'Scoped permissions updated (simulated). Verify the stylesheet.'
     if p==['df','-h']:
         s['seen']['disk']=True
         return 'Filesystem      Size  Used Avail Use% Mounted on\n/dev/mmcblk0p2   20G   '+('20G     0 100%' if s['allocated'] else '2G   18G  10%')+' / (synthetic)'
     if p==['du','-sh','/var/log/*'] or p==['du','-sh','/var/log/site'] or p==['du','-sh',LOG_PATH]:
-        s['seen']['large_log']=True
-        return ('18G' if s['allocated'] and s['log_exists'] else '0')+' /var/log/site/access.log\n12K /var/log/nginx (synthetic)'
+        if s['allocated'] and s['log_exists']:s['seen']['large_log']=True
+        return (('18G' if s['allocated'] else '0')+' /var/log/site/access.log\n' if s['log_exists'] else 'access.log path absent\n')+'12K /var/log/nginx (synthetic)'
     if p==['truncate','-s','0',LOG_PATH]:
         if not sudo:return 'Permission denied: use sudo.'
         if not s['log_exists']:return 'No such file. The old unlinked log may still be open: try lsof +L1.'
@@ -186,7 +193,11 @@ def command(s, text):
         s['log_exists']=False
         if not s['log_open']:s['allocated']=False
         return 'Log path removed. An open descriptor keeps its blocks allocated until closed.'
-    if p==['lsof','+L1']:return 'node 412 site 5w REG 18G /var/log/site/access.log (deleted)' if not s['log_exists'] and s['allocated'] else 'No deleted open files (simulated).'
+    if p==['lsof','+L1']:
+        if not s['log_exists'] and s['allocated']:
+            s['seen']['large_log']=True
+            return 'node 412 site 5w REG 18G /var/log/site/access.log (deleted)'
+        return 'No deleted open files (simulated).'
     if p==['systemctl','restart','site']:
         if not sudo:return 'Permission denied: use sudo.'
         if not s['log_exists']:s['allocated']=False;s['log_exists']=True
@@ -233,6 +244,8 @@ def definition(variant=0):
     steps=[{'idx':i,'title':title,'surface':'terminal','task':TASKS[i],
             'hints':HINTS[i],'config':{'simulator':VERSION},'success':{'min_turns':1,'tool_goal':True}}
            for i,title in enumerate(TITLES)]
+    if variant==1:
+        steps[4]['task']='The previous operator reported a throttle warning. Check whether it is current or historical, and explain what your readings support before changing hardware.'
     criteria=[rubrics.Criterion('proxy','infra.reverse_proxy','Explains the proxy/upstream distinction and verifies a scoped configuration repair.',('quoted_turn','tool_action'),steps=(0,1)),
               rubrics.Criterion('permissions','infra.permissions','Explains and verifies nginx read access without granting world-write permissions.',('quoted_turn','tool_action'),steps=(2,)),
               rubrics.Criterion('disk','infra.disk_logs','Diagnoses disk allocation and verifies safe log recovery; distinguishes unlinking an open log from releasing its blocks.',('quoted_turn','tool_action'),steps=(3,)),
@@ -257,11 +270,19 @@ def validate(variant=0):
     run('command','sudo nginx -t');run('command','sudo systemctl reload nginx');run('command','curl -I localhost')
     assert goal(s,1) and website(s,'/assets/app.css')==403
     run('command','sudo chmod 644 /var/www/site/assets/app.css');run('command','curl -I localhost/assets/app.css')
+    if variant==1:
+        assert not goal(s,2) # file reads alone do not fix a non-traversable parent
+        run('command','sudo chmod 755 /var/www/site');run('command','curl -I localhost/assets/app.css')
     assert goal(s,2) and website(s,'/contact','POST')==500
-    run('command','df -h');run('command','du -sh /var/log/*');run('command',f'sudo truncate -s 0 {LOG_PATH}');run('browser','contact')
-    assert goal(s,3) and throttled(s)&0xf
-    run('command','vcgencmd get_throttled');run('part','good');run('command','vcgencmd get_throttled')
+    run('command','df -h');run('command','du -sh /var/log/*')
+    if variant==0:run('command',f'sudo truncate -s 0 {LOG_PATH}')
+    else:run('command','lsof +L1');run('command','sudo systemctl restart site')
+    run('browser','contact')
+    assert goal(s,3)
+    assert throttled(s)==(0x50005 if variant==0 else 0x50000)
+    run('command','vcgencmd get_throttled')
+    if variant==0:run('part','good');run('command','vcgencmd get_throttled')
     assert goal(s,4) and throttled(s)==0x50000 and not s['risky']
     return {'kind':'deterministic_reference_run','engine':VERSION,'semantic_guarantee':False,
-            'checks':['broken_symptoms_reproduced','five_reference_goals_pass','historical_power_flags_retained'],
+            'checks':['broken_symptoms_reproduced' if variant==0 else 'changed_variant_conditions_reproduced','five_reference_goals_pass','historical_power_flags_retained'],
             'label':'Hand-built simulator checked by a reference run; authored rubric, human calibration pending'}

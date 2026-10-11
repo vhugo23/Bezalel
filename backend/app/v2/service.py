@@ -160,6 +160,12 @@ async def append(sid, body: EventInput):
         definition=await engine.context(sid,c)
         steps=definition['steps']
         if body.kind!='step' and body.step!=session['step']:raise HTTPException(409,'The session moved to another step. Refresh before adding work.')
+        if body.kind=='turn':
+            typed=TurnInput(text=body.payload.get('text'),step=body.step)
+            if not typed.text.strip():raise HTTPException(422,'An empty message is not an explanation.')
+            body.payload={'text':typed.text.strip(),'q':is_question(typed.text),
+                          'board':session['step']<len(steps) and steps[session['step']].surface=='whiteboard',
+                          'source':'client_text'}
         if body.kind == 'stroke':
             if session['step']>=len(steps) or steps[session['step']].surface!='whiteboard': raise HTTPException(409,'Drawing is only available in the whiteboard step')
             body.payload = Stroke.model_validate(body.payload).model_dump()

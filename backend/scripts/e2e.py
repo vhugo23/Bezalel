@@ -95,6 +95,8 @@ async def run():
         await verify(source, name)
         from verify_memory import verify as verify_implicit_memory
         await verify_implicit_memory(source, name)
+        from verify_pi_learning import verify as verify_pi_learning
+        await verify_pi_learning(source, name)
         await seed_fixture(source,name)
         commands = [
             ([sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18000'], ROOT, 'api'),
@@ -136,5 +138,10 @@ if __name__ == '__main__':
     try:
         raise SystemExit(asyncio.run(run()))
     except Exception as error:
+        import traceback
+        error_dir=ROOT/'.artifacts/e2e'
+        error_dir.mkdir(parents=True,exist_ok=True)
+        with (error_dir/'setup-error.log').open('w',encoding='utf-8') as log:
+            traceback.print_exception(error,file=log)
         print(type(error).__name__ + ': acceptance setup failed; inspect local logs.', file=sys.stderr)
         raise SystemExit(1)

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from app.v2 import service,engine,db,pi_lab
 from app.v2.models import Event,Reply
+from app.v2.models import EventInput
 
 
 class Context:
@@ -43,3 +44,24 @@ def test_dana_progression_requires_simulator_goal_and_hides_private_state(monkey
     monkeypatch.setattr(service,'log',log)
     asyncio.run(service.respond('s',first))
     assert captured[0]['action']==('advance' if complete else 'continue')
+
+
+@pytest.mark.parametrize('text',['', '   ', None])
+def test_client_cannot_satisfy_explanation_gate_with_an_empty_turn(monkeypatch,text):
+    from fastapi import HTTPException
+    from pydantic import ValidationError
+    pool=type('Pool',(),{'acquire':lambda self:Context(Conn())})()
+    monkeypatch.setattr(db,'pool',AsyncMock(return_value=pool))
+    monkeypatch.setattr(engine,'context',AsyncMock(return_value={'steps':engine.parse_steps(pi_lab.definition()['spec'])}))
+    with pytest.raises((HTTPException,ValidationError)):
+        asyncio.run(service.append('s',EventInput(kind='turn',step=1,payload={'text':text})))
+
+
+def test_appended_text_cannot_forge_board_question_or_provider_metadata(monkeypatch):
+    pool=type('Pool',(),{'acquire':lambda self:Context(Conn())})()
+    monkeypatch.setattr(db,'pool',AsyncMock(return_value=pool))
+    monkeypatch.setattr(engine,'context',AsyncMock(return_value={'steps':engine.parse_steps(pi_lab.definition()['spec'])}))
+    recorder=AsyncMock();monkeypatch.setattr(service,'log',recorder)
+    asyncio.run(service.append('s',EventInput(kind='turn',step=1,payload={'text':' The proxy response is healthy. ','board':True,'q':True,'source_job_id':'invented'})))
+    payload=recorder.call_args.args[4]
+    assert payload=={'text':'The proxy response is healthy.','q':False,'board':False,'source':'client_text'}

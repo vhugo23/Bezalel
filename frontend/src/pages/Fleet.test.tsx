@@ -44,7 +44,7 @@ test('a lesson citation opens the exact saved source event',async()=>{
 });
 
 test('lesson generation replaces the preview with saved teaching and a runnable retest',async()=>{
- const preview:Model<'Lesson'>={body:'',title:'Your next practice',reason:'An evidenced gap',evidence_seq:[17],claim_id:'c',skill_id:'sw.system_design',ai_generated:false,practice:'',retest_ready:false};
+ const preview:Model<'Lesson'>={body:'',title:'Your next practice',reason:'An evidenced gap',evidence_seq:[17],claim_id:'c',skill_id:'sw.system_design',ai_generated:false,practice:'',retest_ready:false,validation_label:'Model-reviewed conceptual exercise; no deterministic correctness guarantee'};
  vi.spyOn(api,'lesson').mockResolvedValue(preview);
  const job:Model<'WorkItem'>={id:'j',kind:'lesson',subject_id:'s',status:'succeeded',stage:'Complete',attempts:1,created_at:'2026-10-11T00:00:00Z',updated_at:'2026-10-11T00:00:00Z'};
  const generate=vi.spyOn(api,'generateLesson').mockImplementation(async()=>{
@@ -60,7 +60,7 @@ test('lesson generation replaces the preview with saved teaching and a runnable 
 });
 
 test('returning to an active lesson shows saved progress and cancellation',async()=>{
- vi.spyOn(api,'lesson').mockResolvedValue({body:'',title:'Your next practice',reason:'An evidenced gap',evidence_seq:[17],ai_generated:false,practice:'',retest_ready:false});
+ vi.spyOn(api,'lesson').mockResolvedValue({body:'',title:'Your next practice',reason:'An evidenced gap',evidence_seq:[17],ai_generated:false,practice:'',retest_ready:false,validation_label:'Model-reviewed conceptual exercise; no deterministic correctness guarantee'});
  const job:Model<'WorkItem'>={id:'j',kind:'lesson',subject_id:'s',status:'running',stage:'Independently reviewing',attempts:1,created_at:'2026-10-11T00:00:00Z',updated_at:'2026-10-11T00:00:00Z'};
  vi.mocked(api.lessonJob).mockResolvedValue(job);
  const cancel=vi.spyOn(api,'cancelJob').mockResolvedValue({...job,status:'cancelled',stage:'Cancelled'});
@@ -70,4 +70,11 @@ test('returning to an active lesson shows saved progress and cancellation',async
  fireEvent.click(screen.getByRole('button',{name:'Cancel generation'}));
  await waitFor(()=>expect(cancel).toHaveBeenCalledWith('j'));
  await screen.findByRole('button',{name:'Retry generation'});
+});
+
+test('an executable retest displays its actual validation label',async()=>{
+ vi.spyOn(api,'lesson').mockResolvedValue({id:'pi-lesson',body:'A saved permissions lesson.',title:'Scoped read access',reason:'An evidenced permissions gap',evidence_seq:[17],ai_generated:true,practice:'Inspect and verify access.',retest_ready:true,validation_label:'Reference-tested simulator with recorded coaching review; human calibration pending'});
+ mount(true);
+ await screen.findByText('Reference-tested simulator with recorded coaching review; human calibration pending');
+ expect(screen.queryByText('The retest is a model-reviewed conceptual exercise. Its correctness is not deterministically proven.')).toBeNull();
 });
