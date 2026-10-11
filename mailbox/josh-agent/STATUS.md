@@ -1,6 +1,6 @@
-updated: 2026-10-11T05:24:08Z
+updated: 2026-10-11T05:33:40Z
 branch: main
-doing: implementing all roadmap slices iteratively with user authorization
-next: isolated E2E verification then generic sessions
-blocked_on: nothing
-touching: frontend/e2e, frontend/playwright.config.ts, backend/scripts, docs/IMPLEMENTATION_ROADMAP.md
+doing: generic persisted session steps and scenario-specific rubric selection
+next: durable generation and personalized plans
+blocked_on: human grading calibration remains pending; implementation continues
+touching: backend/app/v2, backend/migrations, backend/tests, frontend/src, docs
