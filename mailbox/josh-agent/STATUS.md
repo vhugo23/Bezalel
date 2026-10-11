@@ -1,9 +1,9 @@
 updated: 2026-10-11T08:14:06Z
 branch: main
-doing: checked Pi learning loop pushed; continuing the remaining implementation, STAR stays with the teammate
+doing: implementing account ownership and saved history; STAR stays with the teammate
 next: account ownership/history/privacy, hardware circuit integration and remaining engines, deployment; STAR is handed off
 blocked_on: human grading calibration and physical-device/audio field testing remain pending
-touching: backend/app/v2 (except behavioral adapter), backend/migrations, backend/scripts, backend/tests/test_stt.py and dedicated new engine tests, frontend/src (except STAR files and circuitSymbols), frontend/e2e/session.spec.ts, docs/IMPLEMENTATION_ROADMAP.md
+touching: backend/app/v2 (except behavioral adapter), backend/app/main.py, backend/app/config.py, backend/requirements.txt, backend/migrations, backend/scripts, backend/tests, frontend/src (except STAR files and circuitSymbols), frontend/e2e/accounts.spec.ts, docs/IMPLEMENTATION_ROADMAP.md, docs/ACCOUNTS.md
 handed_off: Behavioral STAR drill; reserved for Joshua's teammate, see STAR_HANDOFF.md
 
 ## Implemented and pushed
