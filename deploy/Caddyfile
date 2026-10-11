@@ -1,0 +1,25 @@
+{
+    email {$ACME_EMAIL}
+}
+
+{$DEMO_DOMAIN} {
+    encode zstd gzip
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "microphone=(self), camera=()"
+    }
+    @backend path /api/* /ws/*
+    handle @backend {
+        reverse_proxy api:8000
+    }
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+    log {
+        output stdout
+        format json
+    }
+}

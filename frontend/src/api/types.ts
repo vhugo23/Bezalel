@@ -276,6 +276,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/sessions/{sid}/socket-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Socket Ticket */
+        post: operations["socket_ticket_api_v2_sessions__sid__socket_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/account/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Account Export */
+        get: operations["account_export_api_v2_account_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/sessions/{sid}/local-speech/jobs": {
         parameters: {
             query?: never;
@@ -1969,6 +2003,24 @@ export interface components {
             /** Nodes */
             nodes: components["schemas"]["SkillNode"][];
         };
+        /** SocketTicket */
+        SocketTicket: {
+            /** Token */
+            token: string;
+            /**
+             * Expires In Seconds
+             * @default 45
+             */
+            expires_in_seconds: number;
+        };
+        /** SocketTicketInput */
+        SocketTicketInput: {
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "events" | "voice";
+        };
         /** SourceConfirmation */
         SourceConfirmation: {
             /** Fact Indices */
@@ -2677,6 +2729,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    socket_ticket_api_v2_sessions__sid__socket_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocketTicketInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocketTicket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    account_export_api_v2_account_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

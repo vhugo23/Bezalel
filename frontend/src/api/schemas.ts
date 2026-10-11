@@ -60,6 +60,8 @@ export const schemas: Record<string,z.ZodType> = {
 "SkillNode":z.object({"skill_id":z.string(),"title":z.string(),"prerequisites":z.array(z.string()),"mastery":z.union([z.number(),z.null()]).optional()}).passthrough(),
 "SkillScore":z.object({"skill_id":z.string(),"name":z.string(),"score":z.number().int().min(0).max(100),"previous":z.union([z.number().int(),z.null()]).optional(),"delta":z.union([z.number().int(),z.null()]).optional(),"previous_session_id":z.union([z.string(),z.null()]).optional(),"previous_evidence_seq":z.array(z.number().int()).optional(),"claim_ids":z.array(z.string())}).passthrough(),
 "SkillsResponse":z.object({"user_id":z.union([z.string(),z.null()]),"nodes":z.array(z.lazy(() => schemas["SkillNode"]))}).passthrough(),
+"SocketTicket":z.object({"token":z.string(),"expires_in_seconds":z.number().int().optional()}).passthrough(),
+"SocketTicketInput":z.object({"channel":z.union([z.literal("events"),z.literal("voice")])}).passthrough(),
 "SourceConfirmation":z.object({"fact_indices":z.array(z.number().int()).max(12)}).passthrough(),
 "SourceDocument":z.object({"id":z.string(),"user_id":z.string(),"kind":z.string(),"title":z.string(),"body":z.string(),"extracted":z.record(z.string(),z.unknown()),"created_at":z.string()}).passthrough(),
 "SourceInput":z.object({"user_id":z.string().min(1).max(100),"kind":z.union([z.literal("resume"),z.literal("repo"),z.literal("job_posting"),z.literal("notes"),z.literal("other")]).optional(),"title":z.string().min(1).max(160),"body":z.string().min(10).max(60000)}).passthrough(),

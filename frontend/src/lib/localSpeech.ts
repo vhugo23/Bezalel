@@ -10,6 +10,7 @@ export class LocalSpeech {
   private worker:Worker;
   private serial=0;
   closed=false;
+  loaded=false;
   private pending=new Map<number,{resolve:(r:Result)=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
   constructor(private kind:'stt'|'tts',public progress:(p:LoadProgress)=>void){
     this.worker=new Worker(new URL('./localSpeech.worker.ts',import.meta.url),{type:'module'});
@@ -27,10 +28,15 @@ export class LocalSpeech {
     const id=++this.serial;
     return new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>{this.close();},data.load?900_000:120_000);
-      this.pending.set(id,{resolve,reject,timer});this.worker.postMessage({id,kind:this.kind,...data});
+      this.pending.set(id,{resolve,reject,timer});
+      try{this.worker.postMessage({id,kind:this.kind,...data});}
+      catch{this.close();}
     });
   }
-  async load(){await this.call({load:true});}
+  async load(){
+    try{await this.call({load:true});this.loaded=true;}
+    catch(e){this.close();throw e;}
+  }
   async infer(sid:string,input:{text?:string;seq?:number;pcm?:Float32Array}){
     const path=`/sessions/${sid}/local-speech/jobs`;
     const started=await apiFetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:this.kind,seq:input.seq})});
@@ -70,5 +76,7 @@ export function releaseSpeech(speech:LocalSpeech|null){
   const entry=Object.values(shared).find(e=>e?.speech===speech);
   if(!entry){speech?.close();return;}
   entry.speech.progress=()=>{};clearTimeout(entry.idle);
+  // Cancelling a first download must release the network and GPU immediately.
+  if(!entry.speech.loaded){entry.speech.close();return;}
   entry.idle=setTimeout(()=>entry.speech.close(),IDLE_MS);
 }

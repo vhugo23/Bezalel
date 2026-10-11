@@ -2,7 +2,7 @@ import { DanaOrb } from '../components/DanaOrb';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router';
-import { api, eventMessage, socketUrl, type Event, type Model } from '../api/client';
+import { api, eventMessage, openSessionSocket, type Event, type Model } from '../api/client';
 import { useApp } from '../store';
 import { useVoiceConversation } from '../lib/useVoiceConversation';
 import type { LoadProgress } from '../lib/localSpeech';
@@ -42,9 +42,12 @@ export function SessionPage() {
   const end=useMutation({mutationFn:()=>api.end(id),onSuccess:()=>nav(`/fleet/${id}`),onError:setError});
 
   useEffect(()=>{
-    let disposed=false,timer:ReturnType<typeof setTimeout>,socket:WebSocket,after=0,attempt=0;
-    const connect=()=>{
-      socket=new WebSocket(socketUrl(`/ws/v2/sessions/${id}?after=${after}`));
+    let disposed=false,timer:ReturnType<typeof setTimeout>,socket:WebSocket|undefined,after=0,attempt=0;
+    const retry=()=>{if(!disposed)timer=setTimeout(()=>void connect(),Math.min(10000,500*2**attempt++));};
+    const connect=async()=>{
+      try{socket=await openSessionSocket(`/ws/v2/sessions/${id}?after=${after}`,id,'events');}
+      catch{setConnected(false);retry();return;}
+      if(disposed){socket.close();return;}
       socket.onopen=()=>{attempt=0;setConnected(true);};
       socket.onmessage=message=>{
         try{
@@ -53,9 +56,9 @@ export function SessionPage() {
           if(['command','edit','part_drop','probe','step'].includes(event.kind))void qc.invalidateQueries({queryKey:['session',id]});
         }catch{setError(new Error('The server sent an invalid session event.'));}
       };
-      socket.onclose=()=>{setConnected(false);if(!disposed)timer=setTimeout(connect,Math.min(10000,500*2**attempt++));};
+      socket.onclose=()=>{setConnected(false);retry();};
     };
-    connect();return()=>{disposed=true;clearTimeout(timer);socket.close();};
+    void connect();return()=>{disposed=true;clearTimeout(timer);socket?.close();};
   },[id,qc]);
   useEffect(()=>{if(steps.length&&step===steps.length&&!autoFinished.current&&events.some(e=>e.kind==='step'&&e.payload.to===steps.length&&e.payload.source==='interviewer')){autoFinished.current=true;end.mutate();}},[step,events,steps.length]);
   useEffect(()=>{if(follow.current&&transcript.current)transcript.current.scrollTop=transcript.current.scrollHeight;},[turns.length,voice.phase,voice.partial]);

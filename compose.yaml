@@ -1,0 +1,57 @@
+name: prepcrew
+services:
+  migrate:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.api
+    image: prepcrew-api:${RELEASE_TAG:-local}
+    env_file: .env.production
+    command: ["python", "-m", "alembic", "-c", "backend/alembic.ini", "upgrade", "head"]
+    restart: "no"
+  api:
+    image: prepcrew-api:${RELEASE_TAG:-local}
+    env_file: .env.production
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - artifacts:/app/.artifacts
+    expose: ["8000"]
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v2/health', timeout=8)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    image: prepcrew-web:${RELEASE_TAG:-local}
+    environment:
+      DEMO_DOMAIN: ${DEMO_DOMAIN:?Set DEMO_DOMAIN to your public hostname}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL for certificate notices}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  artifacts:
+  caddy_data:
+  caddy_config:

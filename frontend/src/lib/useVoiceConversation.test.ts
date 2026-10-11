@@ -2,10 +2,10 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useVoiceConversation } from './useVoiceConversation';
-const localMocks=vi.hoisted(()=>({all:[] as {kind:string;load:ReturnType<typeof vi.fn>;infer:ReturnType<typeof vi.fn>;close:ReturnType<typeof vi.fn>;released:boolean}[]}));
+const localMocks=vi.hoisted(()=>({loadError:null as Error|null,all:[] as {kind:string;load:ReturnType<typeof vi.fn>;infer:ReturnType<typeof vi.fn>;close:ReturnType<typeof vi.fn>;released:boolean}[]}));
 vi.mock('./localSpeech',()=>{
  class LocalSpeech {
-  kind:string;load=vi.fn(async()=>{});infer=vi.fn(async()=>({text:'Can we support bursts?',inference_id:'local-job',wav:new ArrayBuffer(44)}));close=vi.fn();released=false;
+  kind:string;load=vi.fn(async()=>{if(localMocks.loadError)throw localMocks.loadError;});infer=vi.fn(async()=>({text:'Can we support bursts?',inference_id:'local-job',wav:new ArrayBuffer(44)}));close=vi.fn();released=false;
   constructor(kind:string){this.kind=kind;localMocks.all.push(this);}
  }
  return {LocalSpeech,acquireSpeech:(kind:string)=>new LocalSpeech(kind),releaseSpeech:(speech:LocalSpeech|null)=>{if(speech)speech.released=true;}};
@@ -34,7 +34,7 @@ const messages=(ws:FakeSocket)=>ws.sent.filter(x=>typeof x==='string').map(x=>JS
 
 beforeEach(()=>{
  vi.useFakeTimers();FakeSocket.all=[];FakeWorklet.all=[];FakeAudio.all=[];track.stop.mockClear();track.enabled=true;
- localMocks.all=[];
+ localMocks.all=[];localMocks.loadError=null;
  vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,status:200,headers:new Headers(),blob:async()=>new Blob(['synthetic audio'])})));
  URL.createObjectURL=vi.fn(()=> 'blob:synthetic');URL.revokeObjectURL=vi.fn();
  vi.stubGlobal('WebSocket',FakeSocket);vi.stubGlobal('Audio',FakeAudio);vi.stubGlobal('AudioWorkletNode',FakeWorklet);
@@ -55,6 +55,43 @@ async function start(){
 }
 
 describe('full duplex voice lifecycle',()=>{
+ it('ignores duplicate quota fallback while recognition is loading',async()=>{
+  const {ws}=await start();
+  await act(async()=>{
+   ws.receive({type:'fallback',provider:'parakeet',reason:'quota'});
+   ws.receive({type:'fallback',provider:'parakeet',reason:'quota'});
+  });
+  expect(localMocks.all.filter(s=>s.kind==='stt')).toHaveLength(1);
+ });
+ it('returns to typed mode and releases the microphone after local recognition fails',async()=>{
+  const {result,ws,opts}=await start();
+  // The fallback creates its worker synchronously before its load resolves.
+  act(()=>ws.receive({type:'fallback',provider:'parakeet',reason:'quota'}));
+  await act(async()=>{});
+  localMocks.all[0].infer.mockRejectedValueOnce(new Error('Local speech failed. Continue by typing.'));
+  await act(async()=>{for(let n=0;n<12;n++)FakeWorklet.all[0].frame();});
+  expect(result.current.active).toBe(false);expect(track.stop).toHaveBeenCalled();
+  expect(opts.onError).toHaveBeenCalledWith(expect.objectContaining({message:expect.stringContaining('Continue by typing')}));
+ });
+ it('cleans up failed TTS downloads and retries with a fresh worker',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response('',{status:503,headers:{'X-PrepCrew-Speech-Fallback':'quota'}})));
+  const {ws}=await start();localMocks.loadError=new Error('WebGPU unavailable. Continue by typing.');
+  await act(async()=>ws.receive({type:'reply',event:reply,revision:1}));
+  expect(localMocks.all[0].close).toHaveBeenCalled();
+  expect(localMocks.all[0].infer).not.toHaveBeenCalled();
+  expect(messages(ws)).toContainEqual({type:'playback_failed',seq:2,revision:1});
+  localMocks.loadError=null;
+  await act(async()=>ws.receive({type:'reply',event:{...reply,seq:3},revision:2}));
+  expect(localMocks.all).toHaveLength(2);expect(localMocks.all[1].load).toHaveBeenCalled();
+  expect(localMocks.all[1].infer).toHaveBeenCalled();
+ });
+ it('stops voice after unsupported WebGPU and leaves saved turns available for typing',async()=>{
+  const {result,ws,opts}=await start();localMocks.loadError=new Error('WebGPU unavailable. Continue by typing.');
+  await act(async()=>ws.receive({type:'fallback',provider:'parakeet',reason:'quota'}));
+  expect(result.current.active).toBe(false);expect(result.current.phase).toBe('off');
+  expect(track.stop).toHaveBeenCalled();expect(localMocks.all[0].released).toBe(true);
+  expect(opts.onError).toHaveBeenCalledWith(expect.objectContaining({message:expect.stringContaining('Continue by typing')}));
+ });
  it('switches quota to local STT on the same socket without sending more microphone audio upstream',async()=>{
   const {result,ws,capture}=await start();act(()=>capture.frame());const sent=ws.sent.filter(x=>x instanceof ArrayBuffer).length;
   await act(async()=>ws.receive({type:'fallback',provider:'parakeet',reason:'quota'}));

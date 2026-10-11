@@ -641,6 +641,78 @@
         }
       }
     },
+    "/api/v2/sessions/{sid}/socket-ticket": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Socket Ticket",
+        "operationId": "socket_ticket_api_v2_sessions__sid__socket_ticket_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocketTicketInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SocketTicket"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/account/export": {
+      "get": {
+        "tags": [
+          "PrepCrew v2.3",
+          "Accounts"
+        ],
+        "summary": "Account Export",
+        "operationId": "account_export_api_v2_account_export_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/sessions/{sid}/local-speech/jobs": {
       "post": {
         "tags": [
@@ -5100,6 +5172,41 @@
           "nodes"
         ],
         "title": "SkillsResponse"
+      },
+      "SocketTicket": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "expires_in_seconds": {
+            "type": "integer",
+            "title": "Expires In Seconds",
+            "default": 45
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "SocketTicket"
+      },
+      "SocketTicketInput": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "events",
+              "voice"
+            ],
+            "title": "Channel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel"
+        ],
+        "title": "SocketTicketInput"
       },
       "SourceConfirmation": {
         "properties": {

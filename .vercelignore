@@ -1,0 +1,12 @@
+.env*
+.vercel/
+.artifacts/
+backend/
+mailbox/
+.git/
+**/node_modules/
+**/dist/
+**/.env*
+**/test-results/
+frontend/e2e/
+**/*.tsbuildinfo

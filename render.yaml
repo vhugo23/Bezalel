@@ -1,0 +1,47 @@
+# Temporary free demo: artifacts are ephemeral and idle services spin down.
+# No custom domain required. HTTP uses Vercel rewrites; scoped ticket sockets
+# connect directly to Render, with the Vercel production origin allowlisted.
+services:
+  - type: web
+    name: prepcrew-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/Dockerfile.render
+    dockerContext: .
+    autoDeployTrigger: off
+    # Free has no pre-deploy phase. Migrate the external DB before serving.
+    dockerCommand: python deploy/render_start.py
+    healthCheckPath: /api/v2/health
+    envVars:
+      - key: RENDER_MIGRATE_ON_START
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: V2_DATABASE_SCHEMA
+        value: prepcrew
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: V2_AUTH_TEST_BYPASS
+        value: "false"
+      - key: LEGACY_API_ENABLED
+        value: "false"
+      - key: DEMO_MODE
+        value: "false"
+      - key: MEMORY_BACKEND
+        value: postgres
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: VOICE_PROVIDER
+        value: elevenlabs
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false
