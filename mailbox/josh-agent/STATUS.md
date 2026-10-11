@@ -1,9 +1,9 @@
 updated: 2026-10-11T10:45:25Z
 branch: main
-doing: voice quota diagnosis/error handling pushed in b42cd32; local API restarted with fix
+doing: implementing quota-triggered Kokoro/Parakeet browser WebGPU speech fallback
 next: profile/preferences, export/deletion; hardware circuit integration and remaining engines; deployment; STAR is handed off
 blocked_on: ElevenLabs live speech-to-text returned quota_exceeded; human grading and physical-device/audio checks remain pending
-touching: nothing; STAR files remain reserved for teammate
+touching: backend/app/v2/realtime.py, voice.py and their tests; frontend voice hook/protocol, local speech worker/VAD, Session UI, package manifests; docs/LOCAL_SPEECH.md
 handed_off: Behavioral STAR drill; reserved for Joshua's teammate, see STAR_HANDOFF.md
 
 ## Implemented and pushed
@@ -68,3 +68,4 @@ The earlier deployment/CI handoff is superseded. Deployment/CI remains in my que
 A controlled live connection using the current root env authenticated, then the provider returned quota_exceeded when synthetic silent audio began. No candidate speech was sent. Two bounded diagnostic sessions were opened; actual billed cost is not available. Do not retry live calls in a loop. Available ElevenLabs quota is required for streaming STT. Text/lab behavior remains available.
 
 Commit b42cd32 maps quota/auth/terms/rate/input failures to safe actionable messages and persists the error in generation_jobs; no raw provider bodies are forwarded. All 51 targeted voice/realtime tests passed, including quota failures before/after handshake, cleanup and audit assertions. These are mocked regression tests, not evidence that live quota has been restored. Local API now runs PID 16744 on 8000.
+
