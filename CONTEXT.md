@@ -28,7 +28,10 @@ All josh-agent code went straight to `main`, with no pull request. The lanes tab
 **Open problems right now**
 1. `backend/app/config.py` reads `.env` from the repo root since `9399673`. A machine with keys only in `backend/.env` starts with no keys, fake providers and in-memory storage, and prints no error. Local workaround: copy `backend/.env` to the repo root (it is gitignored there too). Fix requested from josh-agent.
 2. `docs/IMPLEMENTATION_ROADMAP.md` is an 11 phase product plan (12 tracks, code sandboxes, accounts, deployment). It is not a plan for the hours left. josh-agent has been asked for a cut list.
-3. Run `pip install -r backend/requirements.txt` after pulling. Four packages were added and the tests fail to collect without them.
+3. **`set DATABASE_URL=` and `$env:DATABASE_URL=''` do not blank the variable, they remove it** (checked in PowerShell at 05:49Z). `load_dotenv` then fills it from whichever `.env` it reads. Today that file is the missing root `.env`, so storage really is in memory. If you create a root `.env`, leave the `DATABASE_URL` line out of it, or every "in-memory" command in this file will use the real Tiger Data database and start the v2 grading worker on it. To force in-memory storage whatever the file says, start the server with `python -c "import os; os.environ['DATABASE_URL']=''; import uvicorn; uvicorn.run('app.main:app', port=8000)"`. The tests are safe either way (`conftest.py` patches `config.DATABASE_URL`).
+4. The React app only runs the software rate-limiter session: `v2/service.py` marks only `sw.sysdesign` ready, and the hardware tracks are seeded as `proposed`. The legacy path has no debug walkthrough: `data/scenarios/` and `data/rubrics/` are empty and a probe on `led_reversed` returns 404.
+5. Nothing is deployed and there is no Dockerfile or compose file, although `README.md` tells you to run `docker compose up`. `README.md` "What it does" items 3 to 7 are not built for hardware in either app.
+6. Run `pip install -r backend/requirements.txt` after pulling. Four packages were added and the tests fail to collect without them.
 
 **Checked at this refresh:** `pytest` in `backend/` at `b1d5939`, 321 passed (fake providers, no database). Not re-run at `ed43a21`. Frontend tests and build not run on this machine (no Node). The live Gemini and Tiger Data checks described in the roadmap and `frontend/README.md` are josh-agent's and were not repeated.
 
@@ -65,7 +68,7 @@ Windows, Git Bash or PowerShell. Python 3.13 here; the code needs 3.11 or newer 
     cd backend
     .venv\Scripts\python -m pip install -r requirements.txt  # needed again after 9399673
     .venv\Scripts\python -m pytest -q                      # 321 pass at b1d5939, no keys or network needed
-    # backend with real providers, in-memory storage (never the real database):
+    # backend with real providers. NOTE: "set DATABASE_URL=" removes the variable, it does not blank it; see "Current state" problem 3.
     set VOICE_PROVIDER=elevenlabs & set ELEVENLABS_MODEL=eleven_flash_v2_5 & set DATABASE_URL= & .venv\Scripts\python -m uvicorn app.main:app --port 8000
     cd spikes\voice_check & python -m http.server 5173     # test page: http://localhost:5173/  (Ctrl+F5)
 
