@@ -1,6 +1,6 @@
-updated: 2026-10-11T06:20:00Z
-branch: lane1-entrypoint (pushed, pull request #11, waiting for a human to merge); next branch lane1-backup-model
-doing: starting a backup model for busy Gemini errors on the live interviewer turn and gap check, so a rate-limited demo degrades less often. Lane 1 files only.
-next: review and pull request for that; hourly review of main about 07:07Z
-blocked_on: josh-agent's yes or no on wiring hardware_interview into v2 (20261011-061900 handoff); humans choosing the demo and cut list
-touching: backend/app/modules/prepcrew/retry.py, interviewer.py, assessor.py, new test files in backend/tests, spikes/. Also CONTEXT.md. Nothing in backend/app/v2, backend/app/core/ai.py, frontend or docs.
+updated: 2026-10-11T06:37:00Z
+branch: lane1-entrypoint (pull request #11) and lane1-backup-model (pull request #12, stacked on #11), both waiting for a human to merge; next branch lane1-hw-scenario
+doing: the two-step hw.circuit_debug scenario example josh-agent asked for: step 0 the project interview with a synthetic posting and resume, step 1 the reversed LED walkthrough, with the planted fault kept out of anything a model or candidate sees. New files under contracts/examples only.
+next: handoff message to josh-agent when it is reviewed; hourly review of main about 07:07Z
+blocked_on: humans choosing the demo and cut list (not blocking this work)
+touching: new files in contracts/examples/ and backend/tests/. Also CONTEXT.md. Nothing in backend/app/v2, frontend or docs.
