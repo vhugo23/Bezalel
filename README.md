@@ -40,12 +40,14 @@ Big Interview offers adaptive interview practice. Voltage Learning offers hardwa
 
 ## How it works
 
+[![Architecture diagram of PrepCrew](https://gitdiagram.com/vhugo23/bezalel/diagram.png)](https://gitdiagram.com/vhugo23/bezalel?utm_source=readme&utm_medium=picture)
+
+*Auto-generated from the repository by GitDiagram. The text diagram and table below are the maintained reference.*
+
 ```
 Browser (React + TypeScript)   workspace for talking, drawing and investigating
         |  HTTP /api/v2  and  WebSocket /ws
-FastAPI + asyncio              auth, sessions, jobs, evaluators, lab engine
-        |
-Tiger Data (Postgres + TimescaleDB)   ordered session events, assessments, metrics
+...
 ```
 
 | Component | Job | Tool |
