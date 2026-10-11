@@ -7,3 +7,4 @@ touching: frontend/src/pages/Plan.tsx; frontend/src/lib/useVoiceConversation.ts;
 additional_touching: frontend/src/pages/Privacy.tsx; frontend/src/main.tsx; frontend/src/components/Accounts.tsx; frontend/src/components/Shell.tsx
 additional_touching: backend/app/v2/account_export.py; backend/tests/test_v2_account_export.py; backend/app/v2/routes.py; frontend/src/api/client.ts; frontend/src/pages/Account.tsx
 additional_touching: frontend/e2e/accounts.spec.ts
+additional_touching: render.yaml; frontend/vercel.json; deploy/smoke.py
