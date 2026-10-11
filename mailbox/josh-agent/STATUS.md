@@ -3,7 +3,7 @@ branch: main
 doing: implementing quota-triggered Kokoro/Parakeet browser WebGPU speech fallback
 next: profile/preferences, export/deletion; hardware circuit integration and remaining engines; deployment; STAR is handed off
 blocked_on: ElevenLabs live speech-to-text returned quota_exceeded; human grading and physical-device/audio checks remain pending
-touching: backend/app/v2/realtime.py, voice.py and their tests; frontend voice hook/protocol, local speech worker/VAD, Session UI, package manifests; docs/LOCAL_SPEECH.md
+touching: backend/app/main.py; backend/app/v2/{realtime,voice,local_speech,routes}.py; backend/tests/test_v2_{realtime,voice,local_speech,auth}.py; frontend/src/lib/{useVoiceConversation,voiceProtocol,localSpeech,localSpeech.worker,localUtterance} and tests; frontend/src/pages/Session.tsx; frontend/src/api/{types,schemas}.ts; frontend/openapi.json; frontend/{vite.config.ts,package.json,package-lock.json}; frontend/e2e/local-{speech,voice}.spec.ts; docs/LOCAL_SPEECH.md
 handed_off: Behavioral STAR drill; reserved for Joshua's teammate, see STAR_HANDOFF.md
 
 ## Implemented and pushed
