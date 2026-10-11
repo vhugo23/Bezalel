@@ -9,6 +9,7 @@ import type { LoadProgress } from '../lib/localSpeech';
 import { Shell } from '../components/Shell';
 import { Whiteboard } from '../components/Whiteboard';
 import { PiLab, labReady } from '../components/PiLab';
+import { DemoAutoplay } from '../components/DemoAutoplay';
 import { Badge, Button, ErrorNotice, Icon, Modal } from '../components/ui';
 
 const labels = {off:'Ready when you are',connecting:'Connecting your microphone',loading:'Loading local speech',listening:'Listening to you',transcribing:'Transcribing your answer',thinking:'Dana is thinking',speaking:'Dana is speaking',muted:'Microphone muted'};
@@ -26,6 +27,8 @@ function ModelProgress({progress:{model,stage,loaded,total,cached}}:{progress:Lo
 export function SessionPage() {
   const {id=''}=useParams(); const nav=useNavigate(); const qc=useQueryClient();
   const sound=useApp(s=>s.voice);
+  const [demoRunning,setDemoRunning]=useState(false),[demoCandidate,setDemoCandidate]=useState('');
+  const [demoLabAction,setDemoLabAction]=useState<{kind:string;text:string}>();
   const [text,setText]=useState(''),[hideLoading,setHideLoading]=useState(false),[error,setError]=useState<unknown>(null),[connected,setConnected]=useState(false);
   const transcript=useRef<HTMLDivElement>(null),follow=useRef(true),autoFinished=useRef(false);
   const query=useQuery({queryKey:['session',id],queryFn:()=>api.session(id),refetchInterval:connected?false:3000});
@@ -60,8 +63,8 @@ export function SessionPage() {
     };
     void connect();return()=>{disposed=true;clearTimeout(timer);socket?.close();};
   },[id,qc]);
-  useEffect(()=>{if(steps.length&&step===steps.length&&!autoFinished.current&&events.some(e=>e.kind==='step'&&e.payload.to===steps.length&&e.payload.source==='interviewer')){autoFinished.current=true;end.mutate();}},[step,events,steps.length]);
-  useEffect(()=>{if(follow.current&&transcript.current)transcript.current.scrollTop=transcript.current.scrollHeight;},[turns.length,voice.phase,voice.partial]);
+  useEffect(()=>{if(!demoRunning&&steps.length&&step===steps.length&&!autoFinished.current&&events.some(e=>e.kind==='step'&&e.payload.to===steps.length&&e.payload.source==='interviewer')){autoFinished.current=true;end.mutate();}},[step,events,steps.length,demoRunning]);
+  useEffect(()=>{if(follow.current&&transcript.current)transcript.current.scrollTop=transcript.current.scrollHeight;},[turns.length,voice.phase,voice.partial,demoCandidate]);
   const submit=()=>{
     if(session?.paused||!text.trim()||next.isPending||(!voice.active&&voice.busy))return;
     const answer=text.trim();setText('');
@@ -76,7 +79,7 @@ export function SessionPage() {
   useEffect(()=>{if(session?.paused)voice.end();},[session?.paused]);
 
   const conversation=<div className="voice-transcript" ref={transcript} role="log" aria-label="Interview transcript" aria-live="polite" onScroll={e=>{const el=e.currentTarget;follow.current=el.scrollHeight-el.scrollTop-el.clientHeight<70;}}>
-    <div className="conversation-intro"><span>YOUR INTERVIEW</span><p>A conversation with Dana</p></div>
+    <div className="conversation-intro"><span>YOUR INTERVIEW</span><p>A conversation with Dana</p>{events.some(e=>e.payload.demo_autoplay===true)&&<small className="demo-candidate-label">Scripted demo candidate · graded from saved evidence</small>}</div>
     {turns.map(event=><article key={event.seq} className={`chat-turn ${event.actor==='interviewer'?'dana-turn':'candidate-turn'}`}>
       {event.actor==='interviewer'&&<span className="chat-avatar">D</span>}
       <div className="chat-message"><div className="chat-author">{event.actor==='interviewer'?'Dana':'You'}{event.payload.board===true&&<span>while drawing</span>}</div>
@@ -85,11 +88,12 @@ export function SessionPage() {
       </div>
     </article>)}
     {voice.partial&&<article className="chat-turn candidate-turn live-partial"><div className="chat-message"><div className="chat-author">You <span>live transcript</span></div><p>{voice.partial}<span className="transcript-caret"/></p></div></article>}
+    {demoCandidate&&<article className="chat-turn candidate-turn live-partial"><div className="chat-message"><div className="chat-author">Demo candidate <span>speaking</span></div><p>{demoCandidate}</p></div></article>}
     {(voice.phase==='thinking'||voice.phase==='transcribing')&&<div className="conversation-pending" role="status"><span className="thinking-dots"><i/><i/><i/></span>{labels[voice.phase]}</div>}
   </div>;
 
   return <Shell crumb={`${({sw:'Software',hw:'Hardware',infra:'Infra',comm:'Communication',other:'Other'} as Record<string,string>)[session?.domain||'sw']} / ${session?.title||'Session'}`} exit wide>
-    <main className={`sgrid session-grid voice-session ${isBoard||isLab?'with-board':''}`}>
+    <main inert={demoRunning} className={`sgrid session-grid voice-session ${isBoard||isLab?'with-board':''} ${demoRunning?'demo-session-running':''}`}>
       <aside className="gcol">
         <section className="card"><div className="ch"><h3>Track</h3><Badge>{done?'Complete':`Step ${step+1} of ${steps.length}`}</Badge></div><div className="cb step-list">{steps.map(({title:name,surface},i)=><div className={`step ${i<step?'done':i===step?'cur':''}`} key={name}><span className="n">{i<step?<Icon name="check"/>:i+1}</span><div><b>{name}</b><small>{surface}</small></div></div>)}</div></section>
         <section className="card"><div className="cb"><div className="turn"><b>{done?'Nicely done':'Your turn'}</b><span>{steps[step]?.task||'Send the conversation and drawing to the evaluators.'}</span></div><div className="row session-actions">{!done?<Button size="sm" disabled={next.isPending||voice.busy||isBoard||session?.paused||!hasAnswer||(isLab&&!labReady(session?.engine_state?.lab))} onClick={()=>next.mutate()}>Next step<Icon/></Button>:<Button size="sm" disabled={end.isPending} onClick={()=>{voice.end();end.mutate();}}>{end.isPending?'Starting evaluators…':'Finish session'}<Icon/></Button>}</div></div></section>
@@ -98,7 +102,7 @@ export function SessionPage() {
       </aside>
       <section className="card voice-stage">
         <header className="voice-header">
-          <div className={`voice-presence ${voice.phase}`} title={voice.speechNote||undefined}><DanaOrb phase={voice.phase} level={voice.level} paused={!!session?.paused}/><div><b>Dana</b><span role="status">{session?.paused?'Interview paused · your work is saved':voice.active?labels[voice.phase]:session?.demo?'Recorded demo · press Start voice to talk':'Press Start voice to talk, or type below'}</span></div></div>
+          <div className={`voice-presence ${voice.phase}`} title={voice.speechNote||undefined}><DanaOrb phase={voice.phase} level={voice.level} paused={!!session?.paused}/><div><b>Dana</b><span role="status">{demoRunning?(demoCandidate?'Demo candidate is speaking':voice.phase==='speaking'?'Dana is speaking':'Demo playback in progress'):session?.paused?'Interview paused · your work is saved':voice.active?labels[voice.phase]:session?.demo?'Recorded demo · press Start voice to talk':'Press Start voice to talk, or type below'}</span></div></div>
           {!done&&<div className="voice-tools">
             {voice.active?<><button className={`icon-button ${voice.muted?'on':''}`} onClick={voice.toggleMute} aria-pressed={voice.muted} aria-label={voice.muted?'Unmute microphone':'Mute microphone'} title={voice.muted?'Unmute':'Mute'}><Icon name={voice.muted?'micOff':'mic'}/></button>{voice.phase==='speaking'?<button className="icon-button" onClick={voice.interrupt} aria-label="Interrupt Dana" title="Interrupt Dana"><Icon name="stop"/></button>:<button className="icon-button" onClick={voice.sendNow} disabled={voice.phase!=='listening'} aria-label="Send now" title="Send now — don’t wait for the pause"><Icon name="send"/></button>}<button className="icon-button danger" onClick={voice.end} aria-label="End voice" title="End voice"><Icon name="hangup"/></button></>:<Button size="sm" className="voice-start" onClick={startVoice} disabled={!session||voice.busy||session?.paused}><Icon name="mic"/>Start voice</Button>}
             <span className="voice-tools-divider"/>
@@ -109,7 +113,7 @@ export function SessionPage() {
         <ErrorNotice error={error||query.error}/>
         <div className="session-surfaces">
           {isBoard&&!session?.paused&&<div className="drawing-panel"><Whiteboard key={`${id}:${step}`} lookMode={String(steps[step]?.config?.look||'on_done')} conversationBusy={voice.busy||voice.phase==='transcribing'||voice.level>0.12} partial={voice.partial} sid={id} step={step} continueLabel={`${steps[step+1]?.title||'Finish drawing'} →`} events={events} savedReview={session?.board_review} lookRequest={voice.lookRequest} onChange={refresh} onComplete={()=>next.mutate()} onSpeech={async mark=>{const current=await api.session(id);const event=current.events.find(e=>e.kind==='turn'&&e.payload.annotation_id===mark.id);return event?await voice.replay(event,false):false;}}/></div>}
-          {isLab&&session&&<div className="drawing-panel"><PiLab key={id} session={session} onChange={refresh}/></div>}
+          {isLab&&session&&<div className="drawing-panel"><PiLab key={id} session={session} onChange={refresh} demoAction={demoLabAction}/></div>}
           {conversation}
         </div>
         {!done&&<footer className="voice-dock">
@@ -122,5 +126,6 @@ export function SessionPage() {
         </Modal>
       </section>
     </main>
+    {session&&<DemoAutoplay session={session} onRefresh={refresh} onStart={()=>{voice.end();useApp.setState({voice:true});}} onStop={voice.end} onRunning={setDemoRunning} onCandidate={setDemoCandidate} onLabAction={setDemoLabAction} speakDana={event=>voice.replay(event,true)} onFinish={()=>nav(`/fleet/${id}`)}/>}
   </Shell>;
 }

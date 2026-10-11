@@ -10,7 +10,7 @@ const labSchema=z.object({revision:z.number().int(),config:z.string(),file_path:
  browser:z.object({status:z.number(),css_status:z.number(),form_status:z.number(),latency_ms:z.number()})});
 export function labReady(value:unknown){const parsed=labSchema.safeParse(value);return parsed.success&&parsed.data.goal_ready;}
 
-export function PiLab({session,onChange}:{session:Model<'Session'>;onChange:()=>void|Promise<unknown>}){
+export function PiLab({session,onChange,demoAction}:{session:Model<'Session'>;onChange:()=>void|Promise<unknown>;demoAction?:{kind:string;text:string}}){
  const result=labSchema.safeParse(session.engine_state?.lab);
  const lab=result.success?result.data:null;
  const [tab,setTab]=useState('Terminal'),[input,setInput]=useState(''),[draft,setDraft]=useState('');
@@ -19,6 +19,7 @@ export function PiLab({session,onChange}:{session:Model<'Session'>;onChange:()=>
  const retry=useRef<Model<'LabAction'>|null>(null),terminal=useRef<HTMLDivElement>(null);
  const actions=session.events.filter(e=>['command','edit','part_drop','probe'].includes(e.kind));
  useEffect(()=>{if(lab)setDraft(lab.config);},[lab?.config]);
+ useEffect(()=>{if(!demoAction)return;setTab(({command:'Terminal',edit:'Editor',part:'Pi',browser:'Browser'} as Record<string,string>)[demoAction.kind]||'Terminal');if(demoAction.kind==='command')setInput(demoAction.text);if(demoAction.kind==='edit')setDraft(demoAction.text);},[demoAction]);
  useEffect(()=>{terminal.current?.scrollTo({top:terminal.current.scrollHeight});},[actions.length,tab]);
  if(!lab)return <ErrorNotice error="The saved lab state could not be loaded. Refresh the session."/>;
  const disabled=pending||session.paused||session.status!=='live';
