@@ -8,7 +8,8 @@ Shapes follow `../contracts/` (api.md, ws_messages.md, JSON schemas).
     .venv\Scripts\Activate.ps1
     python -m pip install -r requirements.txt
     copy .env.example .env        # then fill in .env; never put real values in .env.example
-    python init_db.py             # creates tables (safe to re-run)
+    python init_db.py             # creates tables in DATABASE_SCHEMA (safe to re-run)
+    python show_tables.py         # lists them with row counts
     python -m uvicorn app.main:app --reload
 Open http://127.0.0.1:8000/docs. Tests: `python -m pytest -q` (they never touch your database or AI keys).
 
@@ -21,7 +22,7 @@ Nothing else. A test fails if a route is added outside these.
 ## Layout
     app/core/ai.py         generate_text / generate_json (fake | gemini), JSON validation + 1 retry
     app/core/voice.py      speak / mint_token (fake | elevenlabs stub)
-    app/core/memory.py     remember / recall (memory | postgres | backboard TODO)
+    app/core/memory.py     remember / recall / forget (memory | postgres | backboard)
     app/core/jobs.py       fan_out: parallel tasks with timeouts, concurrency limit, partial results
     app/core/store.py      generic records + time-series events (Postgres, or in-memory with no database)
     app/core/bus.py        in-process pub/sub with replay; app/core/sse.py turns it into Server-Sent Events
@@ -32,6 +33,17 @@ Nothing else. A test fails if a route is added outside these.
       data/rubrics/        one rubric per file; only status "reviewed" is used (contracts/rubric.schema.json)
       data/topics.json     skill graph {skill_id: {title, prerequisites}}
     sql/schema.sql         core tables; sql/prepcrew.sql module tables
+
+## Deploy schema
+Set `DATABASE_SCHEMA=prepcrew_app` in `.env`. `init_db.py` creates that schema and builds every table in it, and the
+app reads and writes only there (search_path is `"prepcrew_app", public`; TimescaleDB's functions stay in public).
+Old tables in `public` from the first skeleton (users, sessions, turns, topics, lessons, evaluations) are not used
+and are left untouched. Empty `DATABASE_SCHEMA` means `public`.
+
+## Deletion guarantees
+`DELETE /api/sessions/{id}` waits for an answer, probe or grading write already in progress, then removes everything;
+anything that finishes later is dropped. Backboard memories that cannot be deleted right away (Backboard down) are
+kept as `memory_forget_pending` pointers and retried on the next delete or memory save. `tests/test_deletion.py`.
 
 ## Database check
 `python scripts/tiger_smoke.py` builds every table in a throwaway schema on the real database, runs the whole

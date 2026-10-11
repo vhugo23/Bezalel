@@ -80,7 +80,9 @@ async def _bb(method: str, path: str, **kwargs) -> dict:
     async with _client() as c:
         resp = await c.request(method, path, **kwargs)
     if resp.status_code >= 300:
-        raise BackboardError(f"Backboard {method} {path.split('/')[1]} -> {resp.status_code}: {resp.text[:200]}")
+        err = BackboardError(f"Backboard {method} {path.split('/')[1]} -> {resp.status_code}: {resp.text[:200]}")
+        err.status = resp.status_code
+        raise err
     return resp.json() if resp.content else {}
 
 
@@ -148,15 +150,27 @@ async def recall(owner_id: str, query: str = "", limit: int = 10) -> list[str]:
 
 async def forget(refs: list[dict]) -> int:
     """Delete exactly the memories these refs point at. Returns how many were removed. Never raises."""
-    removed = 0
+    removed, _failed = await forget_detailed(refs)
+    return removed
+
+
+async def forget_detailed(refs: list[dict]) -> tuple[int, list[dict]]:
+    """Like forget(), but also returns the refs that could not be deleted (e.g. Backboard was down), so the caller
+    can keep them and try again later instead of losing track of data that must be deleted."""
+    removed, failed = 0, []
     for ref in refs:
         try:
             if ref.get("backend") == "backboard":
                 if ref.get("id") and ref.get("assistant_id"):
-                    await _bb("DELETE", f"/assistants/{ref['assistant_id']}/memories/{ref['id']}")
-                    removed += 1
+                    try:
+                        await _bb("DELETE", f"/assistants/{ref['assistant_id']}/memories/{ref['id']}")
+                        removed += 1
+                    except BackboardError as e:
+                        if getattr(e, "status", None) != 404:  # 404: already gone, which is what we wanted
+                            raise
             elif ref.get("id"):
                 removed += await _local_forget(ref)
         except Exception as e:
             log.warning("forget failed for one memory (%s): %s", ref.get("backend"), e)
-    return removed
+            failed.append(ref)
+    return removed, failed

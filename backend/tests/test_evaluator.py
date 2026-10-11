@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import config
-from app.core import ai, store
+from app.core import ai
 from app.main import app
 from app.modules.prepcrew import evaluators
 

@@ -29,7 +29,8 @@ from app.modules.prepcrew import (assessor, debrief, evaluators, interviewer, me
 PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
 _seq_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 _seq_next: dict[str, int] = {}
-_turn_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # one answer at a time per session
+_turn_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+_deleted: set[str] = set()  # sessions deleted in this process: late writers (a probe, grading) must not recreate data  # one answer at a time per session
 MAX_ANSWER_CHARS = 5000
 
 
@@ -184,8 +185,8 @@ async def handle_answer(session_id: str, text: str) -> dict:
         await store.add_event(session_id, "interviewer", data={"text": question, "turn": turn, "source": source,
                                                                "shape": shape, "violations": violations,
                                                                "findings": findings, "meter": snap})
-    ms = (time.perf_counter() - start) * 1000
-    await store.add_event(session_id, "timing", value=ms, data={"stage": "turn_total", "turn": turn})
+        ms = (time.perf_counter() - start) * 1000  # written under the lock, so a delete cannot leave it behind
+        await store.add_event(session_id, "timing", value=ms, data={"stage": "turn_total", "turn": turn})
     return {"answer_id": answer_id, "next_question": question, "turn": turn, "turn_total_ms": ms,
             "done": done, "degraded": degraded, "source": source, "ended_early": ended_early, "meter": snap}
 
@@ -218,6 +219,8 @@ async def build_debrief(session_id: str) -> dict:
 
 async def record_timing(session_id: str, stage: str, ms: float, turn: int | None = None) -> None:
     """Store one measured stage (stt, llm_first_token, tts_first_audio, turn_total). GET /metrics reads these."""
+    if session_id in _deleted:
+        return  # a voice stage that finished after the user deleted the session
     await store.add_event(session_id, "timing", value=ms, data={"stage": stage, "turn": turn})
 
 
@@ -254,13 +257,15 @@ async def record_probe(session_id: str, action: str, node: str | None, scenario_
     # swap_part, isolate_section, power_cycle: logged with no reading (TODO: apply effects in the solver)
 
     async with _seq_locks[session_id]:
+        if session_id in _deleted or await store.get_record(session_id) is None:
+            raise NotFound("session not found")
         event = {
             "event_id": str(uuid.uuid4()), "seq": await _next_seq(session_id), "t": now_iso(),
             "session_id": session_id, "scenario_id": scenario_id, "action": action,
             "node": node, "value": value, "unit": unit,
         }
         await store.add_event(session_id, "probe", value=value, data=event)
-    await timeseries.write_probe(event)  # Tiger hypertable; best effort, never blocks the probe
+        await timeseries.write_probe(event)  # Tiger hypertable; best effort (3 s cap); under the lock so delete sees it
     return event
 
 
@@ -286,6 +291,18 @@ async def run_grading(session_id: str) -> None:
         await bus.publish(channel(session_id), event, data)
 
     out = await evaluators.grade_session(session_id, answers, transcript, probes, publish)
+    async with _turn_locks[session_id]:  # deletion takes this lock too, so it cannot interleave with these writes
+        if session_id in _deleted or await store.get_record(session_id) is None:
+            return  # deleted while grading: keep nothing
+        await _store_grading(session_id, session, out, publish)
+    try:
+        await save_session_memories(session_id)
+    except Exception as e:  # memory must never break grading
+        import logging
+        logging.getLogger("prepcrew.service").warning("saving memories failed: %s", e)
+
+
+async def _store_grading(session_id: str, session: dict, out: dict, publish) -> None:
 
     rubrics = {r["rubric_id"]: r for r in evaluators.load_rubrics(only_reviewed=False)}
     flags: set[str] = set()
@@ -310,11 +327,6 @@ async def run_grading(session_id: str) -> None:
     await store.update_record(session_id, {"status": "graded", "results": out["results"],
                                            "skill_flags": sorted(flags), "total_ms": out["total_ms"]})
     await publish("grading_complete", {"session_id": session_id, "total_ms": out["total_ms"]})
-    try:
-        await save_session_memories(session_id)
-    except Exception as e:  # memory must never break grading
-        import logging
-        logging.getLogger("prepcrew.service").warning("saving memories failed: %s", e)
 
 
 # ---- curriculum ----
@@ -384,12 +396,17 @@ async def delete_session(session_id: str) -> int:
     retest, still uses it."""
     session = await get_session(session_id)
     plan_id = session["data"].get("plan_id")
-    refs = [r["data"]["ref"] for r in await store.find_records("memory_ref", "session_id", session_id, limit=10000)]
-    removed = await memory.forget(refs)
-    removed += await store.delete_linked(session_id)  # also removes the memory_ref records (data.session_id)
-    removed += await timeseries.delete_session(session_id)  # Tiger hypertables + aggregate refresh
-    if plan_id and not await store.find_records("session", "plan_id", plan_id, limit=1):
-        removed += await store.delete_record(plan_id)
+    async with _turn_locks[session_id], _seq_locks[session_id]:  # let an in-flight answer or probe finish first
+        _deleted.add(session_id)
+        refs = [r["data"]["ref"] for r in await store.find_records("memory_ref", "session_id", session_id, limit=10000)]
+        removed, failed = await memory.forget_detailed(refs)
+        removed += await store.delete_linked(session_id)  # also removes the memory_ref records (data.session_id)
+        for ref in failed:  # could not delete now (e.g. Backboard down): keep only the pointer, retried later
+            await store.create_record("memory_forget_pending", {"ref": ref}, owner_id=session["data"].get("user_id"))
+        removed += await timeseries.delete_session(session_id)  # Tiger hypertables + aggregate refresh
+        if plan_id and not await store.find_records("session", "plan_id", plan_id, limit=1):
+            removed += await store.delete_record(plan_id)
+    await retry_pending_forgets()
     bus.clear(channel(session_id))
     _seq_next.pop(session_id, None)
     _seq_locks.pop(session_id, None)
@@ -428,6 +445,7 @@ async def save_session_memories(session_id: str) -> int:
     user_id = session["data"].get("user_id")
     if not user_id or await store.find_records("memory_ref", "session_id", session_id, limit=1):
         return 0  # no user to remember, or already saved for this session
+    await retry_pending_forgets()
     notes = memories_from_debrief(await build_debrief(session_id))
     saved = 0
     for text in notes:
@@ -440,9 +458,23 @@ async def save_session_memories(session_id: str) -> int:
     return saved
 
 
+RECALL_TIMEOUT_SECONDS = 3  # memory is a bonus: never let a slow Backboard hold up plan creation
+
+
 async def recall_memories(user_id: str, query: str = "", limit: int = 5) -> list[str]:
     """What we remember about this user. Never raises: memory is a bonus, not a dependency."""
     try:
-        return await memory.recall(user_id, query, limit)
+        return await asyncio.wait_for(memory.recall(user_id, query, limit), RECALL_TIMEOUT_SECONDS)
     except Exception:
         return []
+
+
+async def retry_pending_forgets() -> int:
+    """Deletions that failed earlier (Backboard was down) are tried again. Returns how many succeeded."""
+    done = 0
+    for rec in await store.list_records("memory_forget_pending", limit=1000):
+        removed, failed = await memory.forget_detailed([rec["data"]["ref"]])
+        if not failed:
+            await store.delete_record(rec["id"])
+            done += removed
+    return done

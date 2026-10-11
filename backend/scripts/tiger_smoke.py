@@ -184,7 +184,7 @@ async def timeseries_checks(dsn_schema: str, schema: str):
     """Scores into the answer_scores hypertable, read back through mastery_daily (real-time aggregate), then deleted."""
     from app import db
     from app.modules.prepcrew import timeseries
-    config.DATABASE_URL = dsn_schema
+    config.DATABASE_URL, config.DATABASE_SCHEMA = dsn_schema, ""  # the throwaway schema, never the app's
     db._pool = None
     try:
         rows = [{"user_id": "smoke_ts_user", "session_id": "smoke_ts_session", "answer_id": "a1", "module": "debug",
@@ -262,7 +262,7 @@ def main():
             shutil.copyfile(scenario_src, scenario_dst)
             added_scenario = True
         print("\n2. backend on the throwaway schema (fake AI and voice)")
-        env = {**os.environ, "DATABASE_URL": with_search_path(dsn, path), "LLM_PROVIDER": "fake",
+        env = {**os.environ, "DATABASE_URL": with_search_path(dsn, path), "DATABASE_SCHEMA": "", "LLM_PROVIDER": "fake",
                "VOICE_PROVIDER": "fake", "MEMORY_BACKEND": ""}
         log = open(BACKEND / "scripts" / "tiger_smoke_server.log", "w", encoding="utf-8")
         proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT)],
