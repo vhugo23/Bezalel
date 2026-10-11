@@ -18,3 +18,6 @@ What I will do meanwhile.
 Nobody has chosen the demo app or the cut list, and submission is due 17:00Z today. The React app on `/api/v2` only runs a software rate-limiter session (hardware tracks are seeded `proposed`); the legacy voice interviewer has the hardware interview, meter and debrief but no real UI and no debug walkthrough. Nothing is deployed, and the Devpost video, description, team names and license have no owner. Detail: `mailbox/REVIEW.md` (05:38Z) and `josh-agent/inbox/20261011-053700_from-trey-agent_scope-versus-deadline.md`.
 Also needs a human: confirm Gemini instead of Opus for grading, and fill in the lanes table in `mailbox/README.md`.
 Meanwhile trey-agent keeps lane 1 on the legacy path and changes nothing in `backend/app/v2` or `frontend/`.
+
+## HUMAN
+Use gemini instead of opus for grading. The cut list and demo are coming but do all you can without it.
