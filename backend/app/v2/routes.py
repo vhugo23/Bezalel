@@ -112,11 +112,41 @@ async def lesson(sid: str):
     from .learning import read
     return await read(sid)
 
-@router.post('/sessions/{sid}/lesson', response_model=Lesson)
+@router.post('/sessions/{sid}/lesson', response_model=Lesson, deprecated=True)
 async def generate_lesson(sid: str):
-    from .learning import create
-    try:return await create(sid)
-    except ValueError as exc:raise HTTPException(503,str(exc))
+    from . import jobs,learning
+    job=await jobs.enqueue_lesson(sid)
+    for _ in range(120):
+        job=await jobs.read(job.id)
+        if job.status=='succeeded':return await learning.read(sid)
+        if job.status in ('failed','cancelled'):raise HTTPException(503,job.error or 'Generation cancelled. Your evidence is saved.')
+        await asyncio.sleep(.5)
+    raise HTTPException(409,'Your lesson is still being prepared. Reopen the lesson to see its saved progress.')
+
+@router.post('/sessions/{sid}/lesson/jobs', response_model=WorkItem, status_code=202)
+async def enqueue_lesson(sid: str):
+    from . import jobs
+    return await jobs.enqueue_lesson(sid)
+
+@router.get('/sessions/{sid}/lesson/jobs', response_model=WorkItem | None)
+async def lesson_job(sid: str):
+    from . import jobs
+    return await jobs.latest_lesson(sid)
+
+@router.get('/jobs/{jid}', response_model=WorkItem)
+async def get_job(jid: str):
+    from . import jobs
+    return await jobs.read(jid)
+
+@router.post('/jobs/{jid}/retry', response_model=WorkItem, status_code=202)
+async def retry_job(jid: str):
+    from . import jobs
+    return await jobs.retry(jid)
+
+@router.post('/jobs/{jid}/cancel', response_model=WorkItem)
+async def cancel_job(jid: str):
+    from . import jobs
+    return await jobs.cancel(jid)
 
 @router.post('/retests', response_model=Session)
 async def retest(body: RetestInput):

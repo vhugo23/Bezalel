@@ -16,6 +16,7 @@ beforeEach(()=>{
  vi.spyOn(api,'report').mockResolvedValue(report);
  vi.spyOn(api,'session').mockResolvedValue({id:'s',track_id:'t',title:'Practice',domain:'sw',engine_id:'conceptual',paused:false,step:3,status:'graded',opening:'Design an API',demo:false,events:[]});
  vi.spyOn(api,'metrics').mockResolvedValue({rows:[],hypertables:[],aggregates:[]});
+ vi.spyOn(api,'lessonJob').mockResolvedValue(null);
 });
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
 
@@ -45,11 +46,28 @@ test('a lesson citation opens the exact saved source event',async()=>{
 test('lesson generation replaces the preview with saved teaching and a runnable retest',async()=>{
  const preview:Model<'Lesson'>={body:'',title:'Your next practice',reason:'An evidenced gap',evidence_seq:[17],claim_id:'c',skill_id:'sw.system_design',ai_generated:false,practice:'',retest_ready:false};
  vi.spyOn(api,'lesson').mockResolvedValue(preview);
- const generate=vi.spyOn(api,'generateLesson').mockResolvedValue({...preview,id:'l',title:'Choosing a failure policy',body:'A saved lesson about the availability trade-off.',practice:'Explain a changed constraint.',ai_generated:true,retest_ready:true});
+ const job:Model<'WorkItem'>={id:'j',kind:'lesson',subject_id:'s',status:'succeeded',stage:'Complete',attempts:1,created_at:'2026-10-11T00:00:00Z',updated_at:'2026-10-11T00:00:00Z'};
+ const generate=vi.spyOn(api,'generateLesson').mockImplementation(async()=>{
+  vi.mocked(api.lesson).mockResolvedValue({...preview,id:'l',title:'Choosing a failure policy',body:'A saved lesson about the availability trade-off.',practice:'Explain a changed constraint.',ai_generated:true,retest_ready:true});
+  return job;
+ });
  mount(true);fireEvent.click(await screen.findByRole('button',{name:'Generate my lesson'}));
  await screen.findByRole('heading',{name:'Choosing a failure policy'});
  expect(generate).toHaveBeenCalledTimes(1);
  expect(screen.getByRole('button',{name:'Start retest'})).toBeDefined();
  expect(screen.getByRole('link',{name:'Event #17'})).toBeDefined();
  expect(screen.queryByRole('button',{name:'Generate my lesson'})).toBeNull();
+});
+
+test('returning to an active lesson shows saved progress and cancellation',async()=>{
+ vi.spyOn(api,'lesson').mockResolvedValue({body:'',title:'Your next practice',reason:'An evidenced gap',evidence_seq:[17],ai_generated:false,practice:'',retest_ready:false});
+ const job:Model<'WorkItem'>={id:'j',kind:'lesson',subject_id:'s',status:'running',stage:'Independently reviewing',attempts:1,created_at:'2026-10-11T00:00:00Z',updated_at:'2026-10-11T00:00:00Z'};
+ vi.mocked(api.lessonJob).mockResolvedValue(job);
+ const cancel=vi.spyOn(api,'cancelJob').mockResolvedValue({...job,status:'cancelled',stage:'Cancelled'});
+ mount(true);
+ await screen.findByText('Independently reviewing');
+ expect(screen.queryByRole('button',{name:'Generate my lesson'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Cancel generation'}));
+ await waitFor(()=>expect(cancel).toHaveBeenCalledWith('j'));
+ await screen.findByRole('button',{name:'Retry generation'});
 });

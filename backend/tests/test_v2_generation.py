@@ -21,7 +21,7 @@ def test_strict_schema_uses_json_schema_wire_field(monkeypatch):
     captured=[]
     async def generate_content(**kwargs):
         captured.append(kwargs['config'])
-        return SimpleNamespace(text='{"marks": []}')
+        return SimpleNamespace(text='{"marks": []}',usage_metadata=SimpleNamespace(prompt_token_count=101,candidates_token_count=19,thoughts_token_count=3))
     class AsyncClient:
         models=SimpleNamespace(generate_content=generate_content)
         async def __aenter__(self):return self
@@ -33,6 +33,8 @@ def test_strict_schema_uses_json_schema_wire_field(monkeypatch):
     assert config.response_schema is None
     assert config.response_json_schema['$defs']['Mark']['additionalProperties'] is False
     assert config.response_json_schema['properties']['marks']['maxItems']==4
+    success=next(c for c in generation.db.execute.call_args_list if 'schema_ok=true' in c.args[0])
+    assert success.args[-2:]==(101,22)
 
 
 def test_provider_error_audits_status_without_leaking_body(monkeypatch):

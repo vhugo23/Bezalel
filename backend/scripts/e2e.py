@@ -82,6 +82,8 @@ async def run():
                 cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
         if result.returncode:
             raise RuntimeError('Fresh migration failed; inspect .artifacts/e2e/migrate.log')
+        from verify_jobs import verify
+        await verify(source, name)
         await seed_fixture(source,name)
         commands = [
             ([sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18000'], ROOT, 'api'),

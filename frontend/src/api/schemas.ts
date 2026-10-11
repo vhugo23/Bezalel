@@ -56,5 +56,6 @@ export const schemas: Record<string,z.ZodType> = {
 "TurnRequest":z.object({"answer":z.string().max(5000)}).passthrough(),
 "TurnResponse":z.object({"answer_id":z.string(),"next_question":z.string(),"done":z.boolean().optional(),"degraded":z.boolean().optional(),"source":z.string().optional(),"ended_early":z.boolean().optional(),"meter":z.union([z.lazy(() => schemas["MeterState"]),z.null()]).optional()}).passthrough(),
 "TurnResult":z.object({"events":z.array(z.lazy(() => schemas["Event"])),"source":z.string()}).passthrough(),
-"ValidationError":z.object({"loc":z.array(z.union([z.string(),z.number().int()])),"msg":z.string(),"type":z.string(),"input":z.unknown().optional(),"ctx":z.record(z.string(),z.unknown()).optional()}).passthrough()
+"ValidationError":z.object({"loc":z.array(z.union([z.string(),z.number().int()])),"msg":z.string(),"type":z.string(),"input":z.unknown().optional(),"ctx":z.record(z.string(),z.unknown()).optional()}).passthrough(),
+"WorkItem":z.object({"id":z.string(),"kind":z.string(),"subject_id":z.string(),"status":z.union([z.literal("queued"),z.literal("running"),z.literal("succeeded"),z.literal("failed"),z.literal("cancelled")]),"stage":z.string(),"result":z.union([z.record(z.string(),z.unknown()),z.null()]).optional(),"error":z.union([z.string(),z.null()]).optional(),"attempts":z.number().int(),"created_at":z.string(),"updated_at":z.string(),"finished_at":z.union([z.string(),z.null()]).optional()}).passthrough()
 };

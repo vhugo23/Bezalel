@@ -1,11 +1,13 @@
 import asyncio
 import json
+import hashlib
 import os
 import time
 from uuid import uuid4
 from pydantic import BaseModel, ValidationError
 from app import config
 from . import db
+from .work_context import work_item_id
 
 DEMO = os.getenv('DEMO_MODE', 'false').lower() == 'true'
 
@@ -30,8 +32,13 @@ async def generate(kind: str, subject: str, prompt: str, schema: type[BaseModel]
     for attempt in range(1, 3):
         jid, start = str(uuid4()), time.perf_counter()
         model = ({'evaluator':config.EVALUATOR_MODEL, 'evidence_check':config.EVALUATOR_MODEL, 'lesson':config.EVALUATOR_MODEL, 'lesson_check':config.EVALUATOR_MODEL, 'whiteboard_critique':config.WHITEBOARD_MODEL}.get(kind,config.INTERVIEWER_MODEL)) or config.GEMINI_MODEL
-        await db.execute("INSERT INTO generation_jobs(id,kind,subject_type,subject_id,status,stage,model,request,is_seed,attempt,user_id,parent_job_id) VALUES($1,$2,$8,$3,'running','Validating structured output',$4,$5,$6,$7,$9,$10)",
-                         jid,kind,subject,'recorded' if recorded else model,{'prompt':prompt+correction,'schema':schema.__name__},recorded,attempt,subject_type,user_id,parent_job_id)
+        version=kind+'-v1'
+        fingerprint=hashlib.sha256(json.dumps({'kind':kind,'version':version,'model':model,
+            'prompt':prompt+correction,'schema':schema.model_json_schema(),'user_id':user_id,
+            'image':hashlib.sha256(image).hexdigest() if image else None},sort_keys=True).encode()).hexdigest()
+        await db.execute("INSERT INTO generation_jobs(id,kind,subject_type,subject_id,status,stage,model,request,is_seed,attempt,user_id,parent_job_id,work_item_id,prompt_version,cache_key) VALUES($1,$2,$8,$3,'running','Validating structured output',$4,$5,$6,$7,$9,$10,$11,$12,$13)",
+                         jid,kind,subject,'recorded' if recorded else model,{'prompt':prompt+correction,'schema':schema.__name__},recorded,attempt,subject_type,user_id,parent_job_id,work_item_id.get(),version,fingerprint)
+        tokens_in=tokens_out=0 if recorded else None
         try:
             if recorded:
                 result = schema.model_validate(cached)
@@ -52,15 +59,21 @@ async def generate(kind: str, subject: str, prompt: str, schema: type[BaseModel]
                         # response_schema field cannot encode extra='forbid'.
                         config=types.GenerateContentConfig(response_mime_type='application/json', response_json_schema=provider_schema(schema))),
                         timeout=12 if kind=='interviewer' else 30 if kind=='whiteboard_critique' else 40)
+                usage=getattr(answer,'usage_metadata',None)
+                if usage:
+                    tokens_in=usage.prompt_token_count
+                    output_tokens=usage.candidates_token_count
+                    thinking_tokens=usage.thoughts_token_count
+                    tokens_out=(output_tokens or 0)+(thinking_tokens or 0) if output_tokens is not None or thinking_tokens is not None else None
                 result = schema.model_validate_json(answer.text)
             ms = round((time.perf_counter()-start)*1000)
-            await db.execute("UPDATE generation_jobs SET status=$2,response=$3,schema_ok=true,latency_ms=$4,finished_at=now(),stage='Complete' WHERE id=$1",
-                             jid,'cached' if recorded else 'succeeded',result.model_dump(),ms)
+            await db.execute("UPDATE generation_jobs SET status=$2,response=$3,schema_ok=true,latency_ms=$4,tokens_in=$5,tokens_out=$6,finished_at=now(),stage='Complete' WHERE id=$1",
+                             jid,'cached' if recorded else 'succeeded',result.model_dump(),ms,tokens_in,tokens_out)
             if subject_type=='session':
                 await db.execute('INSERT INTO metrics(session_id,name,value) SELECT id,$2,$3 FROM sessions WHERE id=$1',subject,kind+'_ms',float(ms))
             return result, jid, 'recorded' if recorded else 'gemini'
         except asyncio.CancelledError:
-            await asyncio.shield(db.execute("UPDATE generation_jobs SET status='failed',error='Interrupted by candidate',stage='Cancelled',finished_at=now() WHERE id=$1 AND status='running'",jid))
+            await asyncio.shield(db.execute("UPDATE generation_jobs SET status='failed',error='Generation interrupted',stage='Cancelled',finished_at=now() WHERE id=$1 AND status='running'",jid))
             raise
         except Exception as exc:
             # Keep useful, non-sensitive diagnostics without storing provider bodies
@@ -71,7 +84,7 @@ async def generate(kind: str, subject: str, prompt: str, schema: type[BaseModel]
                 details='; '.join('.'.join(str(x) for x in e['loc'])+': '+e['type'] for e in exc.errors(include_input=False))[:500]
                 diagnostic+=' ('+details+')'
                 correction='\nYour previous output failed local validation: '+details+'. Correct these errors; obey the original schema limits.'
-            await db.execute("UPDATE generation_jobs SET status='failed',error=$2,finished_at=now() WHERE id=$1",jid,diagnostic)
+            await db.execute("UPDATE generation_jobs SET status='failed',error=$2,tokens_in=$3,tokens_out=$4,finished_at=now() WHERE id=$1",jid,diagnostic,tokens_in,tokens_out)
             if attempt == 1 and (isinstance(exc, (ValidationError,TimeoutError)) or code in (500,502,503,504)):
                 continue
             if code == 429:

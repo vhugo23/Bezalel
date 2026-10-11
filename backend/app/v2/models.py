@@ -240,3 +240,16 @@ class LessonDraft(BaseModel):
 class LessonReview(BaseModel):
     supported: bool
     reason: str = Field(min_length=1,max_length=500)
+
+class WorkItem(BaseModel):
+    id: str
+    kind: str
+    subject_id: str
+    status: Literal['queued','running','succeeded','failed','cancelled']
+    stage: str
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    attempts: int
+    created_at: datetime
+    updated_at: datetime
+    finished_at: datetime | None = None

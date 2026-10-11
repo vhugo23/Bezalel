@@ -34,7 +34,14 @@ export const api = {
   report:(id:string)=>request('Report',`/sessions/${id}/report`),
   metrics:(id:string)=>request('Metrics',`/sessions/${id}/metrics`),
   lesson:(id:string)=>request('Lesson',`/sessions/${id}/lesson`),
-  generateLesson:(id:string)=>request('Lesson',`/sessions/${id}/lesson`,{}),
+  generateLesson:(id:string)=>request('WorkItem',`/sessions/${id}/lesson/jobs`,{}),
+  lessonJob:async(id:string):Promise<Model<'WorkItem'>|null>=>{
+    const response=await fetch(`${API}/api/v2/sessions/${id}/lesson/jobs`);
+    if(!response.ok)throw new Error('Could not load generation progress. Your evidence is saved.');
+    return z.union([schemas.WorkItem,z.null()]).parse(await response.json()) as Model<'WorkItem'>|null;
+  },
+  retryJob:(id:string)=>request('WorkItem',`/jobs/${id}/retry`,{}),
+  cancelJob:(id:string)=>request('WorkItem',`/jobs/${id}/cancel`,{}),
   retest:(session_id:string)=>request('Session','/retests',{session_id},'RetestInput'),
   pair:(id:string)=>request('PairResult',`/sessions/${id}/pair`,{}),
 };

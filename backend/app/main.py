@@ -17,12 +17,13 @@ from app.modules import prepcrew
 
 @asynccontextmanager
 async def lifespan(app):
-    from app.v2 import assessment, db
-    task=asyncio.create_task(assessment.worker()) if config.DATABASE_URL else None
+    from app.v2 import assessment, jobs, db
+    tasks=[asyncio.create_task(worker()) for worker in (assessment.worker,jobs.worker)] if config.DATABASE_URL else []
     try:yield
     finally:
-        if task:
+        for task in tasks:
             task.cancel()
+        for task in tasks:
             with suppress(asyncio.CancelledError):await task
         if db._pool:
             await db._pool.close()

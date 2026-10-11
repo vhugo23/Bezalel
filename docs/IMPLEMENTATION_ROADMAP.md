@@ -195,11 +195,11 @@ Run deterministic tests and browser E2E in isolation, then a small controlled li
 
 ## Immediate next work package
 
-The first system-design learning-loop slice is implemented: criterion-to-skill assessment, rejection of unknown skills, independent evidence review, recoverable grading, and gap -> checked lesson -> changed retest -> updated circle. Practice rubrics are authored and model-reviewed, not human-calibrated. Full backend consolidation and generic durable generation remain open.
+The first system-design learning-loop slice is implemented: criterion-to-skill assessment, rejection of unknown skills, independent evidence review, recoverable grading, and gap -> checked lesson -> changed retest -> updated circle. Practice rubrics are authored and model-reviewed, not human-calibrated. Full backend consolidation and additional generation workflows remain open. Lesson generation now uses a persisted, bounded work queue with independent per-call model audits.
 
-1. Browser E2E isolation and two acceptance journeys are implemented and verified. Human rubric review remains pending; synthetic examples and a review procedure are in docs/GRADING_REVIEW.md.
+1. Browser E2E isolation and three acceptance journeys are implemented and verified. Human rubric review remains pending; synthetic examples and a review procedure are in docs/GRADING_REVIEW.md.
 2. Persisted generic session steps, configurable pacing, pause/resume, hints and scenario-specific evaluator selection are implemented. Three browser journeys verify the original board flow plus a synthetic two-step behavioral fixture with its own fleet. Other production tracks still require reviewed content, adapters and publication gates.
-3. Complete source ingestion, personalized plan/scenario generation and generation progress/validation UI.
+3. Durable lesson generation and saved progress/retry/cancel UI are implemented. Queue acceptance verifies idempotence, worker exclusion, restart recovery, atomic publication and bounded retries on an isolated Tiger schema with recorded fixtures. Complete source ingestion and personalized plan/scenario generation next.
 4. Connect Backboard to verified provenance, resolution and deletion; implement difficulty calibration.
 5. Implement the remaining tracks using those interfaces, starting with Pi and STAR; complete device and deployment gates where dependencies allow.
 
