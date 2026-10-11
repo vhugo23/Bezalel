@@ -24,6 +24,13 @@
   dt { color:var(--muted); } dd { margin:0; }
   #log { max-height:200px; overflow:auto; font:12px/1.4 ui-monospace, monospace; color:var(--muted); white-space:pre-wrap; }
   .err { color:var(--bad); }
+  #debriefBox h2 { font-size:16px; margin:0; }
+  .gap { border-top:1px solid var(--line); padding-top:8px; display:grid; gap:4px; }
+  .gap .tag { color:var(--muted); font-size:12px; }
+  .gap blockquote { margin:0; padding-left:10px; border-left:3px solid var(--line); color:var(--muted); }
+  .gap ul { margin:0; padding-left:18px; }
+  .gap a { color:var(--accent); }
+  .caveat { color:var(--muted); font-size:12px; }
   .you { border-left-color:var(--muted); background:transparent; color:var(--muted); }
 </style>
 </head>
@@ -72,8 +79,14 @@ Skills: KiCad, C, Python, oscilloscope, logic analyzer, soldering SMD parts.</te
       <button id="send" class="primary" disabled>Send answer</button>
       <button id="barge" disabled>Barge in (stop audio)</button>
       <button id="talk" disabled>Hold to talk</button>
+      <button id="showDebrief" disabled>Show debrief</button>
     </div>
     <p class="note" id="talkNote">Hold the button while you speak, release when you are done. Needs microphone permission.</p>
+  </section>
+
+  <section id="debriefBox" hidden>
+    <h2>Debrief</h2>
+    <div id="debrief"></div>
   </section>
 
   <section>
@@ -98,7 +111,7 @@ Skills: KiCad, C, Python, oscilloscope, logic analyzer, soldering SMD parts.</te
 <script>
 const RATE = 16000;
 const $ = (id) => document.getElementById(id);
-let ws = null, ctx = null, nextTime = 0, sources = [], sentAt = null, heardLogged = false, frames = 0, seconds = 0;
+let sessionId = null, ws = null, ctx = null, nextTime = 0, sources = [], sentAt = null, heardLogged = false, frames = 0, seconds = 0;
 
 function log(msg, cls) {
   const line = document.createElement("div");
@@ -139,6 +152,7 @@ function playChunk(arrayBuffer) {
 function onMessage(ev) {
   if (ev.data instanceof ArrayBuffer) return playChunk(ev.data);
   const m = JSON.parse(ev.data);
+  if (m.type === "debrief_ready") loadDebrief();
   if (m.type === "meter") $("t_meter").textContent = m.score + " of " + m.threshold + ", " + m.level
     + (m.unanswered ? ", " + m.unanswered + " unanswered" : "")
     + (m.checked === false ? "  (could not check that answer, the AI was too slow or busy)" : "");
@@ -170,6 +184,8 @@ $("begin").onclick = async () => {
       body: JSON.stringify({ plan_id: plan.plan_id, user_id: "voice-check", consent: true, strict: $("strict").checked }) });
     if (!res.ok) throw new Error("session " + res.status + " " + await res.text());
     const s = await res.json();
+    sessionId = s.session_id;
+    $("debriefBox").hidden = true;
     $("sid").textContent = s.session_id;
     log("plan degraded=" + plan.degraded + " (true means generic questions, no model plan)");
     $("reqsBox").hidden = false;
@@ -182,7 +198,7 @@ $("begin").onclick = async () => {
     ws.binaryType = "arraybuffer";
     ws.onmessage = onMessage;
     ws.onclose = () => { log("socket closed"); ["open", "send", "barge", "talk"].forEach((b) => $(b).disabled = true); };
-    ws.onopen = () => { ["open", "send", "barge", "talk"].forEach((b) => $(b).disabled = false); log("socket open"); };
+    ws.onopen = () => { ["open", "send", "barge", "talk", "showDebrief"].forEach((b) => $(b).disabled = false); log("socket open"); };
   } catch (e) { log(String(e), "err"); }
 };
 
@@ -201,6 +217,57 @@ $("send").onclick = async () => {
 };
 
 $("barge").onclick = () => { stopAudio(); ws.send(JSON.stringify({ type: "barge_in", t_client: Date.now() })); };
+
+// ---- debrief: built with DOM methods only, because it shows the candidate's own words ----
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+async function loadDebrief() {
+  if (!sessionId) return;
+  try {
+    const res = await fetch("http://" + $("base").value + "/api/sessions/" + sessionId + "/debrief");
+    if (!res.ok) throw new Error(res.status + " " + await res.text());
+    renderDebrief(await res.json());
+  } catch (e) { log("debrief: " + e, "err"); }
+}
+
+function renderDebrief(d) {
+  const box = $("debrief");
+  box.replaceChildren(el("p", d.summary));
+  if (d.gaps.length) box.append(el("h3", "Where to work", "tag"));
+  d.gaps.forEach((g) => {
+    const row = el("div", undefined, "gap");
+    row.append(el("strong", g.title));
+    const how = { unknown: "you said you don't know it", partial: "limited experience", no_answer: "no answer given" }[g.result];
+    row.append(el("span", (g.level ? g.level + ", " : "") + how, "tag"));
+    if (g.evidence_quote) row.append(el("blockquote", "You said: \u201c" + g.evidence_quote + "\u201d"));
+    if (g.tip) row.append(el("div", g.tip));
+    if (g.resources.length) {
+      const list = el("ul");
+      g.resources.forEach((r) => {
+        const li = el("li");
+        const a = el("a", r.title); a.href = r.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+        li.append(a, el("span", " (" + r.source + ", " + r.kind + ")", "tag"), el("div", r.why));
+        if (r.caveat) li.append(el("div", "Note: " + r.caveat, "caveat"));
+        list.append(li);
+      });
+      row.append(list);
+    } else if (g.search_hint) row.append(el("div", g.search_hint));
+    box.append(row);
+  });
+  if (d.strengths.length) {
+    box.append(el("h3", "What you showed", "tag"));
+    d.strengths.forEach((s) => box.append(el("div", s.title + (s.evidence_quote ? ": \u201c" + s.evidence_quote + "\u201d" : ""))));
+  }
+  box.append(el("p", d.resources_note, "caveat"));
+  $("debriefBox").hidden = false;
+}
+
+$("showDebrief").onclick = loadDebrief;
 
 // ---- hold to talk: mic -> 16 kHz 16-bit mono PCM frames -> speech_end on release ----
 let mic = null, recording = false, micNode = null;

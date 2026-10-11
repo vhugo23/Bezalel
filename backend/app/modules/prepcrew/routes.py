@@ -5,7 +5,7 @@ from app.core import voice
 from app.core.sse import sse_response
 from app.modules.prepcrew import service
 from app.modules.prepcrew.schemas import (
-    DeleteResponse, EndSessionResponse, LessonResponse, MasteryResponse, MetricsResponse,
+    DebriefResponse, DeleteResponse, EndSessionResponse, LessonResponse, MasteryResponse, MetricsResponse,
     PlanRequest, PlanResponse, ProbeEvent, ProbeRequest, ReportResponse, RetestRequest,
     SessionStartRequest, SessionStartResponse, SkillsResponse, TurnRequest, TurnResponse,
 )
@@ -99,6 +99,15 @@ async def report(session_id: str):
         raise _http(e)
     return ReportResponse(session_id=session_id, status=d.get("status", "not_ended"),
                           results=d.get("results", []), skill_flags=d.get("skill_flags", []))
+
+
+@router.get("/sessions/{session_id}/debrief", response_model=DebriefResponse)
+async def debrief(session_id: str):
+    """What stood out, what went fine, and where to learn each gap. Shown when the interview ends."""
+    try:
+        return await service.build_debrief(session_id)
+    except service.NotFound as e:
+        raise _http(e)
 
 
 @router.delete("/sessions/{session_id}", response_model=DeleteResponse)

@@ -168,3 +168,27 @@ The tests cover it with a stubbed model. The meter message now carries `checked`
 **Honest caveat.** When Gemini is slow or busy the meter silently under-counts. It errs toward not ending an interview,
 and with `checked` the UI can say so. If that happens often in a demo, the options are a faster or paid model, a second
 fallback model, or applying a late result on the next turn.
+
+## Debrief and learning resources (`spikes/e2e_debrief.py`, `spikes/check_resource_links.py`)
+
+Sat Oct 10, 2026.
+
+**The resource library (24 entries).** I picked candidates, opened each one with the fetch tool and read what it
+covers. Rejected: a SparkFun datasheet tutorial (404), and two All About Circuits textbook pages (403 to scripts, so I
+could not confirm them). The two Texas Instruments notes loaded as PDFs the fetch tool could not read, so I read the
+saved files directly and confirmed their titles ("Basic Calculation of a Buck Converter's Power Stage (Rev. C)", 9 pages;
+"Fundamentals of MOSFET and IGBT Gate Driver Circuits", 48 pages). Caveats found are recorded on the entries: a SparkFun page
+marked retired, a C guide that calls itself beta quality, Wikipedia pages that are articles and not tutorials.
+**None has been reviewed by a person, and every entry says so (`reviewed: false`).** Skills without a match
+(for example Altium) get a search term instead of a link.
+
+**Link check from a script.** 21 of 24 load. 3 return 403 to a script (DigiKey and two Wikipedia pages), but all
+three loaded when read earlier with the fetch tool, so they are probably blocking scripts. Open them in a browser to be sure.
+The check says a page loads, not that its content still matches the description.
+
+**One live run, real Gemini.** The interview ended after 4 answers (meter 0.0, 0.6, 0.95, 1.55). The debrief listed SPI and UART
+as required gaps with the candidate's exact words, linked the right SparkFun page for each, listed the dodged
+question with a TI gate driver note (the question was about gate drivers), and listed oscilloscopes and I2C as strengths.
+Limit seen: the same last answer also said they had never worked with MOSFET gate drivers, and the model did not report
+that one, so it is missing from the debrief. When one answer admits several gaps, only some may be caught. That errs
+toward not penalizing.

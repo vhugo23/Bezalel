@@ -180,3 +180,49 @@ class MetricsResponse(BaseModel):
 class DeleteResponse(BaseModel):
     session_id: str
     deleted_rows: int
+
+
+# ---- debrief ----
+class Resource(BaseModel):
+    id: str
+    title: str
+    url: str
+    source: str
+    kind: Literal["tutorial", "video", "docs", "reference"]
+    level: Literal["beginner", "intermediate"]
+    why: str = Field(description="What the page covers, from reading it. Not a promise it fixes the gap.")
+    caveat: str | None = None
+    reviewed: bool = Field(default=False, description="True only after a person has reviewed the link and its fit.")
+    verified_on: str = Field(description="The day the link was opened and its content read.")
+
+
+class DebriefGap(BaseModel):
+    kind: Literal["skill", "unanswered"]
+    requirement_id: str | None = None
+    title: str
+    level: Literal["required", "preferred"] | None = None
+    result: Literal["unknown", "partial", "no_answer"]
+    evidence_quote: str = Field(description="The candidate's own words, checked to appear in their answer.")
+    turn: int | None = None
+    resources: list[Resource] = []
+    search_hint: str | None = Field(default=None, description="Set when no resource matched. A search term, not a link.")
+    tip: str | None = None
+
+
+class DebriefStrength(BaseModel):
+    requirement_id: str
+    title: str
+    evidence_quote: str
+
+
+class DebriefResponse(BaseModel):
+    session_id: str
+    status: Literal["in_progress", "interview_finished", "ended_early"]
+    ended_early: bool
+    end_reason: str | None = None
+    summary: str
+    gaps: list[DebriefGap]
+    strengths: list[DebriefStrength]
+    meter: MeterState | None = None
+    resources_note: str
+    library_reviewed: bool

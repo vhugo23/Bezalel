@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 
 from app import config
 from app.core import bus, store
-from app.modules.prepcrew import assessor, evaluators, interviewer, meter, simulator, topic_graph
+from app.modules.prepcrew import assessor, debrief, evaluators, interviewer, meter, simulator, topic_graph
 
 PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
 _seq_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -199,6 +199,14 @@ def _gap_list(requirements: list[dict], items: dict[str, str], findings: list[di
             gaps.append({"requirement_id": None, "text": f"did not answer: {f['question']}", "level": None,
                          "result": "no_answer", "evidence_quote": f["evidence_quote"]})
     return gaps
+
+
+async def build_debrief(session_id: str) -> dict:
+    """What stood out and where to learn each gap. Works at any point, and for any session that has a plan."""
+    session = await get_session(session_id)
+    plan = await store.get_record(session["data"]["plan_id"])
+    out = debrief.build(session["data"], plan["data"] if plan else None)
+    return {"session_id": session_id, **out}
 
 
 async def record_timing(session_id: str, stage: str, ms: float, turn: int | None = None) -> None:

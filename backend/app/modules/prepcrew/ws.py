@@ -145,6 +145,7 @@ async def voice_ws(ws: WebSocket, session_id: str):
         await _send(conn, "interviewer_text", text=r["next_question"], turn=r["turn"])
         if r["ended_early"]:
             await _send(conn, "state", state="debrief", reason="requirement_gaps")
+            await _send(conn, "debrief_ready", session_id=session_id)  # the client fetches GET /api/sessions/{id}/debrief
         await _send(conn, "timing", turn=r["turn"], stage="turn_total", ms=round(r["turn_total_ms"], 1))
         tts_task = asyncio.create_task(_speak(conn, session_id, r["next_question"], r["turn"]))
 

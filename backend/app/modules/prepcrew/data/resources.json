@@ -1,0 +1,161 @@
+[
+  {
+    "id": "sf-i2c", "title": "I2C (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/i2c",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "Why I2C uses two wires with open-drain drivers, start and stop conditions, ACK and NACK, addressing and clock stretching.",
+    "caveat": "Written for hobbyists. It links to the NXP I2C specification (UM10204) for interview-level depth.",
+    "keys": ["i2c"]
+  },
+  {
+    "id": "sf-pullups", "title": "Pull-up Resistors (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/pull-up-resistors",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "What pull-up resistors do, why floating inputs need them, and how to pick a value with Ohm's law. This is the part of I2C people get asked about.",
+    "keys": ["pull-up", "pullup", "pull up", "open-drain", "open drain"]
+  },
+  {
+    "id": "sf-spi", "title": "Serial Peripheral Interface (SPI) (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/serial-peripheral-interface-spi",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "SPI as a synchronous bus: clock, data and chip select lines, controller and peripheral roles, wiring several devices.",
+    "caveat": "Does not cover clock polarity and phase modes by name. Read a device datasheet next.",
+    "keys": ["spi"]
+  },
+  {
+    "id": "sf-serial", "title": "Serial Communication (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/serial-communication",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "Asynchronous serial and UARTs: start, data, parity and stop bits, baud rate, TTL versus RS-232, with a worked 9600 8N1 example.",
+    "keys": ["uart", "serial", "baud", "rs-232", "rs232"]
+  },
+  {
+    "id": "sf-scope", "title": "How to Use an Oscilloscope (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/how-to-use-an-oscilloscope",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "The display, vertical and horizontal controls, triggers and probes, and a first measurement.",
+    "keys": ["oscilloscope", "oscilloscopes", "scope", "scopes"]
+  },
+  {
+    "id": "sf-multimeter", "title": "How to Use a Multimeter (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/how-to-use-a-multimeter",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "Measuring voltage, resistance, current and continuity step by step, with safety notes.",
+    "caveat": "SparkFun marks this page as retired, so product links may be out of date.",
+    "keys": ["multimeter", "multimeters", "dmm", "continuity"]
+  },
+  {
+    "id": "sf-schematic", "title": "How to Read a Schematic (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/how-to-read-a-schematic",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "Standard symbols for resistors, capacitors, diodes, transistors and ICs, and how nets and net names show connections.",
+    "keys": ["schematic", "schematics"]
+  },
+  {
+    "id": "cb-datasheets", "title": "How to Read Datasheets and Application Notes (Circuit Basics)", "url": "https://www.circuitbasics.com/how-to-read-datasheets-and-application-notes/",
+    "source": "Circuit Basics", "kind": "tutorial", "level": "beginner",
+    "why": "How datasheets are organized and what each section is for, walked through with a sample datasheet, then how application notes show a part in use.",
+    "caveat": "Assumes some familiarity with terms like pinout. The page has ads and affiliate links.",
+    "keys": ["datasheet", "datasheets", "application note", "application notes"]
+  },
+  {
+    "id": "dk-datasheet-video", "title": "How To Read A Datasheet (Electronics with Becky Stern, DigiKey)", "url": "https://www.digikey.com/en/videos/d/digi-key-electronics/how-to-read-a-datasheet-electronics-with-becky-stern-digikey",
+    "source": "DigiKey", "kind": "video", "level": "beginner",
+    "why": "What the charts, tables and specs in a component datasheet mean, so you can pick parts with more confidence.",
+    "caveat": "The page does not state the video length.",
+    "keys": ["datasheet", "datasheets"]
+  },
+  {
+    "id": "sf-ohms-law", "title": "Voltage, Current, Resistance, and Ohm's Law (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/voltage-current-resistance-and-ohms-law",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "Voltage, current and resistance with a water analogy, Ohm's law, and an LED with a current-limiting resistor worked through.",
+    "keys": ["ohm", "ohms", "circuits", "circuit", "voltage", "current", "resistance", "resistor", "resistors", "led"]
+  },
+  {
+    "id": "sf-logic-levels", "title": "Logic Levels (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/logic-levels",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "Logic levels, TTL versus 3.3 V CMOS thresholds (VIH, VOL), active-high and active-low pins, and level shifting.",
+    "caveat": "Builds on basic electronics knowledge.",
+    "keys": ["logic level", "logic levels", "level shifting", "level shifter", "ttl", "cmos"]
+  },
+  {
+    "id": "et-logic-gates", "title": "Digital Logic Gate Tutorial (Electronics Tutorials)", "url": "https://www.electronics-tutorials.ws/logic/logic_1.html",
+    "source": "Electronics Tutorials", "kind": "tutorial", "level": "beginner",
+    "why": "Basic logic gates, TTL and CMOS families, and logic levels.",
+    "caveat": "Only a brief mention of Boolean algebra. The IC-family sections are dense for absolute beginners.",
+    "keys": ["digital logic", "logic gate", "logic gates", "boolean", "combinational"]
+  },
+  {
+    "id": "sf-capacitors", "title": "Capacitors (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/capacitors",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "How capacitors work, with a section on decoupling (bypass) capacitors that filter supply noise next to ICs.",
+    "caveat": "The theory section gets harder toward the end. Beginners can skip the calculus.",
+    "keys": ["capacitor", "capacitors", "capacitance", "decoupling", "bypass", "brownout", "bulk"]
+  },
+  {
+    "id": "sf-pcb-basics", "title": "PCB Basics (SparkFun Learn)", "url": "https://learn.sparkfun.com/tutorials/pcb-basics",
+    "source": "SparkFun", "kind": "tutorial", "level": "beginner",
+    "why": "What a PCB is, its layers (base, copper, solder mask, silkscreen), common terms, and short tips for designing one.",
+    "keys": ["pcb", "pcbs", "board layout", "layout", "stackup"]
+  },
+  {
+    "id": "kicad-docs", "title": "KiCad documentation", "url": "https://docs.kicad.org/",
+    "source": "KiCad", "kind": "docs", "level": "beginner",
+    "why": "The official KiCad documentation. It links a Getting Started guide and the user manual for the current version.",
+    "keys": ["kicad"]
+  },
+  {
+    "id": "wiki-buck", "title": "Buck converter (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Buck_converter",
+    "source": "Wikipedia", "kind": "reference", "level": "intermediate",
+    "why": "How a step-down DC-DC converter works, with continuous and discontinuous mode, efficiency losses, and synchronous and multiphase variants.",
+    "caveat": "An encyclopedia article, not a tutorial.",
+    "keys": ["buck", "dc-dc", "dc/dc", "switching regulator", "step-down", "inductor", "inductors"]
+  },
+  {
+    "id": "ti-buck-appnote", "title": "Basic Calculation of a Buck Converter's Power Stage (Texas Instruments, SLVA477)", "url": "https://www.ti.com/lit/an/slva477b/slva477b.pdf",
+    "source": "Texas Instruments", "kind": "reference", "level": "intermediate",
+    "why": "The formulas for sizing the inductor and capacitors of a buck converter power stage in continuous conduction mode.",
+    "caveat": "A 9 page PDF. It says it does not explain how a buck converter works, so read the Wikipedia article first.",
+    "keys": ["buck", "power stage", "inductor", "inductors", "dc-dc", "bulk"]
+  },
+  {
+    "id": "ti-gate-driver", "title": "Fundamentals of MOSFET and IGBT Gate Driver Circuits (Texas Instruments, SLUA618A)", "url": "https://www.ti.com/lit/an/slua618a/slua618a.pdf",
+    "source": "Texas Instruments", "kind": "reference", "level": "intermediate",
+    "why": "A systematic approach to designing high-performance gate drive circuits for MOSFETs and IGBTs.",
+    "caveat": "A 48 page PDF, so use the contents list to read only what you need.",
+    "keys": ["gate driver", "gate drivers", "gate drive", "mosfet", "mosfets", "igbt", "half-bridge", "half bridge"]
+  },
+  {
+    "id": "wiki-emc", "title": "Electromagnetic compatibility (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Electromagnetic_compatibility",
+    "source": "Wikipedia", "kind": "reference", "level": "intermediate",
+    "why": "Emissions versus immunity, and the general ideas of grounding, shielding and filtering.",
+    "caveat": "An encyclopedia article. Layout guidance is only general, see the Texas Instruments note for a PCB example.",
+    "keys": ["emi", "emc", "electromagnetic", "interference", "emissions"]
+  },
+  {
+    "id": "ti-pcb-emi", "title": "Several common PCB design techniques (Texas Instruments Analog Design Journal, SLYT849)", "url": "https://ti.com/document-viewer/lit/html/SLYT849/GUID-FBFC9424-4194-47B7-A2A6-43878071F15D",
+    "source": "Texas Instruments", "kind": "reference", "level": "intermediate",
+    "why": "Reducing EMI in PCB design: grounding, bypass capacitors, trace routing and layer stacking, with a worked layout example.",
+    "keys": ["emi", "emc", "grounding", "ground plane", "bypass", "pcb layout", "layout"]
+  },
+  {
+    "id": "pro-git", "title": "Pro Git (Scott Chacon and Ben Straub)", "url": "https://git-scm.com/book/en/v2",
+    "source": "git-scm.com", "kind": "tutorial", "level": "beginner",
+    "why": "A free book on Git from basic version control and daily commands through branching and workflows. It applies to hardware projects the same way.",
+    "caveat": "Licensed CC BY-NC-SA 3.0. The second edition dates from 2014.",
+    "keys": ["git", "version control", "source control", "github"]
+  },
+  {
+    "id": "beej-c", "title": "Beej's Guide to C Programming", "url": "https://beej.us/guide/bgc/",
+    "source": "beej.us", "kind": "tutorial", "level": "beginner",
+    "why": "A free C tutorial in HTML and PDF.",
+    "caveat": "The page calls itself a beta-quality document with possible errors. I did not confirm which topics it covers.",
+    "keys": ["c or c++", "c/c++", "embedded c", "c programming", "c language"]
+  },
+  {
+    "id": "learn-c", "title": "Learn C (learn-c.org)", "url": "https://www.learn-c.org/",
+    "source": "learn-c.org", "kind": "tutorial", "level": "beginner",
+    "why": "Free interactive C lessons from the basics (variables, arrays, loops, functions) to pointers, structures, dynamic allocation and unions, with a Bitmasks chapter.",
+    "caveat": "The site says it is still under construction and promotes a paid course.",
+    "keys": ["c or c++", "c/c++", "embedded c", "c programming", "c language", "pointers", "bitmask", "bitmasks"]
+  },
+  {
+    "id": "learncpp", "title": "Learn C++ (learncpp.com)", "url": "https://www.learncpp.com/",
+    "source": "learncpp.com", "kind": "tutorial", "level": "beginner",
+    "why": "A free structured course in modern C++ from first program to templates, exceptions and smart pointers. No programming experience needed.",
+    "keys": ["c or c++", "c/c++", "c++", "cpp"]
+  }
+]

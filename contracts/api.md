@@ -58,3 +58,18 @@ Two things move the meter:
 - **A stated gap on a skill from the posting** (see above).
 - **An answer that ignores the interviewer's last question**: it dodges, changes the subject, says only that they do not know or cannot say, or is empty or nonsense. Asking a clarifying question back is not one. It counts every time (each question is new), 0.35 each by default, so the second one starts the wrap-up and the third ends a strict interview. An answer that admits a skill gap ("I've never used SPI") is penalized as that gap and not also as a non-answer. Like a skill gap, it only counts when the model's quote of the candidate's own words appears in the answer word for word.
 - The meter works even when the posting yielded no skills, because non-answers do not depend on them. After an early end, `end_gaps` lists unanswered questions as `{result: "no_answer", text: "did not answer: <question>", evidence_quote}`.
+
+## Debrief (end of the interview)
+
+`GET /api/sessions/{id}/debrief` returns what stood out and where to learn each gap. It works at any point (before the
+end it describes what is known so far) and for any session that has a plan. The voice socket sends `debrief_ready`
+right after `state: debrief` when the patience meter ends an interview, so the frontend can fetch and show it.
+
+- `status`: `in_progress`, `interview_finished` or `ended_early`. Also `ended_early`, `end_reason`, `meter`.
+- `summary`: a plain template built from the findings ("This interview ended early. Here is what stood out: you said you haven't used SPI and UART; one question didn't get an answer. You did show you know I2C."). No model writes it.
+- `gaps`: worst first (required unknown, required partial, preferred unknown, preferred partial, then unanswered questions). Each has `kind` (`skill` or `unanswered`), `title`, `level`, `result` (`unknown`, `partial`, `no_answer`), `evidence_quote` (the candidate's own words, checked to appear in their answer), `turn`, `resources`, `search_hint` and `tip`.
+- `strengths`: skills they showed they know, with their own words.
+- `resources`: up to two links per gap from a short hand-picked library (`data/resources.json`, 24 entries). Each was opened and its content read on `verified_on`, and carries a `why` taken from the page and sometimes a `caveat`. **`reviewed` is false for all of them until a person reviews the links.** `library_reviewed` and `resources_note` say so. A skill with no match gets a `search_hint` (a search term, never a link). The model never writes a link.
+- Matching is by whole words in the skill text or the unanswered question, so "SPI" does not match "spice".
+- Not yet linked to the skill graph (`topics.json` is empty), so there is no lesson link or retest yet.
+- Keep the links alive: `spikes/check_resource_links.py` re-checks every URL.
