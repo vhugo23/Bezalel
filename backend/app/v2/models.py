@@ -110,6 +110,31 @@ class Session(BaseModel):
 class PauseInput(BaseModel):
     paused: bool
 
+QuitReason = Literal['lost','unclear','time','technical','wrong_track','other']
+
+class QuitInput(BaseModel):
+    reason: QuitReason
+    note: str = Field(default='', max_length=300)
+
+class QuitStep(BaseModel):
+    title: str
+    detail: str
+    action: Literal['grade','restart','plan','intake','history'] | None = None
+
+class QuitPlan(BaseModel):
+    reason: QuitReason
+    reason_label: str
+    note: str = ''
+    headline: str
+    summary: str
+    next_steps: list[QuitStep]
+    source: Literal['authored'] = 'authored'
+
+class QuitResult(BaseModel):
+    outcome: Literal['moved_on','ended']
+    message: str
+    plan: QuitPlan | None = None
+
 class TurnInput(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
     step: int = Field(ge=0, le=10)

@@ -75,6 +75,7 @@ export const api = {
   end:(id:string)=>request('Report',`/sessions/${id}/end`,{}),
   pause:(id:string,paused:boolean)=>request('Session',`/sessions/${id}/pause`,{paused},'PauseInput'),
   hint:(id:string)=>request('Event',`/sessions/${id}/hint`,{}),
+  quit:(id:string,body:Model<'QuitInput'>)=>request('QuitResult',`/sessions/${id}/quit`,body,'QuitInput'),
   report:(id:string)=>request('Report',`/sessions/${id}/report`),
   metrics:(id:string)=>request('Metrics',`/sessions/${id}/metrics`),
   lesson:(id:string)=>request('Lesson',`/sessions/${id}/lesson`),
