@@ -49,14 +49,20 @@ def test_spoken_answer_goes_through_the_same_path_as_a_typed_one(monkeypatch):
 
 
 def test_stt_time_is_measured_and_reported_in_metrics(monkeypatch):
-    stub_stt(monkeypatch, delay=0.05)
+    from types import SimpleNamespace
+    clock=[100.0]
+    async def transcribe(_):
+        clock[0]+=.125
+        return 'I would check the supply rail first'
+    monkeypatch.setattr(voice,'transcribe',transcribe)
+    monkeypatch.setattr(ws_module,'time',SimpleNamespace(perf_counter=lambda:clock[0]))
     sid = new_session()
     with connect(sid) as ws:
         ws.send_bytes(ONE_SECOND)
         ws.send_json({"type": "speech_end"})
         recv_until(ws, "tts_done")
     m = client.get(f"/api/metrics/{sid}").json()
-    assert m["stt_ms"] is not None and m["stt_ms"] >= 50
+    assert m["stt_ms"] == pytest.approx(125)
 
 
 def test_odd_trailing_byte_is_dropped(monkeypatch):
