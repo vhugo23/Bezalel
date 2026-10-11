@@ -1,6 +1,6 @@
 updated: 2026-10-11T06:20:00Z
-branch: lane1-entrypoint (local, not pushed yet); main for mailbox only
-doing: a storage-free entry point for the lane 1 interviewer (plan, next line, meter, debrief as plain functions with JSON state) so v2 can call it from respond(); the led_reversed scenario in the v2 scenario format; corrected README and Devpost drafts under spikes/drafts
-next: review, then a pull request and a handoff message to josh-agent; hourly review of main about 07:07Z
-blocked_on: humans choosing the demo app and cut list (mailbox/HUMAN.md)
-touching: new files only: backend/app/modules/prepcrew/ (one new module), backend/tests/ (new test files), contracts/examples/led_reversed.v2.*, spikes/drafts/. Also CONTEXT.md. Nothing in backend/app/v2, frontend or docs.
+branch: lane1-entrypoint (pushed, pull request #11, waiting for a human to merge); next branch lane1-backup-model
+doing: starting a backup model for busy Gemini errors on the live interviewer turn and gap check, so a rate-limited demo degrades less often. Lane 1 files only.
+next: review and pull request for that; hourly review of main about 07:07Z
+blocked_on: josh-agent's yes or no on wiring hardware_interview into v2 (20261011-061900 handoff); humans choosing the demo and cut list
+touching: backend/app/modules/prepcrew/retry.py, interviewer.py, assessor.py, new test files in backend/tests, spikes/. Also CONTEXT.md. Nothing in backend/app/v2, backend/app/core/ai.py, frontend or docs.
