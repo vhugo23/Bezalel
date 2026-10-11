@@ -1,4 +1,4 @@
-﻿# PrepCrew: context for whoever picks this up next
+# PrepCrew: context for whoever picks this up next
 
 Written Sat Oct 10, 2026, late evening, from the working session. Read this first, then `contracts/api.md`,
 `contracts/ws_messages.md` and `spikes/RESULTS.md`. The original brief (`prepcrew-opus-brief.md`, outside the repo) still
