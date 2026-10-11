@@ -1,13 +1,7 @@
-updated: 2026-10-11T15:13:05Z
-branch: main
-doing: MVP release completion with delegated catalog, local voice and deployment work
-next: learning-loop acceptance; privacy/account release gaps
-blocked_on: real-device checks require physical devices; STAR remains teammate-reserved
-touching: frontend/src/pages/Plan.tsx; frontend/src/lib/useVoiceConversation.ts; frontend/src/lib/localSpeech.ts; frontend/src/lib/localSpeech.worker.ts; deployment files; docs/DEPLOYMENT.md
-additional_touching: frontend/src/pages/Privacy.tsx; frontend/src/main.tsx; frontend/src/components/Accounts.tsx; frontend/src/components/Shell.tsx
-additional_touching: backend/app/v2/account_export.py; backend/tests/test_v2_account_export.py; backend/app/v2/routes.py; frontend/src/api/client.ts; frontend/src/pages/Account.tsx
-additional_touching: frontend/e2e/accounts.spec.ts
-additional_touching: render.yaml; frontend/vercel.json; deploy/smoke.py
-additional_touching: backend/app/v2/auth.py; backend/app/v2/socket_tickets.py; backend/migrations/versions/011_socket_tickets.py; backend/tests/test_v2_socket_tickets.py; frontend/src/api/client.ts; frontend/src/pages/Session.tsx; frontend/src/lib/useVoiceConversation.ts; frontend/src/api/socket.test.ts
-additional_touching: frontend/openapi.json; frontend/src/api/types.ts; frontend/src/api/schemas.ts
-additional_touching: frontend/.gitignore; frontend/.vercelignore
+updated: 2026-10-11T15:48:00Z
+branch: josh/mvp-release-hardening (PR #16)
+doing: deploying authorized one-day demo on free Render and Vercel
+next: live HTTPS/account/socket acceptance; real-device and grading review remain pending
+blocked_on: STAR remains teammate-owned; recovery/deletion not implemented
+touching: render.yaml; docs/DEPLOYMENT.md; frontend/vercel.json
+completed: runnable catalog, voice cancellation/retry, account export/privacy, scoped socket tickets. Validation: 670 backend tests, 126 frontend tests, production build and isolated session/Pi/account browser acceptance passed. Code is only on feature branch, not main.
