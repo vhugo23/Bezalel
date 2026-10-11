@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">PrepCrew</title>
+  <desc id="desc">A sculpted indigo P with an ascending stroke, representing progress through practice.</desc>
+  <path fill="#4F46E5" fill-rule="evenodd" d="M12 54V18a10 10 0 0 1 10-10h15c12.15 0 22 9.85 22 22s-9.85 22-22 22H29V40h8a10 10 0 1 0 0-20H24v34H12Z" clip-rule="evenodd"/>
+  <path d="m32 32 7-7" stroke="#4F46E5" stroke-width="6" stroke-linecap="round"/>
+  <path d="M34 25h5v5" stroke="#4F46E5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
