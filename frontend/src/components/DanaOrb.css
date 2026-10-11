@@ -1,0 +1,11 @@
+.dana-orb .dana-face{position:absolute;inset:0;width:100%;height:100%;z-index:1;overflow:visible;color:#312e81;filter:drop-shadow(0 1px 0 #ffffff35)}
+.dana-face path{stroke:currentColor;stroke-width:2.7;stroke-linecap:round;stroke-linejoin:round}
+.dana-face ellipse{fill:currentColor}
+.dana-eyes{transform-box:fill-box;transform-origin:center;animation:dana-blink 6.4s ease-in-out infinite}
+.dana-orb[data-state="listening"] .dana-face{transform:rotate(-5deg);transition:transform .3s}
+.dana-orb[data-state="thinking"] .dana-eyes,.dana-orb[data-state="transcribing"] .dana-eyes,.dana-orb[data-state="loading"] .dana-eyes,.dana-orb[data-state="connecting"] .dana-eyes{translate:1px -1px}
+.dana-talking-mouth{transform-box:fill-box;transform-origin:center;animation:dana-talk .55s ease-in-out infinite alternate}
+.dana-orb[data-state="muted"] .dana-eyes{animation:none}
+@keyframes dana-blink{0%,43%,47%,100%{transform:scaleY(1)}45%{transform:scaleY(.12)}}
+@keyframes dana-talk{0%{transform:scale(.9,.45)}55%{transform:scale(1,1)}100%{transform:scale(.85,.65)}}
+@media(prefers-reduced-motion:reduce){.dana-orb,.dana-orb .dana-eyes,.dana-orb .dana-talking-mouth{animation:none!important;transition:none!important}.dana-orb{transform:none!important}}
