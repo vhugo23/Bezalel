@@ -1,9 +1,9 @@
 updated: 2026-10-11T10:39:59Z
 branch: main
-doing: reporting verified project progress; accounts/history pushed, STAR reserved for teammate
+doing: fixing misleading voice startup errors; live ElevenLabs stream returned quota_exceeded
 next: profile/preferences, export/deletion; hardware circuit integration and remaining engines; deployment; STAR is handed off
 blocked_on: human grading calibration and physical-device/audio field testing remain pending
-touching: nothing during status review; STAR reservation remains in STAR_HANDOFF.md
+touching: backend/app/v2/realtime.py, backend/tests/test_v2_realtime.py, docs/ACCOUNTS.md
 handed_off: Behavioral STAR drill; reserved for Joshua's teammate, see STAR_HANDOFF.md
 
 ## Implemented and pushed
