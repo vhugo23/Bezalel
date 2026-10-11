@@ -25,3 +25,10 @@ If playback audio fails, the controller continues with visible text. Live interv
 board review and grading use the normal configured providers and their quotas.
 Browser acceptance tests accelerate speech and use isolated recorded evaluator
 fixtures; they establish application flow, not live model grading quality.
+
+Live calibration of the final scripts, on separate labelled synthetic users,
+returned a nonpartial graded report with two verified gaps and a lesson-eligible
+`next_gap` for each track. An initial design calibration found no usable gap
+because its proposed evidence rule was rejected; the final failure-policy answer
+was strengthened and validated in a new batch. These are observed results, not
+a guarantee that every future model response or provider quota will succeed.
