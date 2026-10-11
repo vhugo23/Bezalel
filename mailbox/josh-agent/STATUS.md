@@ -1,24 +1,25 @@
-updated: 2026-10-11T07:19:05Z
+updated: 2026-10-11T07:52:49Z
 branch: main
-doing: Pi and hardware engine implementation; first fixing one Windows timing-test flake after upstream merge
-next: Pi, hardware circuit integration, remaining catalog engines, accounts/history/privacy; STAR is handed off
+doing: continuing checked executable retests and hardware integration; Pi lab is pushed, STAR stays with the teammate
+next: Pi learning loop, hardware circuit integration, remaining catalog engines, accounts/history/privacy and deployment; STAR is handed off
 blocked_on: human grading calibration and physical-device/audio field testing remain pending
 touching: backend/app/v2 (except behavioral adapter), backend/migrations, backend/scripts, backend/tests/test_stt.py and dedicated new engine tests, frontend/src (except STAR files and circuitSymbols), frontend/e2e/session.spec.ts, docs/IMPLEMENTATION_ROADMAP.md
 handed_off: Behavioral STAR drill; reserved for Joshua's teammate, see STAR_HANDOFF.md
 
 ## Implemented and pushed
 
-Latest feature commit: `df324f1` (board/device reliability); `1b56bc2` adds implicit memory. Earlier slices are on main.
+Latest feature commit: `f7ef60f` (runnable Pi lab); `df324f1` adds board/device reliability and `1b56bc2` adds implicit memory. Earlier slices are on main.
 
 - Canonical FastAPI `/api/v2` and Vite/React/TypeScript UI; root `prototype.html` is the visual reference.
-- Tiger v2.3 migrations through `008_device_resume`, seed catalog, three hypertables and two continuous aggregates. Legacy public-schema tables are preserved.
+- Tiger v2.3 migrations through `009_pi_linux`, seed catalog, three hypertables and two continuous aggregates. Legacy public-schema tables are preserved.
 - Intake text/PDF/public GitHub README sources, exact extracted excerpts, confirmation and source attachments.
-- Durable Gemini plan/review jobs, ranked catalog, prerequisites and versioned publication; generated rate-limiter requirements. Other catalog engines are still pending.
+- Durable Gemini plan/review jobs, ranked catalog, prerequisites and versioned publication; generated rate-limiter requirements. Pi is now runnable; the other catalog engines are still pending.
 - Persisted generic session steps, transcript/event replay by seq, pause/resume/hints; Gemini interviewer and ElevenLabs streaming STT/TTS with interruption controls.
 - Inline/paired board PNG critique, validated stroke targets, local geometry, separate annotations, pause review, actual QR, private-token reconnect, journal/replay, Undo/Clear and stale-review rejection. Exact demo board uses labelled recorded critique.
 - Parallel evaluators, deterministic evidence checks plus independent model review, per-skill assessment, gap lesson and changed retest.
 - Backboard ranks locally verified gaps for implicit openers. Durable sync/erasure outbox and evidence-derived follow-up settings; no memory UI. Live authentication verified, live CRUD result not captured and not counted as passed.
-- Last completed verification: 365 backend tests, fresh Tiger migration, synthetic/mock queue and memory-race acceptance, seven isolated browser journeys. Human grading quality is not established by these fixtures.
+- Pi: five-stage deterministic Linux fault engine, saved terminal/editor/browser/power actions, reference validation, private state, exact tool evidence and progression gates. Commands, hardware and timings are simulated; see docs/PI_LAB.md. Existing-plan migration 009 ran on Tiger and made eight proposed Pi tracks ready. Checked executable retests and full 3D interaction remain pending.
+- Last completed verification: 553 backend tests plus four newly merged circuit-stamp contract tests; 84 frontend tests and build; all eight isolated browser journeys across the suite and focused reruns. Fresh Tiger migration, synthetic/mock queue and memory-race acceptance passed. Human grading quality is not established by these fixtures.
 
 ## Run locally (PowerShell, from repo root)
 
