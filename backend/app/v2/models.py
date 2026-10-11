@@ -10,6 +10,7 @@ class Intake(BaseModel):
     struggles: list[str] = Field(max_length=20)
     question: str = Field(max_length=10000)
     link: str = Field(default='', max_length=2000)
+    source_ids: list[str] = Field(default_factory=list, max_length=10)
 
 class Skill(BaseModel):
     id: str
@@ -253,3 +254,40 @@ class WorkItem(BaseModel):
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None = None
+
+SourceKind = Literal['resume','repo','job_posting','notes','other']
+
+class SourceInput(BaseModel):
+    user_id: str = Field(min_length=1,max_length=100)
+    kind: SourceKind = 'notes'
+    title: str = Field(min_length=1,max_length=160)
+    body: str = Field(min_length=10,max_length=60000)
+
+class SourceLinkInput(BaseModel):
+    user_id: str = Field(min_length=1,max_length=100)
+    url: str = Field(min_length=1,max_length=2000)
+
+class SourceFactDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    category: Literal['project','technology','question','requirement','experience','other']
+    quote: str = Field(min_length=5,max_length=1000)
+
+class SourceExtraction(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    facts: list[SourceFactDraft] = Field(max_length=12)
+
+class SourceDocument(BaseModel):
+    id: str
+    user_id: str
+    kind: str
+    title: str
+    body: str
+    extracted: dict[str, Any]
+    created_at: datetime
+
+class SourceConfirmation(BaseModel):
+    # Select only from the source's locally validated quotes, never new AI facts.
+    fact_indices: list[int] = Field(max_length=12)
+
+class SourceList(BaseModel):
+    sources: list[SourceDocument]

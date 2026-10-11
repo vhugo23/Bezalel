@@ -199,7 +199,7 @@ The first system-design learning-loop slice is implemented: criterion-to-skill a
 
 1. Browser E2E isolation and three acceptance journeys are implemented and verified. Human rubric review remains pending; synthetic examples and a review procedure are in docs/GRADING_REVIEW.md.
 2. Persisted generic session steps, configurable pacing, pause/resume, hints and scenario-specific evaluator selection are implemented. Three browser journeys verify the original board flow plus a synthetic two-step behavioral fixture with its own fleet. Other production tracks still require reviewed content, adapters and publication gates.
-3. Durable lesson generation and saved progress/retry/cancel UI are implemented. Queue acceptance verifies idempotence, worker exclusion, restart recovery, atomic publication and bounded retries on an isolated Tiger schema with recorded fixtures. Complete source ingestion and personalized plan/scenario generation next.
+3. Durable lesson generation and saved progress/retry/cancel UI are implemented. Queue acceptance verifies idempotence, worker exclusion, restart recovery, atomic publication and bounded retries on an isolated Tiger schema with recorded fixtures. Source ingestion now supports text/PDF/Markdown and public GitHub README imports, durable excerpt extraction, exact-quote validation, user confirmation and persisted intake attachments. Four isolated browser journeys cover the added source flow. Personalized plan/scenario generation comes next.
 4. Connect Backboard to verified provenance, resolution and deletion; implement difficulty calibration.
 5. Implement the remaining tracks using those interfaces, starting with Pi and STAR; complete device and deployment gates where dependencies allow.
 

@@ -45,11 +45,14 @@ def infer(body):
     return max(scores,key=scores.get)
 
 async def create_plan(body: Intake):
+    from . import sources
+    documents=await sources.selected(body.user_id,body.source_ids)
+    resume='\n\n'.join(doc['body'] for doc in documents if doc['kind']=='resume')[:60000]
     pid = uid()
     async with (await db.pool()).acquire() as c, c.transaction():
         await c.execute('INSERT INTO users(id,display_name) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET display_name=$2',body.user_id,body.name)
         await c.execute('SELECT id FROM users WHERE id=$1 FOR UPDATE',body.user_id)
-        await c.execute("INSERT INTO profiles(user_id,target_role,target_companies,struggles,links) VALUES($1,$2,$3,$4,$5) ON CONFLICT(user_id) DO UPDATE SET target_role=$2,target_companies=$3,struggles=$4,links=$5,updated_at=now()",body.user_id,body.role,body.companies,body.struggles,{'resume':body.link})
+        await c.execute("INSERT INTO profiles(user_id,target_role,target_companies,struggles,links,resume_text) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id) DO UPDATE SET target_role=$2,target_companies=$3,struggles=$4,links=$5,resume_text=$6,updated_at=now()",body.user_id,body.role,body.companies,body.struggles,{'resume':body.link,'source_ids':body.source_ids},resume or None)
         version = await c.fetchval('SELECT coalesce(max(version),0)+1 FROM plans WHERE user_id=$1',body.user_id)
         await c.execute("UPDATE plans SET status='superseded' WHERE user_id=$1 AND status='ready'",body.user_id)
         await c.execute("INSERT INTO plans(id,user_id,version,inputs,primary_domain,status) VALUES($1,$2,$3,$4,$5,'ready')",pid,body.user_id,version,body.model_dump(),infer(body))

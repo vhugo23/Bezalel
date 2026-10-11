@@ -95,3 +95,39 @@ test('a different engine uses its own steps and fleet, with persisted pause and 
  await expect(page.getByText('Session reviewed',{exact:true})).toBeVisible();
  await expect(page.getByText('Requirements',{exact:true})).toHaveCount(0);
 });
+
+test('source text is saved, excerpts are confirmed, and the plan keeps its attachments',async({page,request})=>{
+ await page.goto('/intake');
+ await page.getByLabel('Save my answers and session transcript for this practice.').check();
+ await page.locator('.source-manager > summary').click();
+ const text='Synthetic resume. I wrote an input parser and added regression tests for malformed requests.';
+ await page.getByLabel('Source title').fill('Synthetic resume fixture');
+ await page.getByLabel('Source text').fill(text);
+ await page.getByRole('button',{name:'Save source text'}).click();
+ await expect(page.getByRole('button',{name:'Find useful excerpts'})).toBeVisible();
+ await page.getByRole('button',{name:'Find useful excerpts'}).click();
+ await expect(page.getByText('Recorded excerpt selection',{exact:true})).toBeVisible();
+ await page.locator('.source-fact input').first().check();
+ await page.getByRole('button',{name:'Confirm selected excerpts'}).click();
+ await expect(page.getByText('Selection saved. You can change it above.',{exact:true})).toBeVisible();
+ await page.screenshot({path:'../.artifacts/e2e/intake-sources.png',fullPage:true});
+ await page.reload();
+ await page.locator('.source-manager > summary').click();
+ await page.getByRole('button',{name:'Review source'}).click();
+ await expect(page.locator('.source-fact input').first()).toBeChecked();
+ await page.getByLabel('Save my answers and session transcript for this practice.').check();
+ const planResponse=page.waitForResponse(response=>response.url().endsWith('/api/v2/plans')&&response.request().method()==='POST');
+ await page.getByRole('button',{name:'Build my plan'}).click();
+ await expect(page.getByRole('heading',{name:/Your plan/})).toBeVisible();
+ const savedPlan=await (await planResponse).json();
+ expect(savedPlan.intake.source_ids).toHaveLength(1);
+ const source=await (await request.get(`/api/v2/sources/${savedPlan.intake.source_ids[0]}`)).json();
+ expect(source.body).toBe(text);
+ expect(source.extracted.confirmed).toBe(true);
+ await page.getByRole('link',{name:'Edit answers'}).click();
+ await page.locator('.source-manager > summary').click();
+ await expect(page.locator('.source-row input').first()).toBeChecked();
+ // Arbitrary fetch targets never reach the network.
+ const bad=await request.post('/api/v2/sources/github',{data:{user_id:'synthetic-ssrf',url:'https://127.0.0.1/private'}});
+ expect(bad.status()).toBe(422);
+});

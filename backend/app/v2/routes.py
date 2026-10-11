@@ -24,6 +24,46 @@ async def plan(body: Intake): return await s.create_plan(body)
 @router.get('/plans/{pid}', response_model=Plan)
 async def get_plan(pid: str): return await s.get_plan(pid)
 
+@router.get('/users/{user_id}/sources', response_model=SourceList)
+async def source_list(user_id: str):
+    from . import sources
+    return SourceList(sources=await sources.list_for(user_id))
+
+@router.post('/sources', response_model=SourceDocument, status_code=201)
+async def source_create(body: SourceInput):
+    from . import sources
+    return await sources.create(body)
+
+@router.post('/sources/upload', response_model=SourceDocument, status_code=201)
+async def source_upload(request: Request, user_id: str=Query(min_length=1,max_length=100),
+                        kind: SourceKind='notes', title: str=Query(min_length=1,max_length=160)):
+    from . import sources
+    data=bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data)>sources.MAX_BYTES:raise HTTPException(413,'Keep source files under 3 MB.')
+    return await sources.upload(user_id,kind,title,bytes(data),request.headers.get('content-type',''))
+
+@router.post('/sources/github', response_model=SourceDocument, status_code=201)
+async def source_github(body: SourceLinkInput):
+    from . import sources
+    return await sources.github(body.user_id,body.url)
+
+@router.get('/sources/{source_id}', response_model=SourceDocument)
+async def source_read(source_id: str):
+    from . import sources
+    return SourceDocument(**dict(await sources.read(source_id)))
+
+@router.post('/sources/{source_id}/extract', response_model=WorkItem, status_code=202)
+async def source_extract(source_id: str):
+    from . import sources
+    return await sources.enqueue(source_id)
+
+@router.post('/sources/{source_id}/confirm', response_model=SourceDocument)
+async def source_confirm(source_id: str, body: SourceConfirmation):
+    from . import sources
+    return await sources.confirm(source_id,body.fact_indices)
+
 @router.post('/sessions', response_model=Session)
 async def start(body: Start): return await s.start(body)
 

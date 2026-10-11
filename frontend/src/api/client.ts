@@ -21,6 +21,19 @@ async function request<K extends keyof components['schemas']>(name: K, path: str
 }
 export const api = {
   health:()=>request('Health','/health'),
+  sources:(user_id:string)=>request('SourceList',`/users/${encodeURIComponent(user_id)}/sources`),
+  source:(id:string)=>request('SourceDocument',`/sources/${id}`),
+  createSource:(body:Model<'SourceInput'>)=>request('SourceDocument','/sources',body,'SourceInput'),
+  githubSource:(user_id:string,url:string)=>request('SourceDocument','/sources/github',{user_id,url},'SourceLinkInput'),
+  extractSource:(id:string)=>request('WorkItem',`/sources/${id}/extract`,{}),
+  confirmSource:(id:string,fact_indices:number[])=>request('SourceDocument',`/sources/${id}/confirm`,{fact_indices},'SourceConfirmation'),
+  job:(id:string)=>request('WorkItem',`/jobs/${id}`),
+  uploadSource:async(user_id:string,kind:Model<'SourceInput'>['kind'],file:File):Promise<Model<'SourceDocument'>>=>{
+    const params=new URLSearchParams({user_id,kind:kind||'notes',title:file.name.slice(0,160)});
+    const response=await fetch(`${API}/api/v2/sources/upload?${params}`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
+    if(!response.ok){const value:unknown=await response.json().catch(()=>null);const error=z.object({detail:z.string()}).safeParse(value);throw new Error(error.success?error.data.detail:'Could not import this file.');}
+    return schemas.SourceDocument.parse(await response.json()) as Model<'SourceDocument'>;
+  },
   plan:(id:string)=>request('Plan',`/plans/${id}`),
   createPlan:(body:Intake)=>request('Plan','/plans',body,'Intake'),
   start:(track_id:string)=>request('Session','/sessions',{track_id,consent:true},'Start'),

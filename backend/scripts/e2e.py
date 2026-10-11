@@ -96,7 +96,7 @@ async def run():
                 stderr=subprocess.STDOUT, creationflags=flags))
         await asyncio.to_thread(wait_ready, env['PREPCREW_API_ORIGIN'] + '/api/v2/health', children[0])
         await asyncio.to_thread(wait_ready, env['PREPCREW_E2E_ORIGIN'], children[1])
-        command = [shutil.which('node'), str(ROOT / 'frontend/node_modules/@playwright/test/cli.js'), 'test']
+        command = [shutil.which('node'), str(ROOT / 'frontend/node_modules/@playwright/test/cli.js'), 'test', *sys.argv[1:]]
         with (output / 'browser.log').open('w', encoding='utf-8') as log:
             result = await asyncio.to_thread(subprocess.run, command, cwd=ROOT / 'frontend', env=env,
                 stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
