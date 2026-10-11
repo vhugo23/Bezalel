@@ -37,13 +37,13 @@ FastAPI + asyncio  on Vultr, Docker Compose, reverse proxy with TLS
 | Voice loop | Speech to text, interviewer turns, streamed speech, barge in | Gemini Flash, ElevenLabs |
 | Session manager | State machine: intake, interview, walkthrough, drill, debrief, lesson, retest | Python |
 | Circuit | DC nodal solver, one netlist per scenario, probe events | Python |
-| Evaluators | One call per answer, run in parallel, schema checked, quotes verified against the transcript | Opus 5.5 |
+| Evaluators | One call per answer per rubric, run in parallel, schema checked, quotes verified against the answer | Gemini (`EVALUATOR_MODEL`) |
 | Curriculum | Skill graph, lessons, mastery updates | Python |
 | Memory | Weak spots and goals carried into the next session | Backboard |
 | Data | `answer_scores` and `probe_events` hypertables, daily mastery continuous aggregate | Tiger Data |
 | Whiteboard | Pencil canvas, vision critique of a stroke snapshot plus the spoken explanation | Gemini |
 
-The live loop uses Flash because turn latency decides whether the conversation feels natural. Grading runs in the background on Opus because quality matters more than speed there.
+The live loop uses Flash because turn latency decides whether the conversation feels natural. Grading runs in the background and can use a stronger, slower Gemini model (`EVALUATOR_MODEL`), because quality matters more than speed there.
 
 Short notes for each component are in `docs/architecture/`.
 
@@ -82,9 +82,8 @@ Keys needed in `.env`:
 
 | Variable | Used for |
 |---|---|
-| `GEMINI_API_KEY` | Interviewer and whiteboard vision |
+| `GEMINI_API_KEY` | Interviewer, grading and whiteboard vision |
 | `ELEVENLABS_API_KEY` | Streamed speech |
-| `ANTHROPIC_API_KEY` | Evaluators |
 | `BACKBOARD_API_KEY` | Memory |
 | `DATABASE_URL` | Tiger Data connection string (any Postgres works) |
 

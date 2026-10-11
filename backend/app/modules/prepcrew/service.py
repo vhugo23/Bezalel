@@ -130,7 +130,9 @@ async def handle_answer(session_id: str, text: str) -> dict:
             raise BadRequest("the interview has ended, request the report")
         turn = int(d.get("turn", 0)) + 1
         answer_id = str(uuid.uuid4())
-        await store.add_event(session_id, "answer", data={"answer_id": answer_id, "text": text, "turn": turn})
+        phase = "walkthrough" if d.get("state") == "walkthrough" else "interview"  # picks the rubrics that grade it
+        await store.add_event(session_id, "answer", data={"answer_id": answer_id, "text": text, "turn": turn,
+                                                          "phase": phase})
 
         update = {"turn": turn}
         done, ended_early, source, shape, violations = False, False, "scripted", None, []

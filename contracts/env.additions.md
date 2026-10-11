@@ -6,10 +6,9 @@ The current `backend/.env.example` has: `DATABASE_URL`, `GEMINI_API_KEY`, `ELEVE
 
 Missing, needed for the contracts:
 
-    # Evaluators (Opus). Needs a new provider in core/ai.py.
-    ANTHROPIC_API_KEY=
-    EVALUATOR_PROVIDER=fake          # fake | anthropic | backboard
-    EVALUATOR_MODEL=                 # model id, fill in from the provider docs
+    # Evaluators. Built on Gemini through core/ai.py (no extra key).
+    EVALUATOR_PROVIDER=              # blank = same as LLM_PROVIDER; fake | gemini
+    EVALUATOR_MODEL=                 # blank = GEMINI_MODEL; a stronger model is fine here, grading is not live
     EVALUATOR_CONCURRENCY=4          # semaphore size
     EVALUATOR_TIMEOUT_SECONDS=60     # grading is slower than a live turn, TASK_TIMEOUT_SECONDS is 20
 

@@ -103,7 +103,7 @@ def test_probe_events_follow_contract(scenario):
 
 
 # ---- grading pipeline + SSE + mastery ----
-RUBRIC = {"rubric_id": "test_rubric", "title": "t", "module": "debug", "status": "reviewed", "score_max": 2,
+RUBRIC = {"rubric_id": "test_rubric", "title": "t", "module": "interview", "status": "reviewed", "score_max": 2,
           "criteria": [{"id": "checked_supply_first", "description": "d", "skill_id": "circuits1.dc_measurement",
                         "anchors": {"0": "no", "2": "yes"}}]}
 

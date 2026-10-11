@@ -1,5 +1,7 @@
 """Neutral LLM layer. Idea code calls generate_text / generate_json and never a vendor SDK directly.
-Add a provider by writing a class with an async `text(prompt, system)` method and registering it."""
+Add a provider by writing a class with an async `text(prompt, system, model)` method and registering it.
+Callers can pick the provider and model per call (`provider=`, `llm_model=`), e.g. a fast model for live turns
+and a stronger one for grading. Blank means LLM_PROVIDER / GEMINI_MODEL."""
 import json
 import re
 
@@ -14,7 +16,7 @@ class FakeProvider:
     """Works with no keys. Use for tests and as a demo fallback."""
     name = "fake"
 
-    async def text(self, prompt: str, system: str | None = None) -> str:
+    async def text(self, prompt: str, system: str | None = None, model: str | None = None) -> str:
         return json.dumps({"note": "fake AI provider; set LLM_PROVIDER and a key", "echo": prompt[:200]})
 
 
@@ -22,15 +24,15 @@ class GeminiProvider:
     """Calls Google's Gemini generateContent REST API. Needs GEMINI_API_KEY and GEMINI_MODEL in .env."""
     name = "gemini"
 
-    async def text(self, prompt: str, system: str | None = None) -> str:
+    async def text(self, prompt: str, system: str | None = None, model: str | None = None) -> str:
         import logging
         import httpx  # lazy import
         logging.getLogger("httpx").setLevel(logging.WARNING)  # never log URLs (the key is a query param)
         if not config.GEMINI_API_KEY:
             raise AIError("GEMINI_API_KEY is empty. Add it to .env and restart the server.")
-        if not config.GEMINI_MODEL:
+        model = (model or config.GEMINI_MODEL).removeprefix("models/")
+        if not model:
             raise AIError("GEMINI_MODEL is empty. Set it in .env to a model name from Google's current model list.")
-        model = config.GEMINI_MODEL.removeprefix("models/")
         body: dict = {"contents": [{"parts": [{"text": prompt}]}]}
         if system:
             body["systemInstruction"] = {"parts": [{"text": system}]}
@@ -56,14 +58,16 @@ class GeminiProvider:
 PROVIDERS = {"fake": FakeProvider, "gemini": GeminiProvider}
 
 
-def get_provider():
-    if config.LLM_PROVIDER not in PROVIDERS:
-        raise AIError(f"unknown LLM_PROVIDER '{config.LLM_PROVIDER}'. Options: {', '.join(PROVIDERS)}")
-    return PROVIDERS[config.LLM_PROVIDER]()
+def get_provider(name: str | None = None):
+    name = name or config.LLM_PROVIDER
+    if name not in PROVIDERS:
+        raise AIError(f"unknown provider '{name}'. Options: {', '.join(PROVIDERS)}")
+    return PROVIDERS[name]()
 
 
-async def generate_text(prompt: str, system: str | None = None) -> str:
-    return await get_provider().text(prompt, system)
+async def generate_text(prompt: str, system: str | None = None, *, llm_model: str | None = None,
+                        provider: str | None = None) -> str:
+    return await get_provider(provider).text(prompt, system, llm_model)
 
 
 def _extract_json(raw: str) -> str:
@@ -72,13 +76,16 @@ def _extract_json(raw: str) -> str:
     return fenced.group(1).strip() if fenced else raw
 
 
-async def generate_json(prompt: str, model=None, system: str | None = None, retries: int = 1) -> dict:
+async def generate_json(prompt: str, model=None, system: str | None = None, retries: int = 1, *,
+                        llm_model: str | None = None, provider: str | None = None) -> dict:
     """Ask for JSON. If `model` (a Pydantic class) is given, validate against it.
-    On invalid output, retry with the error appended, then raise AIError."""
+    On invalid output, retry with the error appended, then raise AIError.
+    `llm_model` / `provider` pick the LLM for this call (`model` is the Pydantic schema, kept for old callers)."""
     attempt_prompt = prompt
     last_error = None
     for _ in range(retries + 1):
-        raw = await generate_text(attempt_prompt, system)
+        extra = {k: v for k, v in (("llm_model", llm_model), ("provider", provider)) if v}
+        raw = await generate_text(attempt_prompt, system, **extra)  # no extras unless set: keeps test doubles working
         try:
             text = _extract_json(raw)
             if model is not None:
