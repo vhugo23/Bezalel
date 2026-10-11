@@ -41,6 +41,11 @@ ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "")
 # pcm_16000 = 16-bit mono little-endian at 16 kHz. This is what the browser player must expect.
 ELEVENLABS_OUTPUT_FORMAT = os.getenv("ELEVENLABS_OUTPUT_FORMAT", "pcm_16000")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
+# Normal operation always requires accounts. The bypass is accepted only by
+# provider-free disposable acceptance schemas (see v2.auth.enabled).
+V2_AUTH_TEST_BYPASS = os.getenv('V2_AUTH_TEST_BYPASS', '') == 'true'
+LEGACY_API_ENABLED = os.getenv('LEGACY_API_ENABLED', '') == 'true'
+AUTH_COOKIE_SECURE = os.getenv('AUTH_COOKIE_SECURE', 'true' if PUBLIC_BASE_URL.startswith('https://') else 'false') == 'true'
 
 # ---- Frontend integration
 # React dev servers (Vite 5173, CRA/Next 3000). Comma separated. Add the deployed frontend URL later.

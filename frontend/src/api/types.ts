@@ -276,6 +276,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_api_v2_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/health": {
         parameters: {
             query?: never;
@@ -843,10 +860,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Me */
+        get: operations["me_api_v2_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register */
+        post: operations["register_api_v2_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_v2_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_api_v2_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Account */
+        Account: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Email */
+            email: string;
+        };
         /** Annotation */
         Annotation: {
             /**
@@ -873,6 +967,15 @@ export interface components {
             target_seq: number;
             /** Event Seq */
             event_seq: number;
+        };
+        /** AuthState */
+        AuthState: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            user?: components["schemas"]["Account"] | null;
         };
         /** BoardInput */
         BoardInput: {
@@ -924,6 +1027,13 @@ export interface components {
             check_status: string;
             /** Check Reason */
             check_reason: string;
+        };
+        /** Credentials */
+        Credentials: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
         };
         /** CriterionResult */
         CriterionResult: {
@@ -1122,6 +1232,33 @@ export interface components {
              * @default false
              */
             test_environment: boolean;
+        };
+        /** History */
+        History: {
+            /** Latest Plan Id */
+            latest_plan_id?: string | null;
+            /** Sessions */
+            sessions?: components["schemas"]["HistoryEntry"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** HistoryEntry */
+        HistoryEntry: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+            /** Step */
+            step: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Ended At */
+            ended_at?: string | null;
         };
         /** Intake */
         Intake: {
@@ -1432,6 +1569,15 @@ export interface components {
              * @description Defaults to the session's current scenario.
              */
             scenario_id?: string | null;
+        };
+        /** Registration */
+        Registration: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+            /** Name */
+            name: string;
         };
         /** ReplyAck */
         ReplyAck: {
@@ -2400,6 +2546,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetricsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_api_v2_history_get: {
+        parameters: {
+            query?: {
+                before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["History"];
                 };
             };
             /** @description Validation Error */
@@ -3562,6 +3739,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    me_api_v2_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthState"];
+                };
+            };
+        };
+    };
+    register_api_v2_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Registration"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_api_v2_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Credentials"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_v2_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthState"];
                 };
             };
         };

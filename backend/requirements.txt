@@ -10,5 +10,6 @@ SQLAlchemy[asyncio]==2.1.4
 google-genai==2.29.0
 websockets==16.1.1
 pypdf==6.20.0
+argon2-cffi==25.1.0
 # Gemini SDK: verify the current package name in Google's docs before installing
 # ElevenLabs / Backboard: use httpx against their REST APIs or their SDKs; check each one's docs

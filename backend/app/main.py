@@ -30,12 +30,14 @@ async def lifespan(app):
             db._pool=None
 
 app = FastAPI(title="PrepCrew backend",lifespan=lifespan)
+from app.v2.auth import router as auth_router, AccessBoundary
+app.add_middleware(AccessBoundary)
 
 if config.CORS_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=config.CORS_ORIGINS,
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -46,6 +48,7 @@ prepcrew.register(app)
 from app.v2.routes import router as v2_router, ws_router as v2_ws_router
 app.include_router(v2_router)
 app.include_router(v2_ws_router)
+app.include_router(auth_router)
 
 
 @app.get("/", include_in_schema=False)

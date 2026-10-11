@@ -46,6 +46,19 @@ class Start(BaseModel):
     track_id: str
     consent: bool
 
+class HistoryEntry(BaseModel):
+    id: str
+    title: str
+    status: str
+    step: int
+    created_at: datetime
+    ended_at: datetime | None=None
+
+class History(BaseModel):
+    latest_plan_id: str | None=None
+    sessions: list[HistoryEntry]=Field(default_factory=list)
+    next_cursor: str | None=None
+
 class EventInput(BaseModel):
     kind: Literal['turn','stroke','step','note','interrupted']
     step: int = Field(default=0, ge=0, le=10)

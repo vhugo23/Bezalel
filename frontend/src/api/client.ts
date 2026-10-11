@@ -9,17 +9,40 @@ export type Intake = Model<'Intake'>;
 export type Plan = Model<'Plan'>;
 export type Session = Model<'Session'>;
 export const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/,'');
+let accountEpoch=0;
+const responseEpoch=new WeakMap<Response,number>();
+export function invalidateAccountRequests(){++accountEpoch;}
+export async function apiJson(response:Response):Promise<unknown>{
+  const value:unknown=await response.json();
+  if(responseEpoch.get(response)!==accountEpoch)throw new Error('The account changed. Reopen this view.');
+  return value;
+}
+export async function apiFetch(path:string,init:RequestInit={}) {
+  const epoch=accountEpoch;
+  const headers=new Headers(init.headers);
+  if(init.method&& !['GET','HEAD','OPTIONS'].includes(init.method))headers.set('X-PrepCrew-Request','1');
+  const response=await fetch(`${API}/api/v2${path}`,{...init,headers,credentials:'include'});
+  if(epoch!==accountEpoch)throw new Error('The account changed. Reopen this view.');
+  responseEpoch.set(response,epoch);
+  if(response.status===401&&!path.startsWith('/auth/'))window.dispatchEvent(new Event('prepcrew-auth-expired'));
+  return response;
+}
 async function request<K extends keyof components['schemas']>(name: K, path: string, body?: unknown, input?: string): Promise<Model<K>> {
   if (input) schemas[input].parse(body);
-  const response = await fetch(`${API}/api/v2${path}`,{method:body===undefined?'GET':'POST',headers:body===undefined?undefined:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+  const response = await apiFetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?undefined:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
   if (!response.ok) {
-    const value: unknown = await response.json().catch(()=>null);
+    const value: unknown = await apiJson(response).catch(()=>null);
     const error=z.object({detail:z.string()}).safeParse(value);
     throw new Error(error.success?error.data.detail:`The server returned ${response.status}. Your work has not been discarded.`);
   }
-  return schemas[name].parse(await response.json()) as Model<K>;
+  return schemas[name].parse(await apiJson(response)) as Model<K>;
 }
 export const api = {
+  auth:()=>request('AuthState','/auth/me'),
+  login:(email:string,password:string)=>request('AuthState','/auth/login',{email,password},'Credentials'),
+  register:(name:string,email:string,password:string)=>request('AuthState','/auth/register',{name,email,password},'Registration'),
+  logout:()=>request('AuthState','/auth/logout',{}),
+  history:(before?:string)=>request('History',`/history${before?'?before='+encodeURIComponent(before):''}`),
   health:()=>request('Health','/health'),
   sources:(user_id:string)=>request('SourceList',`/users/${encodeURIComponent(user_id)}/sources`),
   source:(id:string)=>request('SourceDocument',`/sources/${id}`),
@@ -30,9 +53,9 @@ export const api = {
   job:(id:string)=>request('WorkItem',`/jobs/${id}`),
   uploadSource:async(user_id:string,kind:Model<'SourceInput'>['kind'],file:File):Promise<Model<'SourceDocument'>>=>{
     const params=new URLSearchParams({user_id,kind:kind||'notes',title:file.name.slice(0,160)});
-    const response=await fetch(`${API}/api/v2/sources/upload?${params}`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
-    if(!response.ok){const value:unknown=await response.json().catch(()=>null);const error=z.object({detail:z.string()}).safeParse(value);throw new Error(error.success?error.data.detail:'Could not import this file.');}
-    return schemas.SourceDocument.parse(await response.json()) as Model<'SourceDocument'>;
+    const response=await apiFetch(`/sources/upload?${params}`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
+    if(!response.ok){const value:unknown=await apiJson(response).catch(()=>null);const error=z.object({detail:z.string()}).safeParse(value);throw new Error(error.success?error.data.detail:'Could not import this file.');}
+    return schemas.SourceDocument.parse(await apiJson(response)) as Model<'SourceDocument'>;
   },
   plan:(id:string)=>request('Plan',`/plans/${id}`),
   createPlan:(body:Intake)=>request('Plan','/plans',body,'Intake'),
@@ -51,9 +74,9 @@ export const api = {
   lesson:(id:string)=>request('Lesson',`/sessions/${id}/lesson`),
   generateLesson:(id:string)=>request('WorkItem',`/sessions/${id}/lesson/jobs`,{}),
   lessonJob:async(id:string):Promise<Model<'WorkItem'>|null>=>{
-    const response=await fetch(`${API}/api/v2/sessions/${id}/lesson/jobs`);
+    const response=await apiFetch(`/sessions/${id}/lesson/jobs`);
     if(!response.ok)throw new Error('Could not load generation progress. Your evidence is saved.');
-    return z.union([schemas.WorkItem,z.null()]).parse(await response.json()) as Model<'WorkItem'>|null;
+    return z.union([schemas.WorkItem,z.null()]).parse(await apiJson(response)) as Model<'WorkItem'>|null;
   },
   retryJob:(id:string)=>request('WorkItem',`/jobs/${id}/retry`,{}),
   cancelJob:(id:string)=>request('WorkItem',`/jobs/${id}/cancel`,{}),

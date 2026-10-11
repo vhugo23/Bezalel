@@ -4,12 +4,28 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 from app import config
-from . import db, service as s
+from . import db, service as s, auth
 from .models import *
 from .generation import DEMO
 
 router = APIRouter(prefix='/api/v2', tags=['PrepCrew v2.3'])
 ws_router = APIRouter()
+
+@router.get('/history',response_model=History)
+async def history(request:Request,before:str | None=Query(None,max_length=100)):
+    if not auth.enabled():return History()
+    user_id=request.state.account['id']
+    cursor=None
+    if before:
+        cursor=await db.one('SELECT created_at,id FROM sessions WHERE id=$1 AND user_id=$2',before,user_id)
+        if not cursor:raise HTTPException(404,'History cursor not found.')
+    rows=await db.fetch('''SELECT s.id,t.title,s.status,s.step,s.created_at,s.ended_at
+        FROM sessions s JOIN tracks t ON t.id=s.track_id WHERE s.user_id=$1
+        AND ($2::timestamptz IS NULL OR (s.created_at,s.id)<($2,$3))
+        ORDER BY s.created_at DESC,s.id DESC LIMIT 21''',user_id,cursor['created_at'] if cursor else None,before or '')
+    plan=await db.one("SELECT id FROM plans WHERE user_id=$1 AND status='ready' ORDER BY created_at DESC,id DESC LIMIT 1",user_id)
+    return History(latest_plan_id=plan['id'] if plan else None,
+        sessions=[HistoryEntry(**dict(r)) for r in rows[:20]],next_cursor=rows[19]['id'] if len(rows)>20 else None)
 
 @router.get('/health', response_model=Health)
 async def health():
@@ -19,10 +35,13 @@ async def health():
                   test_environment=config.V2_DATABASE_SCHEMA.startswith('prepcrew_e2e_'))
 
 @router.post('/plans', response_model=Plan)
-async def plan(body: Intake): return await s.create_plan(body)
+async def plan(body: Intake, request: Request):
+    auth.identity(request,body.user_id)
+    return await s.create_plan(body)
 
 @router.post('/plans/jobs', response_model=WorkItem, status_code=202)
-async def plan_job(body: Intake):
+async def plan_job(body: Intake, request: Request):
+    auth.identity(request,body.user_id)
     from . import planning
     return await planning.enqueue(body)
 
@@ -35,7 +54,8 @@ async def source_list(user_id: str):
     return SourceList(sources=await sources.list_for(user_id))
 
 @router.post('/sources', response_model=SourceDocument, status_code=201)
-async def source_create(body: SourceInput):
+async def source_create(body: SourceInput, request: Request):
+    auth.identity(request,body.user_id)
     from . import sources
     return await sources.create(body)
 
@@ -43,6 +63,7 @@ async def source_create(body: SourceInput):
 async def source_upload(request: Request, user_id: str=Query(min_length=1,max_length=100),
                         kind: SourceKind='notes', title: str=Query(min_length=1,max_length=160)):
     from . import sources
+    auth.identity(request,user_id)
     data=bytearray()
     async for chunk in request.stream():
         data.extend(chunk)
@@ -50,7 +71,8 @@ async def source_upload(request: Request, user_id: str=Query(min_length=1,max_le
     return await sources.upload(user_id,kind,title,bytes(data),request.headers.get('content-type',''))
 
 @router.post('/sources/github', response_model=SourceDocument, status_code=201)
-async def source_github(body: SourceLinkInput):
+async def source_github(body: SourceLinkInput, request: Request):
+    auth.identity(request,body.user_id)
     from . import sources
     return await sources.github(body.user_id,body.url)
 
@@ -70,7 +92,9 @@ async def source_confirm(source_id: str, body: SourceConfirmation):
     return await sources.confirm(source_id,body.fact_indices)
 
 @router.post('/sessions', response_model=Session)
-async def start(body: Start): return await s.start(body)
+async def start(body: Start, request: Request):
+    await auth.body_owner(request,'tracks',body.track_id)
+    return await s.start(body)
 
 @router.get('/sessions/{sid}', response_model=Session)
 async def session(sid: str): return await s.get_session(sid)
@@ -199,7 +223,8 @@ async def cancel_job(jid: str):
     return await jobs.cancel(jid)
 
 @router.post('/retests', response_model=Session)
-async def retest(body: RetestInput):
+async def retest(body: RetestInput, request: Request):
+    await auth.body_owner(request,'sessions',body.session_id)
     from .learning import retest
     return await retest(body.session_id)
 

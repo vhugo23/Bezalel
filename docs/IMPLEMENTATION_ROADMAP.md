@@ -10,6 +10,15 @@ The visual contract remains the approved prototype: light cards, indigo accent, 
 
 ## Current implementation inventory
 
+Latest account slice: migration `010_accounts` ran on the configured Tiger Data
+database. Verification: 623 backend tests, 90 frontend tests and production build;
+the separate authenticated browser journey plus Pi and intake/whiteboard/fleet
+compatibility journeys passed. Disposable Tiger acceptance covers actual password
+and token hashes, resource isolation, history pagination, expiry/revocation,
+concurrent session caps, operator binding and shared rate limits. Browser fixtures
+are synthetic and providers are disabled. Desktop/mobile sign-in and history were
+visually inspected. See `docs/ACCOUNTS.md` for setup and remaining release limits.
+
 | Area | Current state | Remaining work |
 | --- | --- | --- |
 | Vite/React/TypeScript UI | Intake, plan/circles, session/transcript, inline board, fleet with per-skill assessments, gap-derived lesson, pairing page exist. | Complete every surface and interaction in the prototype; replace remaining previews and fixed text with persisted product behavior. |
@@ -22,7 +31,7 @@ The visual contract remains the approved prototype: light cards, indigo accent, 
 | Grading | Versioned system-design practice criteria, exact quote/event/type/step checks, independent semantic/score review, per-skill scores, restart/retry and partial-result handling. | Human calibration, evaluators for every other engine, stronger quality acceptance corpus and complete legacy consolidation. |
 | Learning loop | Verified-gap lesson generation and second-model review, checked conceptual and executable Pi retests, queue/focus/parent links, mastery comparison citations, Backboard-ranked evidence-backed opener and authored follow-up depth calibration. Pi variants change constraints for each criterion and retain the rubric. | Generalization to the remaining engines, human review and broader lifecycle acceptance. |
 | Hands-on engines | Runnable Pi Linux fault simulator with terminal/editor/browser/power controls, persisted actions, five verified goals and a reference-run validity gate; legacy circuit module reads stored voltages. | Network simulation, DC solver, C/code execution harnesses, web repo runner, behavioral engine, executable retests and full 3D Pi interaction. |
-| Deployment/accounts | Local development works. Browser-local user id; artifacts on local disk. | Account identity, authorization, durable storage/jobs, HTTPS, operations, export/deletion, CI, production deployment. |
+| Deployment/accounts | Email/password accounts, revocable server cookies, HTTP/WS/resource ownership and cursor-based saved history; cross-device plan restore. Migration 010 ran on Tiger. Legacy product API disabled by default. Artifacts remain on local disk. | Email recovery/verification, profile/preferences, full export/deletion, HTTPS, operations, CI, production deployment. |
 
 Current automated verification: all 568 backend tests, 85 frontend tests and the production build passed. All eight isolated browser journeys passed across the previous suite and focused reruns after making old tests select their intended track; the Pi and whiteboard-to-fleet journeys pass again after executable retest integration. The harness additionally verifies rejected-review nonpublication, audited retry, the changed Pi scenario, same rubric, original citations and idempotent retest start with synthetic/recorded fixtures. Migration 009 is applied on Tiger, including existing-plan Pi availability. Detailed device behavior and field-test limits are in docs/WHITEBOARD_DEVICES.md, and simulator limits are in docs/PI_LAB.md. The backend run has a Starlette/httpx deprecation warning; these tests are not grading-quality evidence.
 
@@ -32,12 +41,12 @@ Earlier integration verification: 329 backend tests and 15 frontend tests passed
 
 - Retain Vite + React + TypeScript, FastAPI, Tiger Data/Postgres, Gemini, ElevenLabs, and Backboard. Hosting remains a deployment choice; Vultr is an option from the brief.
 - Make `/api/v2` and the `prepcrew` v2.3 schema the canonical product path. Upstream memory, evaluators, and time-series changes currently serve legacy records/events and must be adapted before React benefits from them.
-- Preserve legacy data during consolidation. Retire legacy product routes only after their useful behavior has been ported and compatibility requirements are understood.
+- Preserve legacy data during consolidation. Keep legacy product routes disabled until useful behavior has been ported with v2 authorization and generation auditing.
 - Use a shared track/session engine driven by persisted `scenario_steps`, with surface adapters for voice, board, STAR, terminal, editor, schematic, browser, and Pi visualization. The existing hard-coded three-step rate-limiter session becomes one scenario definition.
 - Keep application evidence in the server event log. Store artifacts, scenario state, and model output separately with explicit provenance back to relevant events and generation jobs.
 - The current grading worker runs with the API lifespan and uses persisted session status plus connection-held PostgreSQL advisory locks. This is the minimal local default; it needs no additional queue service. Generalize durable execution to generation, validation, extraction, lessons and memory synchronization. Select a separate worker/queue mechanism before adopting that architectural fork.
 - Select the execution isolation strategy before implementing C and repo runners. Candidate code must have bounded CPU, memory, time, filesystem, and network access; application/provider secrets must be outside the execution environment.
-- Select the account provider, hosting, artifact store, and deployment budget before public rollout. These decisions need concrete choices, rather than assumptions hidden in implementation.
+- Accounts use Argon2id passwords and hashed opaque server sessions. Select hosting, email recovery/verification delivery, artifact storage and deployment budget before public rollout; the local account implementation does not prove public deployment readiness.
 
 ## Build sequence and acceptance gates
 

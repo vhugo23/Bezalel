@@ -641,6 +641,56 @@
         }
       }
     },
+    "/api/v2/history": {
+      "get": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "History",
+        "operationId": "history_api_v2_history_get",
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/History"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/health": {
       "get": {
         "tags": [
@@ -2268,10 +2318,157 @@
           }
         }
       }
+    },
+    "/api/v2/auth/me": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_v2_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/auth/register": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Register",
+        "operationId": "register_api_v2_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Registration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/auth/login": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Login",
+        "operationId": "login_api_v2_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/auth/logout": {
+      "post": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "Logout",
+        "operationId": "logout_api_v2_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthState"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "Account": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
+        "title": "Account"
+      },
       "Annotation": {
         "properties": {
           "kind": {
@@ -2340,6 +2537,27 @@
           "event_seq"
         ],
         "title": "Annotation"
+      },
+      "AuthState": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "user": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Account"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "AuthState"
       },
       "BoardInput": {
         "properties": {
@@ -2475,6 +2693,28 @@
           "check_reason"
         ],
         "title": "CheckedClaim"
+      },
+      "Credentials": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 12,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "Credentials"
       },
       "CriterionResult": {
         "properties": {
@@ -2982,6 +3222,87 @@
           "voice_ready"
         ],
         "title": "Health"
+      },
+      "History": {
+        "properties": {
+          "latest_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Plan Id"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryEntry"
+            },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "title": "History"
+      },
+      "HistoryEntry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "step": {
+            "type": "integer",
+            "title": "Step"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "step",
+          "created_at"
+        ],
+        "title": "HistoryEntry"
       },
       "Intake": {
         "properties": {
@@ -3755,6 +4076,35 @@
         "type": "object",
         "title": "ProbeRequest",
         "description": "Client sends the action only. seq, value and t are always set by the server."
+      },
+      "Registration": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 12,
+            "title": "Password"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password",
+          "name"
+        ],
+        "title": "Registration"
       },
       "ReplyAck": {
         "properties": {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { API, api, socketUrl, type Event, type Model } from '../api/client';
+import { API, api, apiFetch, socketUrl, type Event, type Model } from '../api/client';
 import { voiceMessage } from './voiceProtocol';
 
 export type VoicePhase='off'|'connecting'|'listening'|'transcribing'|'thinking'|'speaking'|'muted';
@@ -43,7 +43,7 @@ export function useVoiceConversation(options:Options) {
       if(opts.current.demo){
         const u=new SpeechSynthesisUtterance(String(event.payload.text));u.onend=complete;u.onerror=()=>{finish.current=null;resolve(false);};speechSynthesis.speak(u);
       }else{
-        const clip=new Audio(`${API}/api/v2/sessions/${opts.current.id}/speech/${event.seq}`);audio.current=clip;
+        const clip=new Audio(`${API}/api/v2/sessions/${opts.current.id}/speech/${event.seq}`);clip.crossOrigin='use-credentials';audio.current=clip;
         const failed=()=>{if(audio.current!==clip)return;audio.current=null;finish.current=null;reject(new Error('Dana’s audio could not play. The transcript is saved; use Replay to try again.'));};
         clip.onended=complete;clip.onerror=failed;void clip.play().catch(failed);
       }
@@ -128,7 +128,7 @@ export function useVoiceConversation(options:Options) {
   const sendNow=()=>send({type:'commit'});
   const sendText=(text:string)=>{stopAudio();send({type:'text',text});setPartial('');setStatus('thinking');};
   const acknowledge=async(event:Event)=>{
-    const r=await fetch(`${API}/api/v2/sessions/${opts.current.id}/reply-complete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seq:event.seq})});
+    const r=await apiFetch(`/sessions/${opts.current.id}/reply-complete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seq:event.seq})});
     if(!r.ok)throw new Error('Could not advance this step. Your conversation is saved.');
     const data=await r.json();if(data.action==='look')setLookRequest(n=>n+1);await opts.current.onEvents();
   };

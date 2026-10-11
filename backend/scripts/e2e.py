@@ -62,6 +62,8 @@ async def seed_fixture(source, schema):
 
 async def run():
     settings = environment_settings()
+    auth_run='--auth' in sys.argv
+    browser_args=[arg for arg in sys.argv[1:] if arg!='--auth']
     source = settings.get('E2E_ADMIN_DATABASE_URL') or settings.get('DATABASE_URL')
     if not source:
         raise RuntimeError('Set E2E_ADMIN_DATABASE_URL or DATABASE_URL with CREATE SCHEMA permission')
@@ -75,6 +77,8 @@ async def run():
            'DEMO_MODE': 'true', 'LLM_PROVIDER': 'fake', 'VOICE_PROVIDER': 'fake',
            'MEMORY_BACKEND': '', 'GEMINI_API_KEY': '', 'ELEVENLABS_API_KEY': '',
            'BACKBOARD_API_KEY': '', 'PYTHONPATH': str(ROOT / 'backend'),
+           'V2_AUTH_TEST_BYPASS':'false' if auth_run else 'true',
+           'LEGACY_API_ENABLED':'false','AUTH_COOKIE_SECURE':'false',
            'PREPCREW_API_ORIGIN': 'http://127.0.0.1:18000',
            'PREPCREW_WEB_PORT': '15173', 'PREPCREW_E2E_ORIGIN': 'http://127.0.0.1:15173'}
     flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
@@ -97,6 +101,8 @@ async def run():
         await verify_implicit_memory(source, name)
         from verify_pi_learning import verify as verify_pi_learning
         await verify_pi_learning(source, name)
+        from verify_auth import verify as verify_accounts
+        await verify_accounts(source,name)
         await seed_fixture(source,name)
         commands = [
             ([sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18000'], ROOT, 'api'),
@@ -109,7 +115,7 @@ async def run():
                 stderr=subprocess.STDOUT, creationflags=flags))
         await asyncio.to_thread(wait_ready, env['PREPCREW_API_ORIGIN'] + '/api/v2/health', children[0])
         await asyncio.to_thread(wait_ready, env['PREPCREW_E2E_ORIGIN'], children[1])
-        command = [shutil.which('node'), str(ROOT / 'frontend/node_modules/@playwright/test/cli.js'), 'test', *sys.argv[1:]]
+        command = [shutil.which('node'), str(ROOT / 'frontend/node_modules/@playwright/test/cli.js'), 'test', *browser_args]
         with (output / 'browser.log').open('w', encoding='utf-8') as log:
             result = await asyncio.to_thread(subprocess.run, command, cwd=ROOT / 'frontend', env=env,
                 stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
