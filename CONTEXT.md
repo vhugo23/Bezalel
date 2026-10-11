@@ -4,40 +4,42 @@ Written Sat Oct 10, 2026, late evening, from the working session. Read this firs
 `contracts/ws_messages.md` and `spikes/RESULTS.md`. The original brief (`prepcrew-opus-brief.md`, outside the repo) still
 sets the rules; the short version is below.
 
-## Current state (refreshed hourly; last 2026-10-11T06:25Z at `29609b5`)
+## Current state (refreshed hourly; last 2026-10-11T07:35Z at `b0a9038`)
 This section is kept current by trey-agent's hourly review. Where it disagrees with an older section below, this one is right.
 The detail behind it is in `mailbox/REVIEW.md`.
 
 **Time left:** Devpost submission is due Sun Oct 11 at noon Central (17:00Z). Hacking ends 1 PM.
 
-**There are now two apps in the repo, and they do not share the interviewer.**
-- Legacy path: `backend/app/modules/prepcrew`, routes under `/api`, sockets `/ws/voice` and `/ws/board`, test page `spikes/voice_check`. This is the hardware and embedded voice interviewer with the patience meter, assessor, humanlike persona and debrief. Pull requests #1 to #8 are all merged.
-- v2 path: `backend/app/v2`, routes under `/api/v2`, the React app in `frontend/`, Alembic migrations in `backend/migrations`, schema `prepcrew` in Tiger Data. It has its own voice loop (`v2/voice.py`, `v2/realtime.py`), whiteboard critique, evidence-checked grading, lessons and retests. Its one working session is a software rate-limiter design. It does not call the legacy interviewer, meter or debrief.
-- Nobody has decided which one is the demo. That is the most important open decision.
+**There are two apps in the repo. They are not joined yet, but the pieces to join them are now on `main`.**
+- Legacy path: `backend/app/modules/prepcrew`, routes under `/api`, sockets `/ws/voice` and `/ws/board`, test page `spikes/voice_check`. The hardware and embedded voice interviewer with the patience meter, assessor, humanlike persona and debrief.
+- v2 path: `backend/app/v2`, routes under `/api/v2`, the React app in `frontend/`, Alembic migrations in `backend/migrations`, schema `prepcrew` in Tiger Data. Intake sources, generated plans, voice and whiteboard session, evidence-checked grading, lessons, retests, memory, and QR pairing to a second device. Its one runnable session is still a software rate-limiter design.
+- The bridge: `backend/app/modules/prepcrew/hardware_interview.py` (`start`, `answer`, `debrief`, plain JSON state, no storage) and `contracts/examples/hw_circuit_debug.two_step.v2.json` with its answer key in a separate file. josh-agent has said it will wire them into `hw.circuit_debug`. Not started.
+- Humans have not yet said which app is the demo or what is cut. Trey: "the cut list and demo are coming but do all you can without it" (`mailbox/HUMAN.md`).
 
 **Who is doing what**
 | Agent | Last seen | Doing | Landed since Oct 10 evening |
 |---|---|---|---|
-| trey-agent | 06:20Z | Branch `lane1-entrypoint` (local): a storage-free entry point for the lane 1 interviewer that v2 can call, `led_reversed` in the v2 scenario format, README and Devpost drafts. Hourly review. | Mailbox, review, this section (#9) |
-| josh-agent | 06:11Z | Intake source ingestion and personalized plan adapters; next Backboard and difficulty calibration. Says Joshua authorized every roadmap slice on `main` and that the roadmap is not a promise for noon. | `9399673` React app, v2 backend, migrations, roadmap. `ed43a21` browser acceptance. `0daf815` sessions driven from persisted scenario configuration. `c891d23` `.env` fix. `859fc57` recoverable lesson generation |
-| shamah-agent | no mailbox activity | Unknown. Shamah's own commits (before the mailbox) did backend and data. | Tiger time-series tables, Backboard memory across sessions, fresh-database fix, backend cleanup, grading moved from Opus to Gemini |
+| trey-agent | 07:29Z | Paused by Trey. Only this hourly review continues. | #11 lane 1 entry point, LED scenario, submission drafts in `spikes/drafts/`. #12 backup model for busy Gemini (`GEMINI_BACKUP_MODEL`, off by default). #13 two-step hardware scenario. All three are on `main` through #13. Open: #14 circuit symbol stamps (`frontend/src/lib/circuitSymbols.ts`, a library, not wired into any screen) |
+| josh-agent | 07:22Z | Pi and hardware engine work; says circuit integration is next | React app, v2 backend, migrations, roadmap. Scenario-driven sessions (`0daf815`). `.env` fix (`c891d23`). Recoverable lessons (`859fc57`). Intake sources (`ec4679c`). Generated plans (`6c2521e`). Memory (`1b56bc2`). Whiteboard review safety and QR pairing with reconnect (`df324f1`, notes in `docs/WHITEBOARD_DEVICES.md`) |
+| shamah-agent | no mailbox activity | Unknown | Nothing since Shamah's own commits on Oct 10 (Tiger time-series, Backboard memory, backend cleanup) |
 | hugo-agent | no mailbox activity | Unknown | Nothing |
 
-All josh-agent code went straight to `main`, with no pull request. The lanes table in `mailbox/README.md` is still unfilled for josh and shamah, and still assumes hugo owns backend and data.
+josh-agent pushes code straight to `main` on Joshua's instruction. Its Behavioral STAR drill is handed to "Joshua's teammate" with reserved files (`mailbox/josh-agent/STAR_HANDOFF.md`); nobody has claimed it in the mailbox. The lanes table in `mailbox/README.md` is still unfilled.
 
 **Open problems right now**
-1. **Fixed in `c891d23`, and it brings a hazard back.** `backend/app/environment.py` now loads process environment, then root `.env`, then `backend/.env`, so keys in `backend/.env` work again with no copying. It also means `DATABASE_URL` in `backend/.env` is loaded again.
-2. `docs/IMPLEMENTATION_ROADMAP.md` is an 11 phase product plan. josh-agent replied that it is continuing through the slices on Joshua's instruction and that integrating the legacy persona, meter and debrief, real hardware tracks and hosting "remain open". No cut list. This is with the humans (`mailbox/HUMAN.md`).
-3. **`set DATABASE_URL=` and `$env:DATABASE_URL=''` do not blank the variable, they remove it, and the loader then fills it from `.env`.** Checked at 06:18Z on a machine with `backend/.env`: after `$env:DATABASE_URL=''` the app had a database URL; after setting it empty inside Python it did not. So the "in-memory" start commands lower in this file now use the real Tiger Data database and start the v2 grading worker on it. To force in-memory storage, run from `backend/`: `python -c "import os; os.environ['DATABASE_URL']=''; import uvicorn; uvicorn.run('app.main:app', port=8000)"`. Do the same for any script. The test suite patches `config.DATABASE_URL` in `conftest.py`.
-4. The React app only runs the software rate-limiter session: `v2/service.py` marks only `sw.sysdesign` ready, and the hardware tracks are seeded as `proposed`. The legacy path has no debug walkthrough: `data/scenarios/` and `data/rubrics/` are empty and a probe on `led_reversed` returns 404.
-5. Nothing is deployed and there is no Dockerfile or compose file, although `README.md` tells you to run `docker compose up`. `README.md` "What it does" items 3 to 7 are not built for hardware in either app.
-6. Run `pip install -r backend/requirements.txt` after pulling. Four packages were added and the tests fail to collect without them.
+1. **`set DATABASE_URL=` and `$env:DATABASE_URL=''` do not blank the variable, they remove it, and the loader then fills it from `.env`.** `backend/app/environment.py` loads process environment, then root `.env`, then `backend/.env`. So an "in-memory" start command on a machine with a database URL in either file uses the real Tiger Data database and starts the v2 grading worker on it. To force in-memory storage, run from `backend/`: `python -c "import os; os.environ['DATABASE_URL']=''; import uvicorn; uvicorn.run('app.main:app', port=8000)"`. For tests: `python -c "import os,sys,pytest; os.environ['DATABASE_URL']=''; sys.exit(pytest.main(['-q']))"`.
+2. Neither app has a hardware debug walkthrough. There is no circuit solver and no schematic view. The React app's hardware tracks are still `proposed`. `contracts/examples/led_reversed.v2.json` must not be loaded as a scenario: it puts the planted fault in the model prompts. Use `hw_circuit_debug.two_step.v2.json` with `hw_circuit_debug.answer_key.json` in `scenarios.params`.
+3. iPad drawing has not been tried on a device. Pairing needs the frontend started with `npm run dev -- --host 0.0.0.0` and the laptop's LAN address typed into the pairing dialog (`docs/WHITEBOARD_DEVICES.md`). Venue wifi may block device-to-device traffic. The circuit stamps have no tool button yet, and nobody has looked at how they render.
+4. Nothing is deployed and there is no Dockerfile or compose file, although `README.md` tells you to run `docker compose up`. `README.md` "What it does" items 3 to 7 are not built for hardware in either app. A corrected README and a Devpost description are drafts in `spikes/drafts/`; nobody has applied them. The video, screenshots, team names and license have no owner.
+5. `docs/IMPLEMENTATION_ROADMAP.md` is an 11 phase product plan, not a plan for the hours left. josh-agent says it is not a promise for noon.
+6. Running the backend tests on Windows leaves a `backend/%SystemDrive%/` folder behind (the PDF test in `test_v2_sources.py`; `v2/sources.py` starts its child process without `SYSTEMDRIVE`). Delete it, do not commit it.
+7. After pulling: `pip install -r backend/requirements.txt` (`pypdf` and others were added) and `npm ci` in `frontend/` (`qrcode` was added).
 
-**Checked at this refresh:** `pytest` in `backend/` at `b1d5939`, 321 passed (fake providers). Not re-run since; josh-agent reports 331 at `c891d23`. Frontend tests and build not run on this machine (no Node). josh-agent's live Gemini, Tiger Data and browser checks were not repeated.
+**Checked at this refresh, on `main` at `b0a9038`:** backend `pytest` 526 passed (stubbed models, database forced off). Frontend `npm test` 16 passed and `npm run build` succeeded, on Node 24.20. Not run: the Playwright browser journeys, anything against Tiger Data, any live Gemini or ElevenLabs call. josh-agent's own reports of those were not repeated.
 
 **Waiting on**
-- josh-agent: nothing. Both messages were answered (`mailbox/trey-agent/archive/`).
-- Humans: which app is the demo; what is cut before noon; confirm Gemini instead of Opus for grading; fill in the lanes table.
+- josh-agent: wiring `hardware_interview` and the two-step scenario into `hw.circuit_debug`; a tool button for the circuit stamps once #14 is merged.
+- Humans: which app is the demo; what is cut before noon; who owns the submission; an iPad test; merge or close #11, #12 (both already on `main` through #13) and #14.
 
 ## What this is
 PrepCrew is a voice interview coach for hardware and embedded engineering students, built for CodeRED: Orion
@@ -98,7 +100,7 @@ ignore it, #7 carries its changes, and close #4 to #6 after #7 merges.
 
 ## Measured so far (small samples, one laptop, not benchmarks; details and caveats in `spikes/RESULTS.md`)
 - Gemini lite first token about 1.0 s in early spikes; a live turn about 1.0 to 1.4 s; `gemini-3.8-flash` was 2.7 to 28.6 s and is too slow for the live loop. The plan call took 1.7 to 5.8 s.
-- ElevenLabs first audio 588 to 852 ms on the flash model (2.3 to 3.3 s on the default). Speech to text 824 to 1558 ms on one synthetic clip, exact words.
+- ElevenLabs first audio 1382, 640, 588 ms over three runs on the flash model, the first one cold (2345, 3292, 1534 ms on the default); 616 to 852 ms in the later end-to-end runs. Speech to text 824 to 1558 ms on one synthetic clip, exact words.
 - Persona change, 10 replies per side: average 18.5 words became 11.7. Whether it sounds human is for a person to judge (`spikes/_runs/blind_read.md`, `spikes/_runs/voice_ab/`, both local and gitignored).
 - Meter against my own labels (not independent): 14 of 14 on ignored-question checks, 17 of 20 on skill checks. A real two-skill interview ended once as designed.
 - A full spoken turn (speech to text, reply, first audio) has NOT been measured end to end.
