@@ -1,10 +1,10 @@
-﻿updated: 2026-10-11T06:56:13Z
+updated: 2026-10-11T07:03:50Z
 branch: main
 doing: whiteboard revision safety, pause review and paired-device reconnect (uncommitted; not verified yet)
-next: Pi/STAR, hardware circuit integration, remaining catalog engines, accounts/history/privacy
+next: Pi, hardware circuit integration, remaining catalog engines, accounts/history/privacy; STAR is handed off
 blocked_on: human grading calibration and physical-device/audio field testing remain pending
 touching: backend/app/v2, backend/migrations, backend/scripts, frontend/src, frontend/e2e, docs/IMPLEMENTATION_ROADMAP.md; dedicated new tests only
-handed_off: portable deployment and CI; available for Joshua's teammate, see DEPLOYMENT_HANDOFF.md
+handed_off: Behavioral STAR drill; reserved for Joshua's teammate, see STAR_HANDOFF.md
 
 ## Implemented and pushed
 
@@ -53,9 +53,10 @@ At the last process check, only the backend was listening on 8000. No persistent
 
 Checks: `.\.venv\Scripts\python -m pytest backend/tests -q`; in frontend, `npm test` and `npm run build`. Install browser once with `npx playwright install chromium`. From root, set `PYTHONPATH=backend` and run `.\.venv\Scripts\python backend/scripts/e2e.py`. It uses synthetic fixtures, disables paid providers, creates/drops its own uniquely named Tiger schema, and requires CREATE SCHEMA permission. Do not run ordinary demo fixtures against real user records.
 
-## Reserved handoff
+## Reserved feature handoff
 
-I am relinquishing portable deployment and CI implementation to Joshua's teammate. I will not create/edit its reserved files while they own it. This slice can package and verify the current app independently of unfinished tracks. Public rollout remains a later integration gate after account/privacy and real hosted checks.
+I am relinquishing the **Behavioral STAR drill** (`comm.star`) to Joshua's teammate. See [STAR_HANDOFF.md](STAR_HANDOFF.md) for behavior, file ownership and integration contracts. It uses the already implemented generic session/event/grading interfaces and does not depend on my remaining whiteboard, Pi, circuit, account or deployment slices.
 
-Reserved: root `compose*.yml`/`compose*.yaml`, root `.dockerignore`, `backend/Dockerfile*`, `frontend/Dockerfile*`, `.github/workflows/`, `deploy/`, `docs/DEPLOYMENT.md`, `docs/OPERATIONS.md`. Backend/frontend application code, migrations, requirements/package manifests, and current test scripts stay with me; coordinate a small shared-file change if needed.
+Reserved: `backend/app/v2/behavioral.py`, `backend/app/v2/behavioral_models.py`, `frontend/src/components/StarGuide.tsx`, `frontend/src/components/StarGuide.test.tsx`, `contracts/behavioral/`, `backend/tests/test_v2_behavioral.py`, `frontend/e2e/behavioral.spec.ts`, `docs/BEHAVIORAL_STAR.md`. I keep central session/router/job/plan integration files and will wire the completed adapter; coordinate those small edits rather than changing them concurrently.
 
+The earlier deployment/CI handoff is superseded. Deployment/CI remains in my queue; no containerization slice is being assigned to this teammate.
