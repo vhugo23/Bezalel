@@ -200,7 +200,8 @@ async def retest(body: RetestInput):
 
 @router.post('/sessions/{sid}/pair', response_model=PairResult)
 async def pair(sid: str):
-    await s.require_session(sid)
+    session=await s.require_session(sid)
+    if session['status']!='live':raise HTTPException(409,'Pairing is available only during a live session.')
     code=secrets.token_hex(4).upper()
     r=await db.one("INSERT INTO session_devices(id,session_id,kind,pair_code,expires_at) VALUES($1,$2,'ipad_whiteboard',$3,now()+interval '10 minutes') RETURNING expires_at",s.uid(),sid,code)
     return PairResult(code=code,session_id=sid,expires_at=r['expires_at'])
@@ -254,17 +255,5 @@ async def live(ws: WebSocket, sid: str, after: int = 0):
 
 @ws_router.websocket('/ws/v2/pair/{code}')
 async def paired(ws: WebSocket, code: str):
-    await ws.accept()
-    row=await db.one("UPDATE session_devices SET status='connected',paired_at=now() WHERE pair_code=$1 AND status='pending' AND expires_at>now() RETURNING *",code)
-    if not row:
-        await ws.send_json({'type':'error','message':'Pairing code expired or already used'}); await ws.close(code=4404); return
-    await ws.send_json({'type':'paired','session_id':row['session_id']})
-    await s.log(row['session_id'],'note','system',1,{'paired':True,'device':'ipad'})
-    try:
-        while True:
-            raw=await ws.receive_json()
-            stroke=Stroke.model_validate(raw)
-            e=await s.append(row['session_id'],EventInput(kind='stroke',step=1,payload=stroke.model_dump()))
-            await ws.send_json({'type':'event','event':e.model_dump(mode='json')})
-    except (WebSocketDisconnect,ValidationError,HTTPException):
-        await db.execute("UPDATE session_devices SET status='disconnected' WHERE id=$1",row['id'])
+    from .devices import paired as connect
+    await connect(ws,code)

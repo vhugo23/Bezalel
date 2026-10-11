@@ -47,6 +47,15 @@ async def seed_fixture(source, schema):
             await conn.execute("INSERT INTO scenarios(id,track_id,engine_id,engine_version,spec,rubric,validity,validity_report) VALUES('e2e-two-step-scenario','e2e-two-step-track','behavioral','1',$1,$2,'passed',$3)",fixture,fixture['rubric'],{'synthetic':True,'kind':'acceptance_fixture_only','semantic_guarantee':False})
             for step in fixture['steps']:
                 await conn.execute("INSERT INTO scenario_steps(scenario_id,idx,title,surface,task,hints,success) VALUES('e2e-two-step-scenario',$1,$2,$3,$4,$5,$6)",step['idx'],step['title'],step['surface'],step['task'],step.get('hints',[]),step['success'])
+            for name,look in (('board-first','on_done'),('pause-board','on_pause')):
+                tid='e2e-'+name+'-track';sid='e2e-'+name+'-scenario'
+                spec={'prompt':'Synthetic board-first system design acceptance fixture.',
+                    'steps':[{'idx':0,'title':'Draw the design','surface':'whiteboard','task':'Draw and explain.',
+                        'config':{'look':look},'success':{'min_turns':1,'board_review':True}}]}
+                await conn.execute("INSERT INTO tracks(id,user_id,domain_id,engine_id,layer,title,source,status) VALUES($1,'e2e-generic-user','sw','conceptual',3,'Synthetic board-first fixture','catalog','ready')",tid)
+                await conn.execute("INSERT INTO scenarios(id,track_id,engine_id,engine_version,spec,validity,validity_report) VALUES($1,$2,'conceptual','1',$3,'passed',$4)",sid,tid,spec,{'synthetic':True,'kind':'acceptance_fixture_only'})
+            await conn.execute("INSERT INTO sessions(id,user_id,track_id,scenario_id,status) VALUES('e2e-expired-pair-session','e2e-generic-user','e2e-board-first-track','e2e-board-first-scenario','live')")
+            await conn.execute("INSERT INTO session_devices(id,session_id,kind,pair_code,expires_at) VALUES('e2e-expired-device','e2e-expired-pair-session','ipad_whiteboard','EXPIRED-CODE',now()-interval '1 minute')")
     finally:
         await conn.close()
 

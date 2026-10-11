@@ -60,5 +60,10 @@ export const api = {
   pair:(id:string)=>request('PairResult',`/sessions/${id}/pair`,{}),
 };
 export const eventMessage = z.object({type:z.literal('event'),event:schemas.Event});
-export const pairMessage = z.union([eventMessage,z.object({type:z.literal('paired'),session_id:z.string()}),z.object({type:z.literal('error'),message:z.string()})]);
+export const pairMessage = z.union([eventMessage,
+ z.object({type:z.literal('paired'),session_id:z.string(),device_id:z.string(),step:z.number().int()}),
+ z.object({type:z.literal('state'),step:z.number().int(),drawable:z.boolean()}),
+ z.object({type:z.literal('ack'),id:z.string(),seq:z.number().int()}),
+ z.object({type:z.literal('review'),review:z.union([schemas.BoardResult,z.null()])}),
+ z.object({type:z.literal('error'),message:z.string(),id:z.string().optional()})]);
 export function socketUrl(path:string) { const url=new URL(API||location.origin); url.protocol=url.protocol==='https:'?'wss:':'ws:'; url.pathname=path.split('?')[0]; url.search=path.split('?')[1]||''; return url.toString(); }

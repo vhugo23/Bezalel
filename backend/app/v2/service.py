@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -119,6 +120,20 @@ async def start(body: Start):
     await log(sid,'turn','interviewer',0,{'text':opening,'source':'verified_memory_'+memory['retrieval'] if memory else 'scenario',**({'source_session_id':memory['source_session_id'],'source_claim_id':memory['source_claim_id'],'evidence_seq':memory['evidence_seq']} if memory else {})})
     return await get_session(sid)
 
+async def current_board_review(sid,step,es,conn=None):
+    one=conn.fetchrow if conn else db.one
+    fetch=conn.fetch if conn else db.fetch
+    artifact=await one("SELECT a.*,g.status AS job_status FROM artifacts a JOIN generation_jobs g ON g.id=a.critique_job_id WHERE a.session_id=$1 AND a.kind='whiteboard' AND a.step=$2 ORDER BY a.version DESC LIMIT 1",sid,step)
+    if not artifact:return None
+    active=active_strokes(es,step)
+    snapshot_seq=next((e.seq for e in es if e.payload.get('board_snapshot') and e.payload.get('artifact_id')==artifact['id']),0)
+    edited=any(e.step==step and e.seq>snapshot_seq and e.payload.get('board_edit') for e in es)
+    if edited or active!={st['id']:st for st in artifact['payload'].get('items',[])}:return None
+    stroke_ids={e.seq:e.payload['id'] for e in es if e.kind=='stroke' and e.actor=='candidate'}
+    rows=await fetch('SELECT * FROM board_annotations WHERE artifact_id=$1 ORDER BY order_idx',artifact['id'])
+    return BoardResult(stroke_ids=sorted(active),artifact_id=artifact['id'],source='recorded' if artifact['job_status']=='cached' else 'gemini',annotations=[Annotation(id=r['id'],kind=r['kind'],severity=r['severity'],speech=r['speech'],target=stroke_ids[r['target_seq']],geometry=r['geometry'],target_seq=r['target_seq'],event_seq=r['event_seq']) for r in rows])
+
+
 async def get_session(sid):
     s = await require_session(sid)
     title = await db.one('SELECT title FROM tracks WHERE id=$1',s['track_id'])
@@ -126,20 +141,7 @@ async def get_session(sid):
     opening = next((e.payload['text'] for e in es if e.actor=='interviewer' and e.kind=='turn'),OPENING)
     definition=await engine.context(sid)
     steps=definition['steps']
-    review=None
-    if s['step']<len(steps) and steps[s['step']].surface=='whiteboard':
-        artifact=await db.one("SELECT a.*,g.status AS job_status FROM artifacts a JOIN generation_jobs g ON g.id=a.critique_job_id WHERE a.session_id=$1 AND a.kind='whiteboard' AND a.step=$2 ORDER BY a.version DESC LIMIT 1",sid,s['step'])
-        if artifact:
-            active={}
-            for event in es:
-                if event.kind=='stroke' and event.actor=='candidate':active[event.payload['id']]=event.payload
-                if event.kind=='note':
-                    for removed in event.payload.get('remove_strokes',[]):active.pop(removed,None)
-            saved=artifact['payload'].get('items',[])
-            if active=={stroke['id']:stroke for stroke in saved}:
-                stroke_ids={e.seq:e.payload['id'] for e in es if e.kind=='stroke' and e.actor=='candidate'}
-                rows=await db.fetch('SELECT * FROM board_annotations WHERE artifact_id=$1 ORDER BY order_idx',artifact['id'])
-                review=BoardResult(artifact_id=artifact['id'],source='recorded' if artifact['job_status']=='cached' else 'gemini',annotations=[Annotation(id=r['id'],kind=r['kind'],severity=r['severity'],speech=r['speech'],target=stroke_ids[r['target_seq']],geometry=r['geometry'],target_seq=r['target_seq'],event_seq=r['event_seq']) for r in rows])
+    review=await current_board_review(sid,s['step'],es) if s['step']<len(steps) and steps[s['step']].surface=='whiteboard' else None
     return Session(id=sid,track_id=s['track_id'],title=title['title'],status=s['status'],step=s['step'],opening=opening,demo=DEMO,events=es,board_review=review,steps=steps,domain=definition['domain_id'],engine_id=definition['engine_id'],paused=s['engine_state'].get('paused',False),engine_state=s['engine_state'])
 
 async def append(sid, body: EventInput):
@@ -150,6 +152,7 @@ async def append(sid, body: EventInput):
         if session['engine_state'].get('paused'):raise HTTPException(409,'Resume the interview first.')
         definition=await engine.context(sid,c)
         steps=definition['steps']
+        if body.kind!='step' and body.step!=session['step']:raise HTTPException(409,'The session moved to another step. Refresh before adding work.')
         if body.kind == 'stroke':
             if session['step']>=len(steps) or steps[session['step']].surface!='whiteboard': raise HTTPException(409,'Drawing is only available in the whiteboard step')
             body.payload = Stroke.model_validate(body.payload).model_dump()
@@ -220,7 +223,7 @@ async def respond(sid, first: Event):
             return TurnResult(events=[],source='listening')
     history=[{'seq':e.seq,'actor':e.actor,'step':e.step,'text':e.payload.get('text'),'kind':e.kind,'interrupted_seq':e.payload.get('interrupted_seq')} for e in es if e.kind in ('turn','interrupted','step')][-40:]
     count=sum(e.kind=='turn' and e.actor=='candidate' and e.step==first.step for e in es)
-    looked=bool(await db.one("SELECT id FROM artifacts WHERE session_id=$1 AND kind='whiteboard' AND step=$2 AND critique_job_id IS NOT NULL LIMIT 1",sid,first.step))
+    looked=bool(await current_board_review(sid,first.step,es)) if is_board else False
     prompt=(
         'You are Dana, conducting a live engineering interview. Own the agenda using the supplied scenario steps. '
         'Reply in one or two short spoken sentences; no markdown, grading or canned praise. '
@@ -285,6 +288,10 @@ async def acknowledge_reply(sid, seq):
             target=session['step']+1
             definition=await engine.context(sid,c) if session.get('scenario_id') else None
             if target>(len(definition['steps']) if definition else 3):return 'continue'
+            if definition and definition['steps'][session['step']].success.get('board_review'):
+                es=[Event(**dict(e)) for e in await c.fetch('SELECT * FROM session_events WHERE session_id=$1 ORDER BY seq',sid)]
+                if not await current_board_review(sid,session['step'],es,c):return 'continue'
+
             await c.execute('UPDATE sessions SET step=$2 WHERE id=$1',sid,target)
             await log(sid,'step','interviewer',target,{'to':target,'source':'interviewer','reply_seq':seq},c)
         return action
@@ -304,7 +311,31 @@ def vision_stroke_log(strokes):
     return result
 
 
+def active_strokes(es,step):
+    active={}
+    for event in es:
+        if event.step!=step:continue
+        if event.kind=='stroke' and event.actor=='candidate':active[event.payload['id']]=event.payload
+        if event.kind=='note':
+            for removed in event.payload.get('remove_strokes',[]):active.pop(removed,None)
+    return active
+
+
+def validate_snapshot(es,step,strokes):
+    if active_strokes(es,step)!={st.id:st.model_dump() for st in strokes}:
+        raise HTTPException(409,'Your board changed. Take a new snapshot to review the saved drawing.')
+
+
 async def board(sid, body: BoardInput):
+    async with (await db.pool()).acquire() as lock:
+        key='board:'+sid
+        if not await lock.fetchval('SELECT pg_try_advisory_lock(hashtextextended($1,0))',key):
+            raise HTTPException(409,'Dana is already looking at this board.')
+        try:return await _board(sid,body)
+        finally:await asyncio.shield(lock.execute('SELECT pg_advisory_unlock(hashtextextended($1,0))',key))
+
+
+async def _board(sid, body: BoardInput):
     s = await require_session(sid)
     if s['status'] != 'live': raise HTTPException(409,'Session is no longer live')
     definition=await engine.ensure_accepting(s,sid)
@@ -316,6 +347,7 @@ async def board(sid, body: BoardInput):
         if not png.startswith(b'\x89PNG\r\n\x1a\n'): raise ValueError()
     except Exception: raise HTTPException(422,'A valid PNG snapshot is required')
     es = await events(sid)
+    validate_snapshot(es,step,body.strokes)
     stroke_events = {e.payload.get('id'):e for e in es if e.kind=='stroke' and e.actor=='candidate'}
     for st in body.strokes:
         if st.id not in stroke_events or Stroke.model_validate(stroke_events[st.id].payload) != st:
@@ -328,7 +360,11 @@ async def board(sid, body: BoardInput):
     directory.mkdir(exist_ok=True)
     (directory / f'{aid}.png').write_bytes(png)
     async with (await db.pool()).acquire() as c, c.transaction():
-        await c.execute('SELECT id FROM sessions WHERE id=$1 FOR UPDATE',sid)
+        current=await c.fetchrow('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',sid)
+        if current['status']!='live' or current['step']!=step or current['engine_state'].get('paused'):
+            raise HTTPException(409,'The interview changed before the snapshot was saved.')
+        fresh=[Event(**dict(e)) for e in await c.fetch('SELECT * FROM session_events WHERE session_id=$1 ORDER BY seq',sid)]
+        validate_snapshot(fresh,step,body.strokes)
         version = await c.fetchval("SELECT coalesce(max(version),0)+1 FROM artifacts WHERE session_id=$1 AND kind='whiteboard' AND step=$2",sid,step)
         await c.execute("INSERT INTO artifacts(id,session_id,kind,step,version,payload,blob_key) VALUES($1,$2,'whiteboard',$6,$3,$4,$5)",aid,sid,version,{'canvas':{'w':900,'h':540},'items':[st.model_dump() for st in body.strokes]},f'{aid}.png',step)
         await log(sid,'note','system',step,{'board_snapshot':True,'artifact_id':aid,'items':len(body.strokes),'sent_to':'recorded' if match else 'vision'},c)
@@ -337,8 +373,14 @@ async def board(sid, body: BoardInput):
     computed = [(m,geometry(m,body.strokes)) for m in result.marks]
     annotations = []
     async with (await db.pool()).acquire() as c, c.transaction():
-        await c.execute('SELECT id FROM sessions WHERE id=$1 FOR UPDATE',sid)
+        current=await c.fetchrow('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',sid)
         await c.execute('UPDATE artifacts SET critique_job_id=$2 WHERE id=$1',aid,jid)
+        fresh=[Event(**dict(e)) for e in await c.fetch('SELECT * FROM session_events WHERE session_id=$1 ORDER BY seq',sid)]
+        if current['status']!='live' or current['step']!=step or current['engine_state'].get('paused'):
+            raise HTTPException(409,'The interview changed while Dana was looking. Your work is saved.')
+        validate_snapshot(fresh,step,body.strokes)
+        if any(e.payload.get('board_edit') and e.seq>next((snap.seq for snap in fresh if snap.payload.get('artifact_id')==aid),0) for e in fresh):
+            raise HTTPException(409,'You resumed drawing while Dana was looking. Request another review.')
         for idx,(mark,geo) in enumerate(computed):
             mid = uid()
             target_seq = stroke_events[mark.target].seq
@@ -346,7 +388,7 @@ async def board(sid, body: BoardInput):
             await c.execute('INSERT INTO board_annotations(id,session_id,artifact_id,kind,geometry,text,severity,target_seq,speech,event_seq,order_idx,source_job_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$6,$9,$10,$11)',mid,sid,aid,mark.kind,geo,mark.speech,mark.severity,target_seq,ev.seq,idx,jid)
             await log(sid,'turn','interviewer',step,{'text':mark.speech,'annotation_id':mid},c)
             annotations.append(Annotation(**mark.model_dump(),id=mid,geometry=geo,target_seq=target_seq,event_seq=ev.seq))
-    return BoardResult(annotations=annotations,source=source,artifact_id=aid)
+    return BoardResult(annotations=annotations,source=source,artifact_id=aid,stroke_ids=sorted(st.id for st in body.strokes))
 
 async def grade(sid):
     from .assessment import grade as run

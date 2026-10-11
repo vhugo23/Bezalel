@@ -140,6 +140,7 @@ class BoardResult(BaseModel):
     annotations: list[Annotation]
     source: str
     artifact_id: str
+    stroke_ids: list[str] = Field(default_factory=list)
 
 class ClaimDraft(BaseModel):
     text: str = Field(max_length=600)

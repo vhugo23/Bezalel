@@ -2329,6 +2329,13 @@
           "artifact_id": {
             "type": "string",
             "title": "Artifact Id"
+          },
+          "stroke_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stroke Ids"
           }
         },
         "type": "object",

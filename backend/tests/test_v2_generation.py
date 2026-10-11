@@ -94,7 +94,10 @@ def test_failed_vision_preserves_png_and_candidate_artifact(monkeypatch,tmp_path
         def __init__(self,value):self.value=value
         async def __aenter__(self):return self.value
         async def __aexit__(self,*_):pass
-    conn=SimpleNamespace(execute=AsyncMock(),fetchval=AsyncMock(return_value=1),transaction=lambda:Context(None))
+    event=Event(session_id='s',seq=1,kind='stroke',actor='candidate',step=1,payload=stroke.model_dump(),ts=datetime.now(timezone.utc))
+    conn=SimpleNamespace(execute=AsyncMock(),fetchval=AsyncMock(return_value=1),
+        fetchrow=AsyncMock(return_value={'status':'live','step':1,'engine_state':{}}),
+        fetch=AsyncMock(return_value=[event.model_dump()]),transaction=lambda:Context(None))
     monkeypatch.setattr(service.db,'pool',AsyncMock(return_value=SimpleNamespace(acquire=lambda:Context(conn))))
     with pytest.raises(ValueError,match='provider unavailable'):
         asyncio.run(service.board('s',BoardInput(strokes=[stroke],png=base64.b64encode(png).decode())))

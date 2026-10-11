@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import demoBoard from '../../contracts/demo-board.json' with {type:'json'};
 // Launch through backend/scripts/e2e.py. Never write into the real workspace.
 test.beforeAll(async({request})=>{
  const response=await request.get('/api/v2/health');
@@ -6,6 +7,72 @@ test.beforeAll(async({request})=>{
  const health=await response.json();
  expect(health.demo).toBe(true);
  expect(health.test_environment).toBe(true);
+});
+
+test('board-first pairing has a real QR, replays strokes and resumes only on its paired device',async({page,context,request})=>{
+ const session=await (await request.post('/api/v2/sessions',{data:{track_id:'e2e-board-first-track',consent:true}})).json();
+ await page.goto(`/session/${session.id}`);
+ await page.getByRole('button',{name:'On my iPad'}).click();
+ await expect(page.getByAltText('Scan to pair this whiteboard')).toHaveAttribute('src',/^data:image\/png/);
+ const href=await page.locator('.pair-link').getAttribute('href');
+ const device=await context.newPage();
+ await device.addInitScript(()=>Object.defineProperty(crypto,'randomUUID',{value:undefined,configurable:true}));
+ await device.goto(href!);
+ await expect(device.getByText('Connected · ready to draw',{exact:true})).toBeVisible();
+ const board=device.getByLabel('Paired iPad whiteboard');const box=(await board.boundingBox())!;
+ await device.mouse.move(box.x+80,box.y+80);await device.mouse.down();await device.mouse.move(box.x+150,box.y+110);await device.mouse.up();
+ await expect(device.getByText(/All strokes saved/)).toBeVisible();
+ await expect(page.getByText(/1 saved strokes/)).toBeVisible();
+ const beforeReload=await (await request.get(`/api/v2/sessions/${session.id}/events`)).json();
+ const unacknowledged=beforeReload.find((e:{kind:string})=>e.kind==='stroke');
+ // Simulate lost confirmation: the saved stroke remains in the device journal.
+ await device.evaluate(({href,event})=>{
+  const code=href.split('/').at(-1);
+  sessionStorage.setItem(`prepcrew-device:${code}:pending`,JSON.stringify([{stroke:event.payload,step:event.step}]));
+ },{href:href!,event:unacknowledged});
+ await device.reload();
+ await expect(device.getByText('Connected · ready to draw',{exact:true})).toBeVisible();
+ await expect(device.getByText(/All strokes saved/)).toBeVisible();
+ const imposter=await context.newPage();await imposter.goto(href!);
+ await expect(imposter.getByText('Pairing expired · request a new code',{exact:true})).toBeVisible();
+ const events=await (await request.get(`/api/v2/sessions/${session.id}/events`)).json();
+ expect(events.filter((e:{kind:string})=>e.kind==='stroke')).toHaveLength(1);
+ expect(events.find((e:{kind:string})=>e.kind==='stroke').step).toBe(0);
+ await device.getByRole('button',{name:'Undo',exact:true}).click();
+ await expect(page.getByText(/0 saved strokes/)).toBeVisible();
+ await page.getByRole('dialog').getByRole('button',{name:'Close'}).click();
+ await page.getByRole('button',{name:'Load demo board + explanation'}).click();
+ await page.getByRole('button',{name:'Done, take a look'}).click();
+ await expect(page.getByRole('button',{name:'Edit drawing'})).toBeVisible();
+ await expect.poll(()=>device.getByLabel('Dana annotations').evaluate(canvas=>{
+  const pixels=(canvas as HTMLCanvasElement).getContext('2d')!.getImageData(0,0,900,540).data;
+  return pixels.some((value,index)=>index%4===3&&value>0);
+ })).toBe(true);
+ await device.screenshot({path:'../.artifacts/e2e/paired-board.png',fullPage:true});
+ await device.getByRole('button',{name:'Clear',exact:true}).click();
+ await expect(page.getByText(/0 saved strokes/)).toBeVisible();
+ await expect(page.getByRole('button',{name:'Edit drawing'})).toHaveCount(0);
+ await imposter.goto('/pair/EXPIRED-CODE');
+ await expect(imposter.getByText('Pairing expired · request a new code',{exact:true})).toBeVisible();
+ await device.close();await imposter.close();
+});
+
+test('on-pause board review runs once, can be edited, and rejects removed snapshot strokes',async({page,request})=>{
+ const session=await (await request.post('/api/v2/sessions',{data:{track_id:'e2e-pause-board-track',consent:true}})).json();
+ await page.goto(`/session/${session.id}`);
+ await page.getByRole('button',{name:'Load demo board + explanation'}).click();
+ await expect(page.getByRole('button',{name:'Edit drawing'})).toBeVisible({timeout:20000});
+ await page.reload();
+ await expect(page.getByRole('button',{name:'Edit drawing'})).toBeVisible();
+ const events=await (await request.get(`/api/v2/sessions/${session.id}/events`)).json();
+ expect(events.filter((e:{payload:Record<string,unknown>})=>e.payload.board_snapshot)).toHaveLength(1);
+ await page.getByRole('button',{name:'Edit drawing'}).click();
+ await expect(page.getByRole('button',{name:'Done, take a look'})).toBeEnabled();
+ await page.getByRole('button',{name:'Undo',exact:true}).click();
+ const result=await request.post(`/api/v2/sessions/${session.id}/board`,{data:{strokes:demoBoard,png:'iVBORw0KGgo='}});
+ expect(result.status()).toBe(409);
+ const current=await (await request.get(`/api/v2/sessions/${session.id}`)).json();
+ expect(current.board_review).toBeNull();
 });
 test('intake → whiteboard → fleet with a rejected unsupported claim',async({page})=>{
  await page.goto('/intake');

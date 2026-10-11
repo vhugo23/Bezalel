@@ -872,6 +872,8 @@ export interface components {
             source: string;
             /** Artifact Id */
             artifact_id: string;
+            /** Stroke Ids */
+            stroke_ids?: string[];
         };
         /** CheckedClaim */
         CheckedClaim: {

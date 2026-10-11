@@ -81,7 +81,7 @@ export function SessionPage() {
         <header className="voice-header"><span className="chat-avatar">D</span><div><b>Dana</b><span>Your engineering interviewer</span></div><Badge>{session?.demo?'Demo':voice.active?'Full duplex':'Interview'}</Badge></header>
         <ErrorNotice error={error||query.error}/>
         <div className="session-surfaces">
-          {isBoard&&!session?.paused&&<div className="drawing-panel"><Whiteboard sid={id} step={step} continueLabel={`${steps[step+1]?.title||'Finish drawing'} →`} events={events} savedReview={session?.board_review} lookRequest={voice.lookRequest} onChange={refresh} onComplete={()=>next.mutate()} onSpeech={async mark=>{const current=await api.session(id);const event=current.events.find(e=>e.kind==='turn'&&e.payload.annotation_id===mark.id);return event?await voice.replay(event,false):false;}}/></div>}
+          {isBoard&&!session?.paused&&<div className="drawing-panel"><Whiteboard key={`${id}:${step}`} lookMode={String(steps[step]?.config?.look||'on_done')} conversationBusy={voice.busy||voice.phase==='transcribing'||voice.level>0.12} partial={voice.partial} sid={id} step={step} continueLabel={`${steps[step+1]?.title||'Finish drawing'} →`} events={events} savedReview={session?.board_review} lookRequest={voice.lookRequest} onChange={refresh} onComplete={()=>next.mutate()} onSpeech={async mark=>{const current=await api.session(id);const event=current.events.find(e=>e.kind==='turn'&&e.payload.annotation_id===mark.id);return event?await voice.replay(event,false):false;}}/></div>}
           {conversation}
         </div>
         {!done&&<footer className="voice-dock">
