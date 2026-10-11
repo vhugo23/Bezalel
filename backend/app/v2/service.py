@@ -67,11 +67,17 @@ async def create_plan(body: Intake, proposal=None, job_id=None, check_job_id=Non
         for t in await c.fetch('SELECT * FROM track_templates WHERE active ORDER BY position'):
             tid = uid()
             layer = await c.fetchval('SELECT layer FROM engines WHERE id=$1',t['engine_id'])
-            ready = t['id'] == 'sw.sysdesign'
+            ready = t['id'] in ('sw.sysdesign','infra.pi_site')
             position=priorities.get(t['id'],(t['position'],None))[0]
             await c.execute("INSERT INTO tracks(id,user_id,plan_id,template_id,domain_id,engine_id,layer,title,summary,source,status,in_plan,position,recommended) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'onboarding',$10,true,$11,$12)",tid,body.user_id,pid,t['id'],t['domain_id'],t['engine_id'],layer,t['title'],t['description'],'ready' if ready else 'proposed',position,bool(proposal and position==0))
             await c.execute('INSERT INTO track_skills(track_id,skill_id,weight) SELECT $1,skill_id,weight FROM template_skills WHERE template_id=$2',tid,t['id'])
-            if ready:
+            if t['id']=='infra.pi_site':
+                from . import pi_lab
+                authored=pi_lab.definition()
+                scenario_id=uid()
+                await c.execute("INSERT INTO scenarios(id,track_id,engine_id,engine_version,spec,params,rubric,validity,validity_report) VALUES($1,$2,'linux_fault',$3,$4,$5,$6,'passed',$7)",scenario_id,tid,pi_lab.VERSION,authored['spec'],authored['params'],authored['rubric'],authored['validity_report'])
+                await engine.persist_steps(c,scenario_id,engine.parse_steps(authored['spec']))
+            elif ready:
                 # Authored conceptual drill; never claim a compiler/solver proved design correctness.
                 spec = {'steps':['Clarify requirements','Draw and explain','Defend the trade-offs'],'prompt':OPENING,
                         'requirements':{'requests_per_second':10000,'identity':'API key','bursts':True,'availability':'preferred','accuracy':'slight approximation acceptable'}}
@@ -135,6 +141,7 @@ async def current_board_review(sid,step,es,conn=None):
 
 
 async def get_session(sid):
+    from . import labs
     s = await require_session(sid)
     title = await db.one('SELECT title FROM tracks WHERE id=$1',s['track_id'])
     es = await events(sid)
@@ -142,7 +149,7 @@ async def get_session(sid):
     definition=await engine.context(sid)
     steps=definition['steps']
     review=await current_board_review(sid,s['step'],es) if s['step']<len(steps) and steps[s['step']].surface=='whiteboard' else None
-    return Session(id=sid,track_id=s['track_id'],title=title['title'],status=s['status'],step=s['step'],opening=opening,demo=DEMO,events=es,board_review=review,steps=steps,domain=definition['domain_id'],engine_id=definition['engine_id'],paused=s['engine_state'].get('paused',False),engine_state=s['engine_state'])
+    return Session(id=sid,track_id=s['track_id'],title=title['title'],status=s['status'],step=s['step'],opening=opening,demo=DEMO,events=es,board_review=review,steps=steps,domain=definition['domain_id'],engine_id=definition['engine_id'],paused=s['engine_state'].get('paused',False),engine_state=labs.public_state(definition))
 
 async def append(sid, body: EventInput):
     async with (await db.pool()).acquire() as c, c.transaction():
@@ -162,6 +169,11 @@ async def append(sid, body: EventInput):
                 return Event(**dict(prior))
         if body.kind == 'step':
             if body.step != session['step']+1 or body.step > len(steps): raise HTTPException(409,'Advance one step at a time')
+            if definition['engine_id']=='linux_fault':
+                from . import labs
+                count=await c.fetchval("SELECT count(*) FROM session_events WHERE session_id=$1 AND kind='turn' AND actor='candidate' AND step=$2",sid,session['step'])
+                if not labs.complete(definition) or count<steps[session['step']].success.get('min_turns',1):
+                    raise HTTPException(409,'Complete the lab check and explain your reasoning before moving on.')
             await c.execute('UPDATE sessions SET step=$2 WHERE id=$1',sid,body.step)
         return await log(sid,body.kind,'system' if body.kind in ('step','note') else 'candidate',body.step,body.payload,c)
 
@@ -208,6 +220,7 @@ def allowed_action(action, step, candidate_count, looked, text):
 
 
 async def respond(sid, first: Event):
+    from . import labs
     # Statements on the board are evidence, not an invitation to interrupt the candidate.
     es=await events(sid)
     text=candidate_utterance(es,first)
@@ -221,7 +234,7 @@ async def respond(sid, first: Event):
         # After critique, a spoken request to continue is also actionable.
         if not re.search(r'\b(next|move on|continue|ready)\b',text,re.I):
             return TurnResult(events=[],source='listening')
-    history=[{'seq':e.seq,'actor':e.actor,'step':e.step,'text':e.payload.get('text'),'kind':e.kind,'interrupted_seq':e.payload.get('interrupted_seq')} for e in es if e.kind in ('turn','interrupted','step')][-40:]
+    history=[{'seq':e.seq,'actor':e.actor,'step':e.step,'text':e.payload.get('text'),'kind':e.kind,'interrupted_seq':e.payload.get('interrupted_seq')} for e in es if e.kind in ('turn','interrupted','step','command','edit','part_drop','probe')][-40:]
     count=sum(e.kind=='turn' and e.actor=='candidate' and e.step==first.step for e in es)
     looked=bool(await current_board_review(sid,first.step,es)) if is_board else False
     prompt=(
@@ -234,6 +247,8 @@ async def respond(sid, first: Event):
         'Do not repeat answered questions. Audio may be unclear: respond patiently to corrections and interruptions. '
         'Actions: continue stays on the current objective; advance invites the next step only after the current '
         'objective is covered; finish closes the final step only. Supply the next task when inviting a transition. '
+        'For a simulator, tool_goal_complete=false requires continue: ask a short diagnostic or verification question. '
+        'Tool results describe a simulation, not real hardware. Do not announce a completed check before it passes. '
         'At a whiteboard step, statements require listen with empty text; questions require a brief answer. '
         'Use look only when the candidate requests review; the app sends the actual image afterward. '
         'Never pretend to have seen the board. After critique, advance when ready. '
@@ -243,6 +258,7 @@ async def respond(sid, first: Event):
             'calibration':definition.get('engine_state',{}).get('calibration',{}) if definition else {},
             'steps':[step.model_dump() for step in steps], 'current_step':first.step,
             'candidate_turns':count,'board_reviewed':looked,'board_look_requested':look_requested,
+            'tool_goal_complete':labs.complete(definition) if definition else True,
             'candidate_utterance':text,'history':history}))
     cached={'text':current.task,'action':'continue'}
     reply,jid,source=await generate('interviewer',sid,prompt,Reply,cached)
@@ -256,11 +272,15 @@ async def respond(sid, first: Event):
         reply=Reply(text='I’m here. Could you repeat your question?',action='continue')
         source='authored'
     action=engine.action_allowed(reply.action,first.step,count,looked,text,steps)
+    if definition and not labs.complete(definition) and action in ('advance','finish'):action='continue'
     async with (await db.pool()).acquire() as c, c.transaction():
         current=await c.fetchrow('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',sid)
         latest=await c.fetchval("SELECT max(seq) FROM session_events WHERE session_id=$1 AND kind='turn' AND actor='candidate'",sid)
         if current['status']!='live' or current.get('engine_state',{}).get('paused') or current['step']!=first.step or latest!=first.seq:
             return TurnResult(events=[],source='superseded')
+        if action in ('advance','finish'):
+            fresh=await engine.context(sid,c)
+            if not labs.complete(fresh):action='continue'
         second=await log(sid,'turn','interviewer',first.step,{'text':reply.text,'source':source,'source_job_id':jid,'action':action,'reply_to':first.seq},c)
     return TurnResult(events=[second],source=source)
 
@@ -288,6 +308,9 @@ async def acknowledge_reply(sid, seq):
             target=session['step']+1
             definition=await engine.context(sid,c) if session.get('scenario_id') else None
             if target>(len(definition['steps']) if definition else 3):return 'continue'
+            if definition:
+                from . import labs
+                if not labs.complete(definition):return 'continue'
             if definition and definition['steps'][session['step']].success.get('board_review'):
                 es=[Event(**dict(e)) for e in await c.fetch('SELECT * FROM session_events WHERE session_id=$1 ORDER BY seq',sid)]
                 if not await current_board_review(sid,session['step'],es,c):return 'continue'

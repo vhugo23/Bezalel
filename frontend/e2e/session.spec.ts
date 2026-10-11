@@ -77,6 +77,9 @@ test('on-pause board review runs once, can be edited, and rejects removed snapsh
 test('intake → whiteboard → fleet with a rejected unsupported claim',async({page})=>{
  await page.goto('/intake');
  await page.getByLabel('What are you aiming for?').fill('Software engineer — synthetic E2E tester');
+ await page.getByLabel('A question that got you').fill('Design a public API rate limiter. How should it handle bursts and availability?');
+ await page.getByRole('button',{name:'Linux & servers',exact:true}).click();
+ await page.getByRole('button',{name:'System design',exact:true}).click();
  await page.getByLabel('Save my answers and session transcript for this practice.').check();
  await page.getByRole('button',{name:'Build my plan'}).click();
  await expect(page.getByRole('button',{name:'Cancel generation'})).toBeVisible();
@@ -114,7 +117,7 @@ test('intake → whiteboard → fleet with a rejected unsupported claim',async({
 test('events replay in sequence, duplicate strokes are idempotent and stale steps fail',async({request})=>{
  const profile={user_id:crypto.randomUUID(),name:'Synthetic tester',role:'Software engineer',companies:[],struggles:['System design'],question:'Design an API.',link:''};
  const plan=await (await request.post('/api/v2/plans',{data:profile})).json();
- const track=plan.tracks.find((t:{ready:boolean})=>t.ready);
+ const track=plan.tracks.find((t:{title:string})=>t.title==='System design: whiteboard');
  const session=await (await request.post('/api/v2/sessions',{data:{track_id:track.id,consent:true}})).json();
  const url=`/api/v2/sessions/${session.id}/events`;
  expect((await request.post(url,{data:{kind:'step',step:2,payload:{to:2}}})).status()).toBe(409);
@@ -213,7 +216,7 @@ test('plan jobs are idempotent, preferences change practice, and intake does not
   const plan=await (await request.get(`/api/v2/plans/${done.result.plan_id}`)).json();
   expect(plan.skills.every((s:{score:number|null})=>s.score===null)).toBe(true);
   expect(plan.tracks).toHaveLength(11);
-  const ready=plan.tracks.find((t:{ready:boolean})=>t.ready);
+  const ready=plan.tracks.find((t:{title:string})=>t.title==='System design: whiteboard');
   const session=await (await request.post('/api/v2/sessions',{data:{track_id:ready.id,consent:true}})).json();
   return {plan,session};
  };

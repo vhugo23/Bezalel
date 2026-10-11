@@ -6,6 +6,7 @@ import { useApp } from '../store';
 import { useVoiceConversation } from '../lib/useVoiceConversation';
 import { Shell } from '../components/Shell';
 import { Whiteboard } from '../components/Whiteboard';
+import { PiLab, labReady } from '../components/PiLab';
 import { Badge, Button, ErrorNotice, Icon } from '../components/ui';
 
 const labels = {off:'Ready when you are',connecting:'Connecting your microphone',listening:'Listening to you',transcribing:'Transcribing your answer',thinking:'Dana is thinking',speaking:'Dana is speaking',muted:'Microphone muted'};
@@ -18,6 +19,7 @@ export function SessionPage() {
   const query=useQuery({queryKey:['session',id],queryFn:()=>api.session(id),refetchInterval:connected?false:3000});
   const session=query.data,step=session?.step??0,events=session?.events??[],steps=session?.steps??[];
   const isBoard=steps[step]?.surface==='whiteboard';
+  const isLab=session?.engine_id==='linux_fault'&&step<steps.length;
   const turns=events.filter(e=>e.kind==='turn'||e.kind==='hint');
   const refresh=()=>qc.invalidateQueries({queryKey:['session',id]});
   const voice=useVoiceConversation({id,step,endStep:steps.length||10,demo:session?.demo??false,sound,onEvents:refresh,onError:setError});
@@ -35,6 +37,7 @@ export function SessionPage() {
         try{
           const event=eventMessage.parse(JSON.parse(message.data)).event as Event;after=Math.max(after,event.seq);
           qc.setQueryData<Model<'Session'>>(['session',id],old=>old?{...old,step:event.kind==='step'?Number(event.payload.to):old.step,paused:event.kind==='note'&&typeof event.payload.paused==='boolean'?event.payload.paused:old.paused,events:[...old.events.filter(e=>e.seq!==event.seq),event].sort((a,b)=>a.seq-b.seq)}:old);
+          if(['command','edit','part_drop','probe','step'].includes(event.kind))void qc.invalidateQueries({queryKey:['session',id]});
         }catch{setError(new Error('The server sent an invalid session event.'));}
       };
       socket.onclose=()=>{setConnected(false);if(!disposed)timer=setTimeout(connect,Math.min(10000,500*2**attempt++));};
@@ -70,10 +73,10 @@ export function SessionPage() {
   </div>;
 
   return <Shell crumb={`${({sw:'Software',hw:'Hardware',infra:'Infra',comm:'Communication',other:'Other'} as Record<string,string>)[session?.domain||'sw']} / ${session?.title||'Session'}`} exit wide>
-    <main className={`sgrid session-grid voice-session ${isBoard?'with-board':''}`}>
+    <main className={`sgrid session-grid voice-session ${isBoard||isLab?'with-board':''}`}>
       <aside className="gcol">
         <section className="card"><div className="ch"><h3>Track</h3><Badge>{done?'Complete':`Step ${step+1} of ${steps.length}`}</Badge></div><div className="cb step-list">{steps.map(({title:name,surface},i)=><div className={`step ${i<step?'done':i===step?'cur':''}`} key={name}><span className="n">{i<step?<Icon name="check"/>:i+1}</span><div><b>{name}</b><small>{surface}</small></div></div>)}</div></section>
-        <section className="card"><div className="cb"><div className="turn"><b>{done?'Nicely done':'Your turn'}</b><span>{steps[step]?.task||'Send the conversation and drawing to the evaluators.'}</span></div><div className="row session-actions">{!done?<Button size="sm" disabled={next.isPending||voice.busy||isBoard||session?.paused||!hasAnswer} onClick={()=>next.mutate()}>Next step<Icon/></Button>:<Button size="sm" disabled={end.isPending} onClick={()=>{voice.end();end.mutate();}}>{end.isPending?'Starting evaluators…':'Finish session'}<Icon/></Button>}</div></div></section>
+        <section className="card"><div className="cb"><div className="turn"><b>{done?'Nicely done':'Your turn'}</b><span>{steps[step]?.task||'Send the conversation and drawing to the evaluators.'}</span></div><div className="row session-actions">{!done?<Button size="sm" disabled={next.isPending||voice.busy||isBoard||session?.paused||!hasAnswer||(isLab&&!labReady(session?.engine_state?.lab))} onClick={()=>next.mutate()}>Next step<Icon/></Button>:<Button size="sm" disabled={end.isPending} onClick={()=>{voice.end();end.mutate();}}>{end.isPending?'Starting evaluators…':'Finish session'}<Icon/></Button>}</div></div></section>
         <div className="session-status"><span className={connected?'dotok':'dotwait'}/>{connected?'Conversation saved':'Reconnecting…'}<span className="fine">{events.length} events in your session</span></div>
         {session?.demo&&<p className="fine demo-note">Recorded demo replies. Your transcript and drawing are saved.</p>}
       </aside>
@@ -82,6 +85,7 @@ export function SessionPage() {
         <ErrorNotice error={error||query.error}/>
         <div className="session-surfaces">
           {isBoard&&!session?.paused&&<div className="drawing-panel"><Whiteboard key={`${id}:${step}`} lookMode={String(steps[step]?.config?.look||'on_done')} conversationBusy={voice.busy||voice.phase==='transcribing'||voice.level>0.12} partial={voice.partial} sid={id} step={step} continueLabel={`${steps[step+1]?.title||'Finish drawing'} →`} events={events} savedReview={session?.board_review} lookRequest={voice.lookRequest} onChange={refresh} onComplete={()=>next.mutate()} onSpeech={async mark=>{const current=await api.session(id);const event=current.events.find(e=>e.kind==='turn'&&e.payload.annotation_id===mark.id);return event?await voice.replay(event,false):false;}}/></div>}
+          {isLab&&session&&<div className="drawing-panel"><PiLab key={id} session={session} onChange={refresh}/></div>}
           {conversation}
         </div>
         {!done&&<footer className="voice-dock">

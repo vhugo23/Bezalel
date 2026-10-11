@@ -1,0 +1,187 @@
+{
+  "spec": {
+    "prompt": "A portfolio site on a Raspberry Pi 4 returns 502. Investigate the terminal and explain your reasoning as you work. All commands and readings are simulated.",
+    "steps": [
+      {
+        "idx": 0,
+        "title": "Read the error",
+        "surface": "terminal",
+        "task": "Reproduce the failure. Compare the proxy error log with a direct request to the app, and explain which layer failed.",
+        "hints": [
+          "Try curl -I localhost, tail /var/log/nginx/error.log, and systemctl status site.",
+          "Compare the upstream address with a direct request to the port shown in the site service status."
+        ],
+        "config": {
+          "simulator": "pi-linux-1"
+        },
+        "success": {
+          "min_turns": 1,
+          "tool_goal": true
+        }
+      },
+      {
+        "idx": 1,
+        "title": "Fix the proxy",
+        "surface": "terminal",
+        "task": "Repair the upstream configuration. Validate the saved config before reloading, then verify the response.",
+        "hints": [
+          "Open the editor. Saving is separate from loading the running configuration.",
+          "Try sudo nginx -t, then sudo systemctl reload nginx, then curl -I localhost."
+        ],
+        "config": {
+          "simulator": "pi-linux-1"
+        },
+        "success": {
+          "min_turns": 1,
+          "tool_goal": true
+        }
+      },
+      {
+        "idx": 2,
+        "title": "Fix the deploy",
+        "surface": "terminal",
+        "task": "Investigate the missing stylesheet. Repair access with the least permissions needed and verify it.",
+        "hints": [
+          "Try curl -I localhost/assets/app.css and ls -l /var/www/site/assets.",
+          "nginx runs as www-data. Avoid making files writable by everyone."
+        ],
+        "config": {
+          "simulator": "pi-linux-1"
+        },
+        "success": {
+          "min_turns": 1,
+          "tool_goal": true
+        }
+      },
+      {
+        "idx": 3,
+        "title": "Free the disk",
+        "surface": "terminal",
+        "task": "The contact form fails. Identify what is consuming disk space, recover it safely, and test the form.",
+        "hints": [
+          "Try df -h and du -sh /var/log/*.",
+          "An unlinked log can still consume space while a process holds it open. Truncation preserves the path."
+        ],
+        "config": {
+          "simulator": "pi-linux-1"
+        },
+        "success": {
+          "min_turns": 1,
+          "tool_goal": true
+        }
+      },
+      {
+        "idx": 4,
+        "title": "Check the hardware",
+        "surface": "terminal",
+        "task": "The site works but is slow. Investigate power and throttling, change a suitable part, and check again.",
+        "hints": [
+          "Try vcgencmd get_throttled and dmesg.",
+          "Current bits and historical bits differ. measure_volts core is not the USB supply voltage."
+        ],
+        "config": {
+          "simulator": "pi-linux-1"
+        },
+        "success": {
+          "min_turns": 1,
+          "tool_goal": true
+        }
+      }
+    ],
+    "simulator": "pi-linux-1",
+    "synthetic": true
+  },
+  "params": {
+    "variant": 0
+  },
+  "rubric": {
+    "version": "pi-linux-practice-v1",
+    "evaluators": {
+      "Linux and power": [
+        {
+          "id": "proxy",
+          "skill_id": "infra.reverse_proxy",
+          "description": "Explains the proxy/upstream distinction and verifies a scoped configuration repair.",
+          "rules": [
+            "quoted_turn",
+            "tool_action"
+          ],
+          "scored": true,
+          "steps": [
+            0,
+            1
+          ]
+        },
+        {
+          "id": "permissions",
+          "skill_id": "infra.permissions",
+          "description": "Explains and verifies nginx read access without granting world-write permissions.",
+          "rules": [
+            "quoted_turn",
+            "tool_action"
+          ],
+          "scored": true,
+          "steps": [
+            2
+          ]
+        },
+        {
+          "id": "disk",
+          "skill_id": "infra.disk_logs",
+          "description": "Diagnoses disk allocation and verifies safe log recovery; distinguishes unlinking an open log from releasing its blocks.",
+          "rules": [
+            "quoted_turn",
+            "tool_action"
+          ],
+          "scored": true,
+          "steps": [
+            3
+          ]
+        },
+        {
+          "id": "power",
+          "skill_id": "infra.power_thermals",
+          "description": "Distinguishes current from historical throttle flags and verifies suitable power; does not treat VC4 core voltage as USB input.",
+          "rules": [
+            "quoted_turn",
+            "tool_action"
+          ],
+          "scored": true,
+          "steps": [
+            4
+          ]
+        }
+      ],
+      "Debug process": [
+        {
+          "id": "method",
+          "skill_id": "infra.debug_method",
+          "description": "Explains a hypothesis, uses a targeted diagnostic, makes a scoped change and verifies the observed result. Command count alone is not ability.",
+          "rules": [
+            "quoted_turn",
+            "tool_action"
+          ],
+          "scored": true,
+          "steps": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      ]
+    }
+  },
+  "validity_report": {
+    "kind": "deterministic_reference_run",
+    "engine": "pi-linux-1",
+    "semantic_guarantee": false,
+    "checks": [
+      "broken_symptoms_reproduced",
+      "five_reference_goals_pass",
+      "historical_power_flags_retained"
+    ],
+    "label": "Hand-built simulator checked by a reference run; authored rubric, human calibration pending"
+  }
+}

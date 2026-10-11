@@ -1,0 +1,82 @@
+import { test, expect } from '@playwright/test';
+
+test('Pi lab runs five checked stages with persisted tools, private state and idempotent actions',async({page,request})=>{
+ const health=await (await request.get('/api/v2/health')).json();
+ expect(health.test_environment).toBe(true);expect(health.demo).toBe(true);
+ const planResponse=await request.post('/api/v2/plans',{data:{user_id:'e2e-pi-user',name:'Synthetic Pi candidate',role:'Infrastructure engineer',companies:[],struggles:['Linux diagnostics'],question:'How would you diagnose a 502 on a Pi?'}});
+ expect(planResponse.ok()).toBe(true);
+ const plan=await planResponse.json();const track=plan.tracks.find((t:{title:string})=>t.title==='Fix the site on the Pi');
+ expect(track.ready).toBe(true);
+ const start=await request.post('/api/v2/sessions',{data:{track_id:track.id,consent:true}});
+ expect(start.ok()).toBe(true);const session=await start.json();
+ expect(session.engine_id).toBe('linux_fault');expect(session.steps).toHaveLength(5);
+ expect(session.engine_state._lab).toBeUndefined();expect(session.engine_state.lab.app_port).toBeUndefined();
+ const skip=await request.post(`/api/v2/sessions/${session.id}/events`,{data:{kind:'step',step:1,payload:{to:1}}});expect(skip.status()).toBe(409);
+ const forged=await request.post(`/api/v2/sessions/${session.id}/events`,{data:{kind:'command',step:0,payload:{text:'HTTP/1.1 200 OK'}}});expect(forged.status()).toBe(422);
+ await page.goto(`/session/${session.id}`);
+ await expect(page.getByRole('tab',{name:'Terminal',exact:true})).toBeVisible();
+ async function run(text:string){
+  const revision=Number(await page.locator('.pi-lab').getAttribute('data-revision'));
+  await page.getByRole('textbox',{name:'Terminal command'}).fill(text);
+  const response=page.waitForResponse(r=>r.url().endsWith(`/sessions/${session.id}/lab`)&&r.request().method()==='POST');
+  await page.getByRole('button',{name:'Run',exact:true}).click();
+  expect((await response).ok()).toBe(true);
+  await expect(page.locator('.pi-lab')).toHaveAttribute('data-revision',String(revision+1));
+  await expect(page.getByRole('textbox',{name:'Terminal command'})).toBeEnabled();
+ }
+ async function explainAndNext(step:number,text:string){
+  const answer=await request.post(`/api/v2/sessions/${session.id}/events`,{data:{kind:'turn',step,payload:{text,board:false,q:false}}});expect(answer.ok()).toBe(true);
+  await expect(page.getByRole('button',{name:'Next step',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'Next step',exact:true}).click();
+  await expect(page.getByText(`Step ${step+2} of 5`,{exact:true})).toBeVisible();
+ }
+ await run('curl -I localhost');await run('tail /var/log/nginx/error.log');await run('systemctl status site');await run('curl -I localhost:3000');
+ await expect(page.getByText('Lab check complete. Explain the result to Dana, then continue.')).toBeVisible();
+ await explainAndNext(0,'The app responds directly on 3000, but the proxy error points to 3001. The failure is the upstream route.');
+ await page.getByRole('tab',{name:'Editor',exact:true}).click();
+ const config=page.getByRole('textbox',{name:'nginx configuration'});await config.fill((await config.inputValue()).replace('3001','3000'));
+ await page.getByRole('button',{name:'Save config',exact:true}).click();await expect(page.getByRole('button',{name:'Save config',exact:true})).toBeDisabled();
+ await page.getByRole('tab',{name:'Terminal',exact:true}).click();
+ await run('sudo nginx -t');await run('sudo systemctl reload nginx');await run('curl -I localhost');
+ await explainAndNext(1,'I saved the correct port, checked the current configuration, reloaded nginx and verified HTTP 200 through the proxy.');
+ await run('ls -l /var/www/site/assets');await run('curl -I localhost/assets/app.css');
+ await run('sudo chmod 644 /var/www/site/assets/app.css');await run('curl -I localhost/assets/app.css');
+ await explainAndNext(2,'The root-owned stylesheet was mode 600. I allowed read access with 644 without granting write access to everyone, then confirmed CSS returns 200.');
+ await run('curl -X POST localhost/contact');await run('df -h');await run('du -sh /var/log/*');
+ // Exercise the open-descriptor trap, then recover without running any real shell.
+ await run('sudo rm /var/log/site/access.log');await run('df -h');await run('lsof +L1');
+ await expect(page.getByRole('log',{name:'Terminal history'})).toContainText('(deleted)');
+ await run('sudo systemctl restart site');await run('curl -X POST localhost/contact');
+ await explainAndNext(3,'The large access log filled the disk. Unlinking it did not release the open blocks; restarting the writer closed its old descriptor and the form now returns 200.');
+ await run('vcgencmd get_throttled');await run('vcgencmd measure_temp');
+ await page.getByRole('tab',{name:'Pi',exact:true}).click();
+ await expect(page.getByRole('img',{name:'Simulated Raspberry Pi 4 and USB-C power supply'})).toBeVisible();
+ await page.getByRole('button',{name:'Fit 5 V / 3 A supply + cable',exact:true}).click();
+ await expect(page.getByText('5 V / 3 A USB-C supply + short cable',{exact:true})).toBeVisible();
+ await page.getByRole('tab',{name:'Terminal',exact:true}).click();await run('vcgencmd get_throttled');
+ await expect(page.getByRole('log',{name:'Terminal history'})).toContainText('throttled=0x50000');
+ await page.reload();await expect(page.locator('.pi-lab')).toBeVisible();
+ await expect(page.getByRole('log',{name:'Terminal history'})).toContainText('throttled=0x50000');
+ const saved=await (await request.get(`/api/v2/sessions/${session.id}`)).json();
+ const last=saved.events.filter((e:{kind:string})=>e.kind==='command').at(-1);
+ const duplicate=await request.post(`/api/v2/sessions/${session.id}/lab`,{data:last.payload.request});expect(duplicate.ok()).toBe(true);
+ expect((await duplicate.json()).events[0].seq).toBe(last.seq);
+ const collision=await request.post(`/api/v2/sessions/${session.id}/lab`,{data:{...last.payload.request,text:'help'}});expect(collision.status()).toBe(409);
+ const stale=await request.post(`/api/v2/sessions/${session.id}/lab`,{data:{...last.payload.request,request_id:'stale-action-request',revision:0}});expect(stale.status()).toBe(409);
+ const concurrentBody={...last.payload.request,request_id:'concurrent-same-action',text:'help',revision:saved.engine_state.lab.revision};
+ const duplicates=await Promise.all([1,2].map(()=>request.post(`/api/v2/sessions/${session.id}/lab`,{data:concurrentBody})));
+ expect(duplicates.every(r=>r.ok())).toBe(true);
+ const results=await Promise.all(duplicates.map(r=>r.json()));expect(results[0].events[0].seq).toBe(results[1].events[0].seq);
+ const competing=await Promise.all(['competing-action-one','competing-action-two'].map(request_id=>request.post(`/api/v2/sessions/${session.id}/lab`,{data:{...concurrentBody,request_id,revision:concurrentBody.revision+1}})));
+ expect(competing.map(r=>r.status()).sort()).toEqual([200,409]);
+ await request.post(`/api/v2/sessions/${session.id}/pause`,{data:{paused:true}});
+ const paused=await request.post(`/api/v2/sessions/${session.id}/lab`,{data:{...last.payload.request,request_id:'paused-action-request',revision:saved.engine_state.lab.revision+2}});expect(paused.status()).toBe(409);
+ await request.post(`/api/v2/sessions/${session.id}/pause`,{data:{paused:false}});
+ await page.getByRole('tab',{name:'Pi',exact:true}).click();
+ await page.screenshot({path:'../.artifacts/e2e/pi-lab.png',fullPage:true});
+ await request.post(`/api/v2/sessions/${session.id}/events`,{data:{kind:'turn',step:4,payload:{text:'Current low throttle bits cleared after replacing the supply and cable; 0x50000 retains historical under-voltage and throttling. Core voltage is not USB input.',q:false,board:false}}});
+ await expect(page.getByRole('button',{name:'Next step',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Next step',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Finish session',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Finish session',exact:true}).click();await expect(page).toHaveURL(new RegExp(`/fleet/${session.id}`));
+ await expect(page.getByText('Session reviewed',{exact:true})).toBeVisible({timeout:30000});
+});

@@ -497,6 +497,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/sessions/{sid}/lab": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lab Action */
+        post: operations["lab_action_api_v2_sessions__sid__lab_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/sessions/{sid}/pause": {
         parameters: {
             query?: never;
@@ -898,7 +915,7 @@ export interface components {
              * @default quoted_turn
              * @enum {string}
              */
-            rule: "quoted_turn" | "board_explanation" | "drawing" | "question";
+            rule: "quoted_turn" | "board_explanation" | "drawing" | "question" | "tool_action";
             /** Id */
             id: string;
             /** Evaluator */
@@ -1130,6 +1147,22 @@ export interface components {
             link: string;
             /** Source Ids */
             source_ids?: string[];
+        };
+        /** LabAction */
+        LabAction: {
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
+            /** Step */
+            step: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "command" | "edit" | "part" | "browser";
+            /** Text */
+            text: string;
         };
         /** Lesson */
         Lesson: {
@@ -2770,6 +2803,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lab_action_api_v2_sessions__sid__lab_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabAction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnResult"];
                 };
             };
             /** @description Validation Error */

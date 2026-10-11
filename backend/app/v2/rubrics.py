@@ -66,7 +66,7 @@ def load(payload, engine_id='conceptual'):
             c=Criterion(**item)
             if not c.id or not c.skill_id or not c.description or not c.steps or any(not isinstance(i,int) or not 0<=i<=9 for i in c.steps):
                 raise ValueError('Invalid criterion definition')
-            if not c.rules or any(rule not in ('question','quoted_turn','board_explanation','drawing') for rule in c.rules):
+            if not c.rules or any(rule not in ('question','quoted_turn','board_explanation','drawing','tool_action') for rule in c.rules):
                 raise ValueError('Invalid evidence rule')
             definitions.append(c)
         if len({c.id for c in definitions})!=len(definitions):raise ValueError('Duplicate criterion id')

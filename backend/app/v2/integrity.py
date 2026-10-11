@@ -31,11 +31,16 @@ def verify(claim: ClaimDraft, events: list[dict], session_id: str):
         valid = all(e['kind'] == 'turn' and e['payload'].get('board') and not e['payload'].get('q') for e in cited)
     elif claim.rule == 'question':
         valid = all(e['kind'] == 'turn' and e['payload'].get('q') for e in cited)
+    elif claim.rule == 'tool_action':
+        valid = all(e['kind'] in ('command','edit','part_drop','probe') and
+                    e['payload'].get('source') == 'validated_simulator' and
+                    isinstance(e['payload'].get('revision'),int) and
+                    bool(e['payload'].get('engine_version')) for e in cited)
     else:
         valid = all(e['kind'] == 'turn' for e in cited) and bool(claim.quotes)
     if not valid:
         return 'rejected', 'Cited events do not support the required kind of evidence'
     if claim.rule != 'drawing':
         if len(claim.quotes) != len(cited) or any(not q.strip() or q not in e['payload'].get('text','') for q,e in zip(claim.quotes,cited)):
-            return 'rejected', 'An exact transcript quote is missing or does not match'
+            return 'rejected', 'An exact evidence quote is missing or does not match'
     return 'verified', 'Event references and exact evidence checked; model interpretation is not a proof'

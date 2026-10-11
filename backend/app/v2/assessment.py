@@ -100,6 +100,8 @@ async def evaluate(sid, name, events, scenario, policy=None):
             'Each claim must use the criterion skill_id and allowed evidence rule. Use narrow factual claims. '
             'Address the candidate in the second person (You...) in user-facing claims. '
             'For drawing only report that a drawing was recorded; stroke presence does not prove architecture quality. '
+            'tool_action evidence is a server-computed simulation action/result with exact text quotes. It can establish '
+            'what was inspected, changed or verified in that simulation; command count and tool output alone do not establish spoken reasoning. '
             'No candidate score can be based on Dana explaining an answer. A gap must cite an explicit attempted answer. '
             'Return every criterion exactly once. Restrict citations to each criterion allowed steps. '
             'Return at most TWO claims per criterion; scores are integer 0 to 4, never percentages. '

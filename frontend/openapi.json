@@ -1201,6 +1201,58 @@
         }
       }
     },
+    "/api/v2/sessions/{sid}/lab": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Lab Action",
+        "operationId": "lab_action_api_v2_sessions__sid__lab_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/sessions/{sid}/pause": {
       "post": {
         "tags": [
@@ -2389,7 +2441,8 @@
               "quoted_turn",
               "board_explanation",
               "drawing",
-              "question"
+              "question",
+              "tool_action"
             ],
             "title": "Rule",
             "default": "quoted_turn"
@@ -2995,6 +3048,52 @@
           "question"
         ],
         "title": "Intake"
+      },
+      "LabAction": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{16,100}$",
+            "title": "Request Id"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision"
+          },
+          "step": {
+            "type": "integer",
+            "maximum": 9.0,
+            "minimum": 0.0,
+            "title": "Step"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "command",
+              "edit",
+              "part",
+              "browser"
+            ],
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id",
+          "revision",
+          "step",
+          "kind",
+          "text"
+        ],
+        "title": "LabAction"
       },
       "Lesson": {
         "properties": {

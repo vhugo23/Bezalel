@@ -75,6 +75,11 @@ async def start(body: Start): return await s.start(body)
 @router.get('/sessions/{sid}', response_model=Session)
 async def session(sid: str): return await s.get_session(sid)
 
+@router.post('/sessions/{sid}/lab', response_model=TurnResult)
+async def lab_action(sid: str, body: LabAction):
+    from . import labs
+    return await labs.action(sid,body)
+
 @router.post('/sessions/{sid}/pause', response_model=Session)
 async def pause(sid: str, body: PauseInput):
     async with (await db.pool()).acquire() as conn,conn.transaction():

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Literal, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 class Intake(BaseModel):
     user_id: str = Field(min_length=1, max_length=100)
@@ -105,6 +105,20 @@ class TurnResult(BaseModel):
     events: list[Event]
     source: str
 
+class LabAction(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    request_id: str = Field(pattern=r'^[a-zA-Z0-9_-]{16,100}$')
+    revision: int = Field(ge=0)
+    step: int = Field(ge=0,le=9)
+    kind: Literal['command','edit','part','browser']
+    text: str = Field(min_length=1,max_length=10000)
+
+    @model_validator(mode='after')
+    def bounded_action(self):
+        limit=6000 if self.kind=='edit' else 500
+        if len(self.text)>limit:raise ValueError('Simulator action is too long')
+        return self
+
 class Point(BaseModel):
     x: float = Field(ge=0, le=900, allow_inf_nan=False)
     y: float = Field(ge=0, le=540, allow_inf_nan=False)
@@ -149,7 +163,7 @@ class ClaimDraft(BaseModel):
     # Exact quotes make the deterministic checker stronger than existence-only checking.
     quotes: list[str] = Field(default_factory=list, max_length=20)
     skill_id: str = 'sw.system_design'
-    rule: Literal['quoted_turn','board_explanation','drawing','question'] = 'quoted_turn'
+    rule: Literal['quoted_turn','board_explanation','drawing','question','tool_action'] = 'quoted_turn'
 
 class CheckedClaim(ClaimDraft):
     id: str
