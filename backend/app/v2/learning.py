@@ -108,11 +108,13 @@ async def retest(sid):
         # A repeated button click resumes the same child instead of creating duplicate runs.
         existing=await db.one('SELECT id FROM sessions WHERE parent_session_id=$1 AND track_id=$2 ORDER BY started_at DESC LIMIT 1',sid,queue['track_id'])
         if existing:return await get_session(existing['id'])
-        scenario=await db.one("SELECT id,spec FROM scenarios WHERE track_id=$1 AND is_active AND validity='passed' ORDER BY created_at DESC LIMIT 1",queue['track_id'])
+        scenario=await db.one("SELECT id,spec,rubric,engine_id FROM scenarios WHERE track_id=$1 AND is_active AND validity='passed' ORDER BY created_at DESC LIMIT 1",queue['track_id'])
         if not scenario:raise HTTPException(409,'The retest scenario is no longer available.')
+        from .memory import calibration
+        setting=await calibration(parent['user_id'],[gap.skill_id],rubrics.load(scenario['rubric'],scenario['engine_id']).version)
         child=uid()
         async with (await db.pool()).acquire() as conn,conn.transaction():
-            await conn.execute("INSERT INTO sessions(id,user_id,track_id,scenario_id,kind,parent_session_id,status,started_at,consent) VALUES($1,$2,$3,$4,'retest',$5,'live',now(),$6)",child,parent['user_id'],queue['track_id'],scenario['id'],sid,parent['consent'])
+            await conn.execute("INSERT INTO sessions(id,user_id,track_id,scenario_id,kind,parent_session_id,status,started_at,consent,engine_state) VALUES($1,$2,$3,$4,'retest',$5,'live',now(),$6,$7)",child,parent['user_id'],queue['track_id'],scenario['id'],sid,parent['consent'],{'calibration':setting})
             await conn.execute('INSERT INTO session_focus(session_id,skill_id,reason) VALUES($1,$2,$3)',child,gap.skill_id,gap.text)
             await log(child,'turn','interviewer',0,{'text':'Last time, we focused on this: '+gap.text+' Let’s try a new constraint. '+scenario['spec']['prompt'],'source':'verified_gap_retest','source_claim_id':gap.id,'source_session_id':sid,'evidence_seq':gap.evidence_seq},conn)
             await conn.execute("UPDATE retest_queue SET status='taken' WHERE id=$1",queue['id'])

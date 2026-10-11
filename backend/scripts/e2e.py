@@ -84,6 +84,8 @@ async def run():
             raise RuntimeError('Fresh migration failed; inspect .artifacts/e2e/migrate.log')
         from verify_jobs import verify
         await verify(source, name)
+        from verify_memory import verify as verify_implicit_memory
+        await verify_implicit_memory(source, name)
         await seed_fixture(source,name)
         commands = [
             ([sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18000'], ROOT, 'api'),

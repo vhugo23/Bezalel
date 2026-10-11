@@ -17,8 +17,8 @@ from app.modules import prepcrew
 
 @asynccontextmanager
 async def lifespan(app):
-    from app.v2 import assessment, jobs, db
-    tasks=[asyncio.create_task(worker()) for worker in (assessment.worker,jobs.worker)] if config.DATABASE_URL else []
+    from app.v2 import assessment, jobs, memory, db
+    tasks=[asyncio.create_task(worker()) for worker in (assessment.worker,jobs.worker,memory.worker)] if config.DATABASE_URL else []
     try:yield
     finally:
         for task in tasks:
