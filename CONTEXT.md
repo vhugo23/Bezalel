@@ -1,10 +1,10 @@
-# PrepCrew: context for whoever picks this up next
+﻿# PrepCrew: context for whoever picks this up next
 
 Written Sat Oct 10, 2026, late evening, from the working session. Read this first, then `contracts/api.md`,
 `contracts/ws_messages.md` and `spikes/RESULTS.md`. The original brief (`prepcrew-opus-brief.md`, outside the repo) still
 sets the rules; the short version is below.
 
-## Current state (refreshed hourly; last 2026-10-11T05:40Z at `ed43a21`)
+## Current state (refreshed hourly; last 2026-10-11T06:25Z at `29609b5`)
 This section is kept current by trey-agent's hourly review. Where it disagrees with an older section below, this one is right.
 The detail behind it is in `mailbox/REVIEW.md`.
 
@@ -18,25 +18,25 @@ The detail behind it is in `mailbox/REVIEW.md`.
 **Who is doing what**
 | Agent | Last seen | Doing | Landed since Oct 10 evening |
 |---|---|---|---|
-| trey-agent | 05:38Z | Hourly review, this file. No lane 1 code changes since #7. | Mailbox, review, two messages to josh-agent |
-| josh-agent | 05:33Z | Generic session steps and rubric selection in v2; next durable generation and personalized plans | `9399673` React app, v2 backend, migrations, `docs/IMPLEMENTATION_ROADMAP.md`. `ed43a21` isolated browser acceptance, `V2_DATABASE_SCHEMA`, `docs/GRADING_REVIEW.md` |
+| trey-agent | 06:20Z | Branch `lane1-entrypoint` (local): a storage-free entry point for the lane 1 interviewer that v2 can call, `led_reversed` in the v2 scenario format, README and Devpost drafts. Hourly review. | Mailbox, review, this section (#9) |
+| josh-agent | 06:11Z | Intake source ingestion and personalized plan adapters; next Backboard and difficulty calibration. Says Joshua authorized every roadmap slice on `main` and that the roadmap is not a promise for noon. | `9399673` React app, v2 backend, migrations, roadmap. `ed43a21` browser acceptance. `0daf815` sessions driven from persisted scenario configuration. `c891d23` `.env` fix. `859fc57` recoverable lesson generation |
 | shamah-agent | no mailbox activity | Unknown. Shamah's own commits (before the mailbox) did backend and data. | Tiger time-series tables, Backboard memory across sessions, fresh-database fix, backend cleanup, grading moved from Opus to Gemini |
 | hugo-agent | no mailbox activity | Unknown | Nothing |
 
 All josh-agent code went straight to `main`, with no pull request. The lanes table in `mailbox/README.md` is still unfilled for josh and shamah, and still assumes hugo owns backend and data.
 
 **Open problems right now**
-1. `backend/app/config.py` reads `.env` from the repo root since `9399673`. A machine with keys only in `backend/.env` starts with no keys, fake providers and in-memory storage, and prints no error. Local workaround: copy `backend/.env` to the repo root (it is gitignored there too). Fix requested from josh-agent.
-2. `docs/IMPLEMENTATION_ROADMAP.md` is an 11 phase product plan (12 tracks, code sandboxes, accounts, deployment). It is not a plan for the hours left. josh-agent has been asked for a cut list.
-3. **`set DATABASE_URL=` and `$env:DATABASE_URL=''` do not blank the variable, they remove it** (checked in PowerShell at 05:49Z). `load_dotenv` then fills it from whichever `.env` it reads. Today that file is the missing root `.env`, so storage really is in memory. If you create a root `.env`, leave the `DATABASE_URL` line out of it, or every "in-memory" command in this file will use the real Tiger Data database and start the v2 grading worker on it. To force in-memory storage whatever the file says, start the server with `python -c "import os; os.environ['DATABASE_URL']=''; import uvicorn; uvicorn.run('app.main:app', port=8000)"`. The tests are safe either way (`conftest.py` patches `config.DATABASE_URL`).
+1. **Fixed in `c891d23`, and it brings a hazard back.** `backend/app/environment.py` now loads process environment, then root `.env`, then `backend/.env`, so keys in `backend/.env` work again with no copying. It also means `DATABASE_URL` in `backend/.env` is loaded again.
+2. `docs/IMPLEMENTATION_ROADMAP.md` is an 11 phase product plan. josh-agent replied that it is continuing through the slices on Joshua's instruction and that integrating the legacy persona, meter and debrief, real hardware tracks and hosting "remain open". No cut list. This is with the humans (`mailbox/HUMAN.md`).
+3. **`set DATABASE_URL=` and `$env:DATABASE_URL=''` do not blank the variable, they remove it, and the loader then fills it from `.env`.** Checked at 06:18Z on a machine with `backend/.env`: after `$env:DATABASE_URL=''` the app had a database URL; after setting it empty inside Python it did not. So the "in-memory" start commands lower in this file now use the real Tiger Data database and start the v2 grading worker on it. To force in-memory storage, run from `backend/`: `python -c "import os; os.environ['DATABASE_URL']=''; import uvicorn; uvicorn.run('app.main:app', port=8000)"`. Do the same for any script. The test suite patches `config.DATABASE_URL` in `conftest.py`.
 4. The React app only runs the software rate-limiter session: `v2/service.py` marks only `sw.sysdesign` ready, and the hardware tracks are seeded as `proposed`. The legacy path has no debug walkthrough: `data/scenarios/` and `data/rubrics/` are empty and a probe on `led_reversed` returns 404.
 5. Nothing is deployed and there is no Dockerfile or compose file, although `README.md` tells you to run `docker compose up`. `README.md` "What it does" items 3 to 7 are not built for hardware in either app.
 6. Run `pip install -r backend/requirements.txt` after pulling. Four packages were added and the tests fail to collect without them.
 
-**Checked at this refresh:** `pytest` in `backend/` at `b1d5939`, 321 passed (fake providers, no database). Not re-run at `ed43a21`. Frontend tests and build not run on this machine (no Node). The live Gemini and Tiger Data checks described in the roadmap and `frontend/README.md` are josh-agent's and were not repeated.
+**Checked at this refresh:** `pytest` in `backend/` at `b1d5939`, 321 passed (fake providers). Not re-run since; josh-agent reports 331 at `c891d23`. Frontend tests and build not run on this machine (no Node). josh-agent's live Gemini, Tiger Data and browser checks were not repeated.
 
 **Waiting on**
-- josh-agent: replies to `20261011-053600_from-trey-agent_env-path-change.md` and `20261011-053700_from-trey-agent_scope-versus-deadline.md`.
+- josh-agent: nothing. Both messages were answered (`mailbox/trey-agent/archive/`).
 - Humans: which app is the demo; what is cut before noon; confirm Gemini instead of Opus for grading; fill in the lanes table.
 
 ## What this is
