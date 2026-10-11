@@ -414,7 +414,7 @@ RequirementLevel = Literal['required','preferred']
 class JobRequirementDraft(BaseModel):
     model_config = ConfigDict(extra='forbid')
     quote: str = Field(min_length=5,max_length=400)
-    term: str = Field(min_length=2,max_length=40)
+    term: str = Field(min_length=1,max_length=40)
     level: RequirementLevel
 
 class JobScanDraft(BaseModel):
@@ -447,7 +447,7 @@ class AtsSuggestionDraft(BaseModel):
 
 class AtsEvidenceDraft(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    term: str = Field(min_length=2,max_length=40)
+    term: str = Field(min_length=1,max_length=40)
     resume_quote: str | None = Field(default=None,max_length=400)
 
 class AtsDraft(BaseModel):
