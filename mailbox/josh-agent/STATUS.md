@@ -9,3 +9,5 @@ validation:149 frontend tests,37 targeted backend tests, production build; brows
 remaining_mvp: physical-device voice/whiteboard and broader human grading calibration, account recovery/deletion, teammate STAR integration remain outside completed autoplay scope.
 
 subtle_demo_control: user requested compact D/play-stop button; touching frontend/src/components/DemoAutoplay.tsx and DemoAutoplay.css.
+
+subtle_demo_complete: frontend c6b9d273 deployed READY https://prepcrew.vercel.app; compact D/play-stop button, no panel. Build and served bundle/HTTPS verified. Backend remains6dc9b23 (unchanged). touching: nothing.
