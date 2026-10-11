@@ -14,7 +14,7 @@ function mount(lesson=false,entry?:string){
 }
 beforeEach(()=>{
  vi.spyOn(api,'report').mockResolvedValue(report);
- vi.spyOn(api,'session').mockResolvedValue({id:'s',track_id:'t',title:'Practice',step:3,status:'graded',opening:'Design an API',demo:false,events:[]});
+ vi.spyOn(api,'session').mockResolvedValue({id:'s',track_id:'t',title:'Practice',domain:'sw',engine_id:'conceptual',paused:false,step:3,status:'graded',opening:'Design an API',demo:false,events:[]});
  vi.spyOn(api,'metrics').mockResolvedValue({rows:[],hypertables:[],aggregates:[]});
 });
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
@@ -34,7 +34,7 @@ test('partial review can resume and does not display an invented zero',async()=>
 });
 
 test('a lesson citation opens the exact saved source event',async()=>{
- vi.mocked(api.session).mockResolvedValue({id:'s',track_id:'t',title:'Practice',step:3,status:'graded',opening:'Design an API',demo:false,events:[{
+ vi.mocked(api.session).mockResolvedValue({id:'s',track_id:'t',title:'Practice',domain:'sw',engine_id:'conceptual',paused:false,step:3,status:'graded',opening:'Design an API',demo:false,events:[{
   session_id:'s',seq:17,actor:'candidate',kind:'turn',step:2,payload:{text:'My specific failure-policy explanation.'},ts:'2026-10-10T18:00:00Z'}]});
  mount(false,'/fleet/s?evidence=17');
  const dialog=await screen.findByRole('dialog');

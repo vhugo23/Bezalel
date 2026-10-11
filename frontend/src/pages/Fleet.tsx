@@ -5,8 +5,6 @@ import { api, type Event, type Model } from '../api/client';
 import { Shell } from '../components/Shell';
 import { Badge, Button, ErrorNotice, Icon, Modal } from '../components/ui';
 
-const names=['Requirements','Whiteboard','Trade-offs','Communication'];
-const descriptions=['Did you scope before designing','What you drew and explained','Naming what you gave up','Clear, direct answers'];
 
 export function FleetPage(){
  const {id=''}=useParams();const [evidence,setEvidence]=useState<Event[]|null>(null);const nav=useNavigate();const cache=useQueryClient();
@@ -14,6 +12,7 @@ export function FleetPage(){
  const session=useQuery({queryKey:['session',id],queryFn:()=>api.session(id)});
  const metrics=useQuery({queryKey:['metrics',id],queryFn:()=>api.metrics(id),refetchInterval:report.data?.status==='graded'?false:1500});
  const retry=useMutation({mutationFn:()=>api.end(id),onSuccess:r=>{cache.setQueryData(['report',id],r);void cache.invalidateQueries({queryKey:['metrics',id]});}});
+ const names=report.data?.evaluators.map(r=>String(r.name))||[];
  const done=report.data?.status==='graded';
  const claims=(report.data?.claims||[]).map(c=>({...c,quotes:c.quotes||[]}));
  const verified=claims.filter(c=>c.check_status==='verified'),rejected=claims.filter(c=>c.check_status==='rejected');
@@ -23,13 +22,13 @@ export function FleetPage(){
  useEffect(()=>{if(Number.isInteger(evidenceSeq)&&evidenceSeq>0&&session.data)setEvidence(session.data.events.filter(e=>e.seq===evidenceSeq));},[evidenceSeq,session.data]);
  const show=(claim:Model<'CheckedClaim'>)=>setEvidence(session.data?.events.filter(e=>claim.evidence_seq.includes(e.seq))||[]);
  return <Shell><main className="page"><div className="wrap">
-  <div className="obhead"><Badge tone="acc">{done?'Session reviewed':'Grading'}</Badge><h1>Four evaluators, in parallel.</h1><p className="sub">Each reads the same session log. Claims pass reference checks and an independent model review before contributing to your scores.</p></div>
+  <div className="obhead"><Badge tone="acc">{done?'Session reviewed':'Grading'}</Badge><h1>{names.length===1?'One evaluator.':`${names.length===4?'Four':names.length||'Your'} evaluators, in parallel.`}</h1><p className="sub">Each reads the same session log. Claims pass reference checks and an independent model review before contributing to your scores.</p></div>
   <ErrorNotice error={report.error||session.error||retry.error}/>
   {(report.data?.partial||report.data?.status==='failed')&&<section className="card"><div className="cb"><h3>Your review needs another pass.</h3><p className="fine">Completed evaluators are saved. Retry resumes the unfinished work; partial results do not update your skill circles.</p><Button className="top-gap" disabled={retry.isPending||report.data?.status==='grading'} onClick={()=>retry.mutate()}>Retry review</Button></div></section>}
-  <div className="fgrid">{names.map((name,i)=>{
+  <div className="fgrid">{names.map(name=>{
    const run=report.data?.evaluators.find(r=>r.name===name);const checked=verified.filter(c=>c.evaluator===name);
    return <section className={`card fcard ${run?.status==='done'?'done':'run'}`} key={name}><div className="cb">
-    <div className="fh"><b>{name}</b><Badge>{report.data?.demo?'Recorded':'Gemini'}</Badge></div><span className="fd">{descriptions[i]}</span>
+    <div className="fh"><b>{name}</b><Badge>{report.data?.demo?'Recorded':'Gemini'}</Badge></div><span className="fd">Reviewing the configured practice criteria</span>
     <div className="fst">{run?.status==='done'?<Icon name="check"/>:run?.status==='failed'?<span>!</span>:<span className="spin"/>}{run?.status==='done'?'Evidence checked':run?.status==='failed'?'Evaluation failed':'Reading the session log'}</div>
     {run?.status==='done'?<div className="fres"><div className="fsc">{checked.length}<span className="count-label"> supported</span></div><p>{checked.length?'Open a citation below to inspect the source event.':'No supported claims to include.'}</p></div>:run?.status==='failed'?<p className="fine top-gap">This evaluator did not finish. Its output is excluded.</p>:<div className="fbody"><i/><i/><i/></div>}
    </div></section>;

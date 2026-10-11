@@ -62,3 +62,36 @@ test('events replay in sequence, duplicate strokes are idempotent and stale step
  expect(metrics.hypertables.sort()).toEqual(['metrics','session_events','skill_assessments']);
  expect(metrics.aggregates.sort()).toEqual(['latency_1m','mastery_hourly']);
 });
+
+test('a different engine uses its own steps and fleet, with persisted pause and hints',async({page,request})=>{
+ const started=await request.post('/api/v2/sessions',{data:{track_id:'e2e-two-step-track',consent:true}});
+ expect(started.ok()).toBeTruthy();
+ const session=await started.json();
+ expect(session.steps).toHaveLength(2);
+ expect(session.engine_id).toBe('behavioral');
+ await page.goto(`/session/${session.id}`);
+ await expect(page.getByText('Step 1 of 2',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Pause interview'}).click();
+ await expect(page.getByRole('button',{name:'Resume interview'})).toBeVisible();
+ await page.reload();
+ await expect(page.getByRole('button',{name:'Resume interview'})).toBeVisible();
+ expect((await request.post(`/api/v2/sessions/${session.id}/turns`,{data:{text:'Must not be saved while paused.',step:0}})).status()).toBe(409);
+ await page.getByRole('button',{name:'Resume interview'}).click();
+ await expect(page.getByRole('button',{name:'Pause interview'})).toBeVisible();
+ await page.getByRole('button',{name:'Ask for a hint'}).click();
+ await expect(page.getByText('Start with the situation before describing your action.',{exact:true})).toBeVisible();
+ expect((await request.post(`/api/v2/sessions/${session.id}/hint`)).status()).toBe(409);
+ await page.getByRole('button',{name:'Type instead'}).click();
+ await page.getByLabel('Your answer').fill('On a synthetic project the build was failing.');
+ await page.getByRole('button',{name:'Send',exact:true}).click();
+ await page.getByRole('button',{name:'Next step'}).click();
+ await expect(page.getByText('Step 2 of 2',{exact:true})).toBeVisible();
+ await page.getByLabel('Your answer').fill('I isolated the failing test and corrected the input parser.');
+ await page.getByRole('button',{name:'Send',exact:true}).click();
+ await page.getByRole('button',{name:'Next step'}).click();
+ await page.getByRole('button',{name:'Finish session'}).click();
+ await expect(page.getByRole('heading',{name:'One evaluator.'})).toBeVisible();
+ await expect(page.getByText('Ownership',{exact:true})).toBeVisible();
+ await expect(page.getByText('Session reviewed',{exact:true})).toBeVisible();
+ await expect(page.getByText('Requirements',{exact:true})).toHaveCount(0);
+});

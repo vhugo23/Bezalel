@@ -1,9 +1,9 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { API, api, socketUrl, type Event, type Model } from '../api/client';
 import { voiceMessage } from './voiceProtocol';
 
 export type VoicePhase='off'|'connecting'|'listening'|'transcribing'|'thinking'|'speaking'|'muted';
-type Options={id:string;step:number;demo:boolean;sound:boolean;onEvents:()=>Promise<unknown>;onError:(e:unknown)=>void};
+type Options={id:string;step:number;endStep?:number;demo:boolean;sound:boolean;onEvents:()=>Promise<unknown>;onError:(e:unknown)=>void};
 
 export function useVoiceConversation(options:Options) {
   const opts=useRef(options);opts.current=options;
@@ -151,6 +151,6 @@ export function useVoiceConversation(options:Options) {
   };
   useEffect(()=>{state.current.alive=true;return()=>{state.current.alive=false;end();};},[options.id]);
   useEffect(()=>{if(!options.sound){stopAudio();send({type:'interrupt'});idle();}},[options.sound]);
-  useEffect(()=>{if(options.step>=3)end();},[options.step]);
+  useEffect(()=>{if(options.step>=(options.endStep??3))end();},[options.step,options.endStep]);
   return {phase,active,muted,level,partial,lookRequest,start,end,toggleMute,interrupt,sendNow,sendText,runText,replay,noteTranscript:()=>{},busy:['connecting','thinking','speaking'].includes(phase)};
 }

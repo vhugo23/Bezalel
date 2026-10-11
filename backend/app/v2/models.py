@@ -56,6 +56,16 @@ class Event(BaseModel):
     payload: dict[str, Any]
     ts: datetime
 
+class SessionStep(BaseModel):
+    idx: int = Field(ge=0, le=9)
+    title: str = Field(min_length=1, max_length=160)
+    surface: Literal['voice','whiteboard','star','terminal','editor','schematic','browser','pi3d'] = 'voice'
+    task: str = Field(min_length=1, max_length=2000)
+    config: dict[str, Any] = Field(default_factory=dict)
+    hints: list[str] = Field(default_factory=list, max_length=5)
+    success: dict[str, Any] = Field(default_factory=dict)
+    rubric_ids: list[str] = Field(default_factory=list)
+
 class Session(BaseModel):
     id: str
     track_id: str
@@ -66,6 +76,14 @@ class Session(BaseModel):
     demo: bool
     events: list[Event]
     board_review: 'BoardResult | None' = None
+    domain: str = 'sw'
+    engine_id: str = 'conceptual'
+    steps: list[SessionStep] = Field(default_factory=list)
+    paused: bool = False
+    engine_state: dict[str, Any] = Field(default_factory=dict)
+
+class PauseInput(BaseModel):
+    paused: bool
 
 class TurnInput(BaseModel):
     text: str = Field(min_length=1, max_length=5000)

@@ -8,11 +8,6 @@ import { Shell } from '../components/Shell';
 import { Whiteboard } from '../components/Whiteboard';
 import { Badge, Button, ErrorNotice, Icon } from '../components/ui';
 
-const steps = [
-  ['Clarify requirements', 'Voice', 'Ask Dana what the limiter has to handle before you draw anything.'],
-  ['Draw and explain', 'Whiteboard + voice', 'Talk through your design as you draw. Dana listens, and answers when you ask a question.'],
-  ['Defend the trade-offs', 'Voice', 'Walk Dana through a decision you made, and what you gave up.'],
-];
 const labels = {off:'Ready when you are',connecting:'Connecting your microphone',listening:'Listening to you',transcribing:'Transcribing your answer',thinking:'Dana is thinking',speaking:'Dana is speaking',muted:'Microphone muted'};
 
 export function SessionPage() {
@@ -21,11 +16,14 @@ export function SessionPage() {
   const [text,setText]=useState(''),[typing,setTyping]=useState(false),[error,setError]=useState<unknown>(null),[connected,setConnected]=useState(false);
   const transcript=useRef<HTMLDivElement>(null),follow=useRef(true),autoFinished=useRef(false);
   const query=useQuery({queryKey:['session',id],queryFn:()=>api.session(id),refetchInterval:connected?false:3000});
-  const session=query.data,step=session?.step??0,events=session?.events??[];
-  const turns=events.filter(e=>e.kind==='turn');
+  const session=query.data,step=session?.step??0,events=session?.events??[],steps=session?.steps??[];
+  const isBoard=steps[step]?.surface==='whiteboard';
+  const turns=events.filter(e=>e.kind==='turn'||e.kind==='hint');
   const refresh=()=>qc.invalidateQueries({queryKey:['session',id]});
-  const voice=useVoiceConversation({id,step,demo:session?.demo??false,sound,onEvents:refresh,onError:setError});
+  const voice=useVoiceConversation({id,step,endStep:steps.length||10,demo:session?.demo??false,sound,onEvents:refresh,onError:setError});
   const next=useMutation({mutationFn:()=>api.append(id,{kind:'step',step:step+1,payload:{to:step+1}}),onSuccess:refresh,onError:setError});
+  const pause=useMutation({mutationFn:()=>api.pause(id,!session?.paused),onSuccess:s=>{voice.end();qc.setQueryData(['session',id],s);},onError:setError});
+  const hint=useMutation({mutationFn:()=>api.hint(id),onSuccess:refresh,onError:setError});
   const end=useMutation({mutationFn:()=>api.end(id),onSuccess:()=>nav(`/fleet/${id}`),onError:setError});
 
   useEffect(()=>{
@@ -36,26 +34,27 @@ export function SessionPage() {
       socket.onmessage=message=>{
         try{
           const event=eventMessage.parse(JSON.parse(message.data)).event as Event;after=Math.max(after,event.seq);
-          qc.setQueryData<Model<'Session'>>(['session',id],old=>old?{...old,step:event.kind==='step'?Number(event.payload.to):old.step,events:[...old.events.filter(e=>e.seq!==event.seq),event].sort((a,b)=>a.seq-b.seq)}:old);
+          qc.setQueryData<Model<'Session'>>(['session',id],old=>old?{...old,step:event.kind==='step'?Number(event.payload.to):old.step,paused:event.kind==='note'&&typeof event.payload.paused==='boolean'?event.payload.paused:old.paused,events:[...old.events.filter(e=>e.seq!==event.seq),event].sort((a,b)=>a.seq-b.seq)}:old);
         }catch{setError(new Error('The server sent an invalid session event.'));}
       };
       socket.onclose=()=>{setConnected(false);if(!disposed)timer=setTimeout(connect,Math.min(10000,500*2**attempt++));};
     };
     connect();return()=>{disposed=true;clearTimeout(timer);socket.close();};
   },[id,qc]);
-  useEffect(()=>{if(step===3&&!autoFinished.current&&events.some(e=>e.kind==='step'&&e.payload.to===3&&e.payload.source==='interviewer')){autoFinished.current=true;end.mutate();}},[step,events]);
+  useEffect(()=>{if(steps.length&&step===steps.length&&!autoFinished.current&&events.some(e=>e.kind==='step'&&e.payload.to===steps.length&&e.payload.source==='interviewer')){autoFinished.current=true;end.mutate();}},[step,events,steps.length]);
   useEffect(()=>{if(follow.current&&transcript.current)transcript.current.scrollTop=transcript.current.scrollHeight;},[turns.length,voice.phase,voice.partial]);
   const submit=()=>{
-    if(!text.trim()||next.isPending||(!voice.active&&voice.busy))return;
+    if(session?.paused||!text.trim()||next.isPending||(!voice.active&&voice.busy))return;
     const answer=text.trim();setText('');
-    if(voice.active)voice.sendText(answer);else void voice.runText(()=>api.turn(id,{text:answer,step,board:step===1}));
+    if(voice.active)voice.sendText(answer);else void voice.runText(()=>api.turn(id,{text:answer,step,board:isBoard}));
   };
   const startVoice=()=>{
     useApp.setState({voice:true});
     void voice.start(turns.filter(e=>e.actor==='interviewer').at(-1));
   };
   const hasAnswer=turns.some(e=>e.actor==='candidate'&&e.step===step);
-  const done=step>=3||session?.status==='graded';
+  const done=(steps.length>0&&step>=steps.length)||session?.status==='graded';
+  useEffect(()=>{if(session?.paused)voice.end();},[session?.paused]);
 
   const conversation=<div className="voice-transcript" ref={transcript} role="log" aria-label="Interview transcript" aria-live="polite" onScroll={e=>{const el=e.currentTarget;follow.current=el.scrollHeight-el.scrollTop-el.clientHeight<70;}}>
     <div className="conversation-intro"><span>YOUR INTERVIEW</span><p>A conversation with Dana</p></div>
@@ -63,18 +62,18 @@ export function SessionPage() {
       {event.actor==='interviewer'&&<span className="chat-avatar">D</span>}
       <div className="chat-message"><div className="chat-author">{event.actor==='interviewer'?'Dana':'You'}{event.payload.board===true&&<span>while drawing</span>}</div>
         <p>{String(event.payload.text)}</p>
-        <div className="chat-meta"><span title="Saved session event">#{event.seq}</span>{events.some(e=>e.kind==='interrupted'&&e.payload.interrupted_seq===event.seq)&&<span>Interrupted</span>}{event.actor==='interviewer'&&<button disabled={voice.busy} onClick={()=>{useApp.setState({voice:true});void voice.replay(event);}} aria-label={`Replay Dana's message ${event.seq}`}>Replay</button>}</div>
+        <div className="chat-meta"><span title="Saved session event">#{event.seq}</span>{events.some(e=>e.kind==='interrupted'&&e.payload.interrupted_seq===event.seq)&&<span>Interrupted</span>}{event.actor==='interviewer'&&event.kind==='turn'&&<button disabled={voice.busy} onClick={()=>{useApp.setState({voice:true});void voice.replay(event);}} aria-label={`Replay Dana's message ${event.seq}`}>Replay</button>}</div>
       </div>
     </article>)}
     {voice.partial&&<article className="chat-turn candidate-turn live-partial"><div className="chat-message"><div className="chat-author">You <span>live transcript</span></div><p>{voice.partial}<span className="transcript-caret"/></p></div></article>}
     {(voice.phase==='thinking'||voice.phase==='transcribing')&&<div className="conversation-pending" role="status"><span className="thinking-dots"><i/><i/><i/></span>{labels[voice.phase]}</div>}
   </div>;
 
-  return <Shell crumb={`Software / ${session?.title||'Session'}`} exit wide>
-    <main className={`sgrid session-grid voice-session ${step===1?'with-board':''}`}>
+  return <Shell crumb={`${({sw:'Software',hw:'Hardware',infra:'Infra',comm:'Communication',other:'Other'} as Record<string,string>)[session?.domain||'sw']} / ${session?.title||'Session'}`} exit wide>
+    <main className={`sgrid session-grid voice-session ${isBoard?'with-board':''}`}>
       <aside className="gcol">
-        <section className="card"><div className="ch"><h3>Track</h3><Badge>{done?'Complete':`Step ${step+1} of 3`}</Badge></div><div className="cb step-list">{steps.map(([name,surface],i)=><div className={`step ${i<step?'done':i===step?'cur':''}`} key={name}><span className="n">{i<step?<Icon name="check"/>:i+1}</span><div><b>{name}</b><small>{surface}</small></div></div>)}</div></section>
-        <section className="card"><div className="cb"><div className="turn"><b>{done?'Nicely done':'Your turn'}</b><span>{steps[step]?.[2]||'Send the conversation and drawing to the evaluators.'}</span></div><div className="row session-actions">{!done?<Button size="sm" disabled={next.isPending||voice.busy||step===1||!hasAnswer} onClick={()=>next.mutate()}>Next step<Icon/></Button>:<Button size="sm" disabled={end.isPending} onClick={()=>{voice.end();end.mutate();}}>{end.isPending?'Starting evaluators…':'Finish session'}<Icon/></Button>}</div></div></section>
+        <section className="card"><div className="ch"><h3>Track</h3><Badge>{done?'Complete':`Step ${step+1} of ${steps.length}`}</Badge></div><div className="cb step-list">{steps.map(({title:name,surface},i)=><div className={`step ${i<step?'done':i===step?'cur':''}`} key={name}><span className="n">{i<step?<Icon name="check"/>:i+1}</span><div><b>{name}</b><small>{surface}</small></div></div>)}</div></section>
+        <section className="card"><div className="cb"><div className="turn"><b>{done?'Nicely done':'Your turn'}</b><span>{steps[step]?.task||'Send the conversation and drawing to the evaluators.'}</span></div><div className="row session-actions">{!done?<Button size="sm" disabled={next.isPending||voice.busy||isBoard||session?.paused||!hasAnswer} onClick={()=>next.mutate()}>Next step<Icon/></Button>:<Button size="sm" disabled={end.isPending} onClick={()=>{voice.end();end.mutate();}}>{end.isPending?'Starting evaluators…':'Finish session'}<Icon/></Button>}</div></div></section>
         <div className="session-status"><span className={connected?'dotok':'dotwait'}/>{connected?'Conversation saved':'Reconnecting…'}<span className="fine">{events.length} events in your session</span></div>
         {session?.demo&&<p className="fine demo-note">Recorded demo replies. Your transcript and drawing are saved.</p>}
       </aside>
@@ -82,13 +81,14 @@ export function SessionPage() {
         <header className="voice-header"><span className="chat-avatar">D</span><div><b>Dana</b><span>Your engineering interviewer</span></div><Badge>{session?.demo?'Demo':voice.active?'Full duplex':'Interview'}</Badge></header>
         <ErrorNotice error={error||query.error}/>
         <div className="session-surfaces">
-          {step===1&&<div className="drawing-panel"><Whiteboard sid={id} events={events} savedReview={session?.board_review} lookRequest={voice.lookRequest} onChange={refresh} onComplete={()=>next.mutate()} onSpeech={async mark=>{const current=await api.session(id);const event=current.events.find(e=>e.kind==='turn'&&e.payload.annotation_id===mark.id);return event?await voice.replay(event,false):false;}}/></div>}
+          {isBoard&&!session?.paused&&<div className="drawing-panel"><Whiteboard sid={id} step={step} continueLabel={`${steps[step+1]?.title||'Finish drawing'} →`} events={events} savedReview={session?.board_review} lookRequest={voice.lookRequest} onChange={refresh} onComplete={()=>next.mutate()} onSpeech={async mark=>{const current=await api.session(id);const event=current.events.find(e=>e.kind==='turn'&&e.payload.annotation_id===mark.id);return event?await voice.replay(event,false):false;}}/></div>}
           {conversation}
         </div>
         {!done&&<footer className="voice-dock">
           <div className={`voice-presence ${voice.phase}`}><div className="voice-orb" style={{'--level':voice.level} as React.CSSProperties}><span/><span/><span/></div><div><b role="status">{labels[voice.phase]}</b><p>{voice.active?(voice.phase==='listening'?'Speak naturally. Pause when you’re done.':voice.phase==='muted'?'Unmute whenever you’re ready.':'Both sides of the conversation stay above.'):'Dana guides the interview. Just speak naturally.'}</p></div></div>
-          <div className="voice-controls">{voice.active?<><Button variant={voice.muted?'default':'outline'} onClick={voice.toggleMute} aria-pressed={voice.muted} aria-label={voice.muted?'Unmute microphone':'Mute microphone'}><Icon name="mic"/>{voice.muted?'Unmute':'Mute'}</Button>{voice.phase==='speaking'?<Button variant="outline" onClick={voice.interrupt}>Interrupt Dana</Button>:<Button variant="outline" onClick={voice.sendNow} disabled={voice.phase!=='listening'}>Send now</Button>}<Button variant="ghost" onClick={voice.end}>End voice</Button></>:<Button onClick={startVoice} disabled={!session||voice.busy}><Icon name="mic"/>Start voice</Button>}<button className="text-button" onClick={()=>setTyping(!typing)} aria-expanded={typing}>{typing?'Hide keyboard':'Type instead'}</button></div>
-          {typing&&<form className="comp one voice-composer" onSubmit={e=>{e.preventDefault();submit();}}><textarea autoFocus aria-label="Your answer" rows={2} value={text} onChange={e=>setText(e.target.value)} placeholder={step===1?'Explain your drawing, or ask Dana a question…':'Message Dana…'} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}}}/><Button disabled={!text.trim()||(!voice.active&&voice.busy)}>Send</Button></form>}
+          {session?.paused&&<p role="status" className="fine">Interview paused. Your work is saved.</p>}
+          <div className="voice-controls">{!done&&<Button variant="outline" disabled={pause.isPending} onClick={()=>pause.mutate()}>{session?.paused?'Resume interview':'Pause interview'}</Button>}{!!steps[step]?.hints?.length&&<Button variant="ghost" disabled={hint.isPending||session?.paused} onClick={()=>hint.mutate()}>Ask for a hint</Button>}{voice.active?<><Button variant={voice.muted?'default':'outline'} onClick={voice.toggleMute} aria-pressed={voice.muted} aria-label={voice.muted?'Unmute microphone':'Mute microphone'}><Icon name="mic"/>{voice.muted?'Unmute':'Mute'}</Button>{voice.phase==='speaking'?<Button variant="outline" onClick={voice.interrupt}>Interrupt Dana</Button>:<Button variant="outline" onClick={voice.sendNow} disabled={voice.phase!=='listening'}>Send now</Button>}<Button variant="ghost" onClick={voice.end}>End voice</Button></>:<Button onClick={startVoice} disabled={!session||voice.busy||session?.paused}><Icon name="mic"/>Start voice</Button>}<button className="text-button" onClick={()=>setTyping(!typing)} aria-expanded={typing}>{typing?'Hide keyboard':'Type instead'}</button></div>
+          {typing&&<form className="comp one voice-composer" onSubmit={e=>{e.preventDefault();submit();}}><textarea autoFocus aria-label="Your answer" rows={2} value={text} onChange={e=>setText(e.target.value)} placeholder={isBoard?'Explain your drawing, or ask Dana a question…':'Message Dana…'} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}}}/><Button disabled={session?.paused||next.isPending||!text.trim()||(!voice.active&&voice.busy)}>Send</Button></form>}
           <p className="voice-footnote">Echo cancellation and background filtering are on. Controls are here whenever you need them.</p>
         </footer>}
       </section>

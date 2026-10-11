@@ -5,6 +5,7 @@ only creates/drops this run's uniquely named schema. All app/provider settings
 are overridden in child processes; no paid providers are used.
 """
 import asyncio
+import json
 import os
 from pathlib import Path
 import shutil
@@ -33,6 +34,21 @@ def wait_ready(url, process):
         except OSError:
             time.sleep(.25)
     raise RuntimeError('Acceptance server did not become ready')
+
+
+async def seed_fixture(source, schema):
+    fixture=json.loads((ROOT/'contracts/e2e-two-step.json').read_text(encoding='utf-8'))
+    conn=await asyncpg.connect(source,server_settings={'search_path':schema+',public'})
+    try:
+        await conn.set_type_codec('jsonb',encoder=json.dumps,decoder=json.loads,schema='pg_catalog')
+        async with conn.transaction():
+            await conn.execute("INSERT INTO users(id,display_name) VALUES('e2e-generic-user','Synthetic acceptance fixture')")
+            await conn.execute("INSERT INTO tracks(id,user_id,domain_id,engine_id,layer,title,source,status) VALUES('e2e-two-step-track','e2e-generic-user','comm','behavioral',3,'Synthetic two-step interview','catalog','ready')")
+            await conn.execute("INSERT INTO scenarios(id,track_id,engine_id,engine_version,spec,rubric,validity,validity_report) VALUES('e2e-two-step-scenario','e2e-two-step-track','behavioral','1',$1,$2,'passed',$3)",fixture,fixture['rubric'],{'synthetic':True,'kind':'acceptance_fixture_only','semantic_guarantee':False})
+            for step in fixture['steps']:
+                await conn.execute("INSERT INTO scenario_steps(scenario_id,idx,title,surface,task,hints,success) VALUES('e2e-two-step-scenario',$1,$2,$3,$4,$5,$6)",step['idx'],step['title'],step['surface'],step['task'],step.get('hints',[]),step['success'])
+    finally:
+        await conn.close()
 
 
 async def run():
@@ -66,6 +82,7 @@ async def run():
                 cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
         if result.returncode:
             raise RuntimeError('Fresh migration failed; inspect .artifacts/e2e/migrate.log')
+        await seed_fixture(source,name)
         commands = [
             ([sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18000'], ROOT, 'api'),
             ([shutil.which('node'), str(ROOT / 'frontend/node_modules/vite/bin/vite.js'), '--host', '127.0.0.1'], ROOT / 'frontend', 'web'),

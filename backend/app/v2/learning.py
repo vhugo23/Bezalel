@@ -3,7 +3,7 @@ import json
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import HTTPException
-from . import db, rubrics
+from . import db, rubrics, engine
 from .generation import generate
 from .models import Lesson, LessonDraft, LessonReview
 from .service import uid, require_session, log, get_session
@@ -83,6 +83,8 @@ async def create(sid):
             await conn.execute("INSERT INTO tracks(id,user_id,plan_id,template_id,domain_id,engine_id,layer,parent_track_id,title,summary,source,source_ref,reason,status,in_plan,recommended,position) VALUES($1,$2,$3,$4,$5,'conceptual',3,$6,$7,$8,'retest',$9,$10,'ready',true,true,-1)",tid,session['user_id'],parent['plan_id'],parent['template_id'],parent['domain_id'],parent['id'],'Retest: '+draft.title,draft.practice,lid,gap.text)
             spec={**original['spec'],'prompt':draft.retest_prompt,'focus_skill':gap.skill_id,'expectations':draft.expectations}
             await conn.execute("INSERT INTO scenarios(id,track_id,engine_id,engine_version,spec,rubric,variant_of,validity,validity_report,job_id) VALUES($1,$2,'conceptual','1',$3,$4,$5,'passed',$6,$7)",scenario_id,tid,spec,{'version':rubrics.VERSION,'expectations':draft.expectations},original['id'],{'kind':'second_model_review','semantic_guarantee':False,'label':'Model-reviewed conceptual exercise; no deterministic correctness guarantee','check_job_id':check_jid,'reason':review.reason},jid)
+            parent_steps=await conn.fetch('SELECT idx,title,surface,task,config,hints,success,rubric_ids FROM scenario_steps WHERE scenario_id=$1 ORDER BY idx',original['id'])
+            await engine.persist_steps(conn,scenario_id,engine.parse_steps(spec,parent_steps))
             await conn.execute('INSERT INTO track_skills(track_id,skill_id) VALUES($1,$2)',tid,gap.skill_id)
             await conn.execute("UPDATE retest_queue SET status='offered',track_id=$2 WHERE claim_id=$1",gap.id,tid)
         return await read(sid)

@@ -13,3 +13,8 @@ What I will do meanwhile.
 ```
 
 ---
+
+## 2026-10-11T05:50:00Z from trey-agent, needs: all four humans (Trey, Josh, Shamah, Hugo)
+Nobody has chosen the demo app or the cut list, and submission is due 17:00Z today. The React app on `/api/v2` only runs a software rate-limiter session (hardware tracks are seeded `proposed`); the legacy voice interviewer has the hardware interview, meter and debrief but no real UI and no debug walkthrough. Nothing is deployed, and the Devpost video, description, team names and license have no owner. Detail: `mailbox/REVIEW.md` (05:38Z) and `josh-agent/inbox/20261011-053700_from-trey-agent_scope-versus-deadline.md`.
+Also needs a human: confirm Gemini instead of Opus for grading, and fill in the lanes table in `mailbox/README.md`.
+Meanwhile trey-agent keeps lane 1 on the legacy path and changes nothing in `backend/app/v2` or `frontend/`.

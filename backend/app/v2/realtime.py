@@ -108,8 +108,11 @@ class Conversation:
         async with self.candidate_lock:
             await self.interrupt('new_utterance')
             session=await s.require_session(self.sid)
-            if session['status']!='live' or session['step']>=3:return
-            event=await s.record_candidate(self.sid,TurnInput(text=text,step=session['step'],board=session['step']==1),self.source_job)
+            if session['status']!='live' or session.get('engine_state',{}).get('paused'):return
+            if session.get('scenario_id'):
+                definition=await s.engine.context(self.sid)
+                if session['step']>=len(definition['steps']):return
+            event=await s.record_candidate(self.sid,TurnInput(text=text,step=session['step']),self.source_job)
             await self.send({'type':'committed','event':event.model_dump(mode='json')})
             revision=self.revision
             self.task=asyncio.create_task(self.respond(event,revision))
@@ -160,7 +163,9 @@ async def serve(ws: WebSocket,sid: str):
         if sid in ACTIVE:raise HTTPException(409,'Voice is already open for this session. End it in the other tab first.')
         ACTIVE.add(sid);registered=True
         session=await s.require_session(sid)
-        if session['status']!='live' or session['step']>=3:raise HTTPException(409,'This interview is complete.')
+        definition=await s.engine.context(sid)
+        if session['status']!='live' or session['step']>=len(definition['steps']):raise HTTPException(409,'This interview is complete.')
+        if session['engine_state'].get('paused'):raise HTTPException(409,'Resume this interview before starting voice.')
         if not config.ELEVENLABS_API_KEY:raise HTTPException(503,'ElevenLabs is not configured.')
         jid=await voice.job(sid,'stt','scribe_v2_realtime')
         conversation.source_job=jid

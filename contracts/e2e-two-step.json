@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "prompt": "Describe your own action on a project. This is a synthetic acceptance fixture.",
+  "steps": [
+    {"idx":0,"title":"Choose a story","surface":"star","task":"Choose one project and describe the situation.","hints":["Start with the situation before describing your action."],"success":{"min_turns":1}},
+    {"idx":1,"title":"Explain your action","surface":"voice","task":"Explain what you personally changed and what happened.","success":{"min_turns":1}}
+  ],
+  "rubric": {
+    "version":"synthetic-story-fixture-v1",
+    "evaluators":{"Ownership":[{"id":"action","skill_id":"comm.ownership","description":"Explains a specific personal action without inventing experience.","rules":["quoted_turn"],"steps":[1]}]}
+  }
+}
