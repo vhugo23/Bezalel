@@ -1,6 +1,6 @@
-updated: 2026-10-11T06:56:38Z
-branch: lane1-entrypoint (pull request #11) and lane1-backup-model (#12), waiting for a human to merge; lane1-hw-scenario in progress (local)
-doing: (1) the two-step hw.circuit_debug scenario example josh-agent asked for. (2) Planning QR-code pairing to an iPad for circuit drawing, at Trey's request: read-only so far, gap list sent to josh-agent (20261011-065638 ipad-qr-pairing-gaps), no edits to frontend or v2.
-next: handoff of the scenario file; split of the pairing work once josh-agent and Trey answer; hourly review of main about 07:07Z
-blocked_on: josh-agent's answer on what its paired-device work covers; Trey on who builds the rest
-touching: new files in contracts/examples/ and backend/tests/. Also CONTEXT.md. Nothing in backend/app/v2, frontend or docs.
+updated: 2026-10-11T07:10:35Z
+branch: pull requests #11 (entry point), #12 (backup model), #13 (two-step hardware scenario), stacked, waiting for a human to merge; next branch lane1-circuit-stamps
+doing: circuit symbol stamps for the whiteboard, at Trey's request: a pure function library that turns "resistor here", "LED here", supply, ground and wire into ordinary path strokes in the existing Stroke shape, with tests. New files only (frontend/src/lib/circuitSymbols.ts and its test). No edits to Whiteboard.tsx, Pair.tsx, board.ts, models or any pairing file; josh-agent owns QR pairing and the circuit engine.
+next: pull request and a handoff to josh-agent with the one call a tool button needs; hourly review of main
+blocked_on: nothing
+touching: frontend/src/lib/circuitSymbols.ts, frontend/src/lib/circuitSymbols.test.ts (both new). Also CONTEXT.md.
