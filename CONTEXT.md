@@ -52,9 +52,11 @@ To stop servers: find the listeners on ports 8000 and 5173 with PowerShell `Get-
 - `retry.py` one retry on a busy provider (503, 429, 5xx). `ws.py` voice socket (text or push-to-talk audio in, text then binary 16 kHz PCM audio out, barge-in, timing, meter, state, `debrief_ready`) and board socket (teammate's).
 - Main flow: plan, session (consent, `strict`), opening question, answers (typed or spoken), meter, closing line on an early end (state `debrief`, then `debrief_ready`), `POST /end` for grading, report.
 
-## Pull requests (stacked, none merged except #1 and #2)
-#3 real interviewer check, #4 speech in, #5 humanlike interviewer, #6 patience meter, #7 debrief. Each builds on the one before, so merge in
-order and the later diffs shrink. The local `debrief` branch also has a merge of the newest `main` (teammate's prototype and schema), not yet pushed.
+## Pull requests
+#1 and #2 are merged. #3 (real interviewer check) was merged into `main` on its own. #4 speech in, #5 humanlike interviewer, #6 patience meter and
+#7 debrief were built as a stack, so **#7 contains all of them and is the one to merge** (a regular merge commit, not a squash). It was merged with the
+newest `main` (teammate's prototype and schema, and #3) and was mergeable and clean when last checked. #4 shows as conflicting because #3 landed separately;
+ignore it, #7 carries its changes, and close #4 to #6 after #7 merges.
 
 ## Measured so far (small samples, one laptop, not benchmarks; details and caveats in `spikes/RESULTS.md`)
 - Gemini lite first token about 1.0 s in early spikes; a live turn about 1.0 to 1.4 s; `gemini-3.8-flash` was 2.7 to 28.6 s and is too slow for the live loop. The plan call took 1.7 to 5.8 s.
