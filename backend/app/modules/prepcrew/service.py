@@ -21,15 +21,15 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
+from app import config
 from app.core import bus, store
-from app.modules.prepcrew import evaluators, interviewer, simulator, topic_graph
+from app.modules.prepcrew import assessor, debrief, evaluators, interviewer, meter, simulator, topic_graph
 
 PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
 _seq_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 _seq_next: dict[str, int] = {}
 _turn_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # one answer at a time per session
 MAX_ANSWER_CHARS = 5000
-SCRIPTED_REPLY = "Okay. What would you check next?"  # placeholder until the walkthrough interviewer exists
 
 
 class NotFound(LookupError):
@@ -59,7 +59,7 @@ async def create_plan(job_posting: str, resume: str, user_id: str | None) -> dic
     plan = await interviewer.build_plan(job_posting, resume)
     data = {"user_id": user_id, "job_posting": job_posting, "resume": resume, "project": plan["project"],
             "topics": plan["topics"], "questions": plan["questions"], "scenario_ids": [],
-            "degraded": plan["degraded"]}
+            "requirements": plan["requirements"], "degraded": plan["degraded"]}
     rec = await store.create_record("plan", data, owner_id=user_id)
     return {"plan_id": rec["id"], **data}
 
@@ -73,7 +73,8 @@ async def get_session(session_id: str) -> dict:
 
 
 async def create_session(plan_id: str, user_id: str, consent: bool, kind: str = "interview",
-                         parent_session_id: str | None = None, skill_ids: list[str] | None = None) -> dict:
+                         parent_session_id: str | None = None, skill_ids: list[str] | None = None,
+                         strict: bool = True) -> dict:
     if not consent:
         raise BadRequest("consent must be true to start a session")
     plan = await store.get_record(plan_id)
@@ -90,6 +91,7 @@ async def create_session(plan_id: str, user_id: str, consent: bool, kind: str = 
         "results": [], "skill_flags": [], "total_ms": None, "turn": 0,
         "parent_session_id": parent_session_id, "skill_ids": skill_ids or [],
         "last_interviewer_text": opening, "degraded_turns": 0,
+        "strict": strict, "meter_state": meter.new_state(), "meter_findings": [], "ended_early": False,
     }
     rec = await store.create_record("session", data, owner_id=user_id)
     if opening:
@@ -102,7 +104,8 @@ async def _interview_turns(session_id: str) -> list[dict]:
     turns = []
     for kind, role in (("answer", "candidate"), ("interviewer", "interviewer")):
         for e in await store.list_events(session_id, kind=kind, limit=100000):
-            turns.append({"role": role, "text": e["data"]["text"], "turn": e["data"]["turn"]})
+            turns.append({"role": role, "text": e["data"]["text"], "turn": e["data"]["turn"],
+                          "shape": e["data"].get("shape")})
     return sorted(turns, key=lambda t: (t["turn"], t["role"] == "interviewer"))
 
 
@@ -119,34 +122,91 @@ async def handle_answer(session_id: str, text: str) -> dict:
     async with _turn_locks[session_id]:
         session = await get_session(session_id)
         d = session["data"]
+        if d.get("state") == "debrief":
+            raise BadRequest("the interview has ended, request the report")
         turn = int(d.get("turn", 0)) + 1
         answer_id = str(uuid.uuid4())
         await store.add_event(session_id, "answer", data={"answer_id": answer_id, "text": text, "turn": turn})
 
         update = {"turn": turn}
-        done, source = False, "scripted"
+        done, ended_early, source, shape, violations = False, False, "scripted", None, []
+        findings, snap = [], None
         if d.get("state") in ("intake", "interview"):
             plan = await store.get_record(d["plan_id"])
             if plan is None:
                 raise NotFound("plan for this session is missing")
-            question, source = await interviewer.next_question(plan["data"], await _interview_turns(session_id))
-            if question is None:
+            requirements = plan["data"].get("requirements", [])
+            strict = bool(d.get("strict", True))
+            state = d.get("meter_state") or meter.new_state()
+            enabled = config.LLM_PROVIDER != "fake"  # the check needs a real model
+            before = meter.snapshot(state, strict) if enabled else None
+            pressure = "wrapping_up" if before and before["level"] != "ok" else "normal"  # one turn behind, see api.md
+            question_asked = d.get("last_interviewer_text") or ""
+            # The check runs next to the reply, so it adds cost but not waiting time.
+            reply, assessment = await asyncio.gather(
+                interviewer.next_question(plan["data"], await _interview_turns(session_id), pressure=pressure),
+                assessor.assess(requirements, text, question_asked))
+            findings = assessment.findings
+            counted_no_answer = meter.counts_as_no_answer(findings, assessment.no_answer)
+            state = meter.apply(state, findings, requirements, assessment.no_answer)
+            snap = {**meter.snapshot(state, strict), "checked": assessment.ok} if enabled else None
+            new = [{**f, "turn": turn} for f in findings]
+            if counted_no_answer:
+                new.append({"kind": "no_answer", "turn": turn, "question": question_asked,
+                            "evidence_quote": assessment.no_answer["evidence_quote"]})
+            all_findings = list(d.get("meter_findings") or []) + new
+            update.update(meter_state=state, meter_findings=all_findings)
+            question, source, shape, violations = reply.text, reply.source, reply.shape, reply.violations
+            if snap and snap["level"] == "ended":
+                done = ended_early = True
+                question, source, shape, violations = interviewer.closing(), "scripted", None, []
+                update.update(state="debrief", ended_early=True, end_reason="requirement_gaps",
+                              end_gaps=_gap_list(requirements, state["items"], all_findings))
+            elif question is None:
                 done = True
-                question, source = interviewer.HANDOFF, "scripted"
+                question, source = interviewer.handoff(), "scripted"
                 update["state"] = "walkthrough"
             else:
                 update["state"] = "interview"
-        else:
-            question = SCRIPTED_REPLY  # TODO: walkthrough interviewer that reacts to probe events
+        else:  # TODO: walkthrough interviewer that reacts to probe events
+            question = interviewer.walkthrough_placeholder(d.get("last_interviewer_text"))
         degraded = source == interviewer.FALLBACK
         update.update(last_interviewer_text=question,
                       degraded_turns=int(d.get("degraded_turns", 0)) + (1 if degraded else 0))
         await store.update_record(session_id, update)
-        await store.add_event(session_id, "interviewer", data={"text": question, "turn": turn, "source": source})
+        await store.add_event(session_id, "interviewer", data={"text": question, "turn": turn, "source": source,
+                                                               "shape": shape, "violations": violations,
+                                                               "findings": findings, "meter": snap})
     ms = (time.perf_counter() - start) * 1000
     await store.add_event(session_id, "timing", value=ms, data={"stage": "turn_total", "turn": turn})
     return {"answer_id": answer_id, "next_question": question, "turn": turn, "turn_total_ms": ms,
-            "done": done, "degraded": degraded, "source": source}
+            "done": done, "degraded": degraded, "source": source, "ended_early": ended_early, "meter": snap}
+
+
+def _gap_list(requirements: list[dict], items: dict[str, str], findings: list[dict]) -> list[dict]:
+    """The gaps behind an early end, with the candidate's own words, so the debrief can show them."""
+    by_id = {r["id"]: r for r in requirements}
+    gaps = []
+    for rid, result in items.items():
+        if result == "knows" or rid not in by_id:
+            continue
+        quote = next((f["evidence_quote"] for f in reversed(findings)
+                      if f.get("requirement_id") == rid and f.get("result") == result), "")
+        gaps.append({"requirement_id": rid, "text": by_id[rid]["text"], "level": by_id[rid]["level"],
+                     "result": result, "evidence_quote": quote})
+    for f in findings:  # questions the candidate ignored
+        if f.get("kind") == "no_answer":
+            gaps.append({"requirement_id": None, "text": f"did not answer: {f['question']}", "level": None,
+                         "result": "no_answer", "evidence_quote": f["evidence_quote"]})
+    return gaps
+
+
+async def build_debrief(session_id: str) -> dict:
+    """What stood out and where to learn each gap. Works at any point, and for any session that has a plan."""
+    session = await get_session(session_id)
+    plan = await store.get_record(session["data"]["plan_id"])
+    out = debrief.build(session["data"], plan["data"] if plan else None)
+    return {"session_id": session_id, **out}
 
 
 async def record_timing(session_id: str, stage: str, ms: float, turn: int | None = None) -> None:
@@ -277,7 +337,7 @@ async def create_retest(session_id: str, skill_ids: list[str]) -> dict:
     original = await get_session(session_id)
     d = original["data"]
     return await create_session(d["plan_id"], d["user_id"], consent=bool(d.get("consent")), kind="retest",
-                                parent_session_id=session_id, skill_ids=skill_ids)
+                                parent_session_id=session_id, skill_ids=skill_ids, strict=bool(d.get("strict", True)))
 
 
 # ---- metrics and deletion ----

@@ -2,6 +2,7 @@
 Sends scripted answers to a realistic resume and posting, prints every interviewer line with its source and
 measured timings, so a human can judge whether the follow-ups actually react to the answers.
 Run:  backend\\.venv\\Scripts\\python spikes\\e2e_interview.py          (set E2E_NO_TTS=1 to skip audio)
+Pass a tag as the first argument to save the transcript to spikes/_runs/<tag>.json (see compare_interviews.py).
 Uses in-memory storage, never the database. The posting and resume below are made-up test text."""
 import json
 import os
@@ -65,7 +66,7 @@ def main() -> None:
     print(json.dumps({"llm": config.LLM_PROVIDER, "model": config.GEMINI_MODEL, "voice": config.VOICE_PROVIDER,
                       "plan_degraded": plan["degraded"], "project": plan["project"], "topics": plan["topics"],
                       "planned_questions": plan["questions"], "opening": s["opening"]}, indent=2))
-    turns = []
+    turns, transcript = [], []
     with client.websocket_connect(f"/ws/voice/{sid}") as ws:
         recv(ws), recv(ws)  # state, opening text
         for i, answer in enumerate(ANSWERS, 1):
@@ -84,7 +85,7 @@ def main() -> None:
                     src_msgs.append(m["code"])
                 elif m["type"] == "tts_done":
                     break
-            rec = client.get(f"/api/metrics/{sid}").json()
+            transcript.append({"candidate": answer, "interviewer": said})
             turns.append({"turn": i, "candidate": answer[:70] + "...", "interviewer": said, "timings_ms": timing,
                           "audio_frames": frames, "errors": src_msgs})
     state = client.get(f"/api/sessions/{sid}/report").json()
@@ -95,6 +96,17 @@ def main() -> None:
                       "tts_first_audio_ms_per_turn": [t["timings_ms"].get("tts_first_audio") for t in turns],
                       "fallback_or_error_turns": [t["turn"] for t in turns if t["errors"]],
                       "report_status": state["status"]}, indent=2))
+
+
+    if len(sys.argv) > 1:
+        out = Path(__file__).parent / "_runs"
+        out.mkdir(exist_ok=True)
+        (out / f"{sys.argv[1]}.json").write_text(json.dumps({
+            "tag": sys.argv[1], "llm": config.LLM_PROVIDER, "model": config.GEMINI_MODEL,
+            "opening": s["opening"], "planned_questions": plan["questions"],
+            "plan_degraded": plan["degraded"], "turns": transcript}, indent=2),
+            encoding="utf-8")
+        print("saved", out / f"{sys.argv[1]}.json")
 
 
 if __name__ == "__main__":

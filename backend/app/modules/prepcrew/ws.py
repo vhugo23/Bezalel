@@ -18,6 +18,10 @@ router = APIRouter()
 
 _board_clients: dict[str, set[WebSocket]] = defaultdict(set)
 
+BYTES_PER_SECOND = 16000 * 2   # 16 kHz mono 16-bit
+MIN_AUDIO_BYTES = BYTES_PER_SECOND // 5     # under 0.2 s is a stray tap (the API minimum is 0.1 s)
+MAX_AUDIO_BYTES = BYTES_PER_SECOND * 60     # one answer is capped at 60 s, about 1.9 MB
+
 
 async def _send(ws: WebSocket, type_: str, **fields):
     await ws.send_text(json.dumps({"type": type_, **fields}))
@@ -123,18 +127,72 @@ async def voice_ws(ws: WebSocket, session_id: str):
                 await tts_task
         tts_task = None
 
-    audio_warned = False
+    audio = bytearray()   # the current push-to-talk recording
+    overflowed = False
+
+    async def answer(text: str) -> None:
+        """Store the answer, send the reply text, then start speaking it. Shared by typed and spoken answers."""
+        nonlocal tts_task
+        await stop_tts()  # a new answer cuts off whatever is still playing
+        try:
+            r = await service.handle_answer(session_id, text)
+        except service.BadRequest as e:
+            await _error(conn, "bad_answer", str(e))
+            return
+        await _send(conn, "transcript_final", text=text.strip(), turn=r["turn"], answer_id=r["answer_id"])
+        if r["meter"]:
+            await _send(conn, "meter", turn=r["turn"], **r["meter"])
+        await _send(conn, "interviewer_text", text=r["next_question"], turn=r["turn"])
+        if r["ended_early"]:
+            await _send(conn, "state", state="debrief", reason="requirement_gaps")
+            await _send(conn, "debrief_ready", session_id=session_id)  # the client fetches GET /api/sessions/{id}/debrief
+        await _send(conn, "timing", turn=r["turn"], stage="turn_total", ms=round(r["turn_total_ms"], 1))
+        tts_task = asyncio.create_task(_speak(conn, session_id, r["next_question"], r["turn"]))
+
+    async def finish_recording() -> None:
+        """speech_end: turn the buffered audio into text, then answer. Every failure is recoverable."""
+        nonlocal overflowed
+        pcm = bytes(audio[: len(audio) - len(audio) % 2])  # whole samples only
+        too_long, overflowed = overflowed, False
+        audio.clear()
+        await stop_tts()
+        if too_long:
+            return  # the error was already sent when the limit was hit, and a cut-off answer is not graded
+        if not pcm:
+            await _error(conn, "no_audio", "no audio was received before speech_end")
+            return
+        if len(pcm) < MIN_AUDIO_BYTES:
+            await _error(conn, "too_short", "that was too short to be speech, hold the button while you talk")
+            return
+        start = time.perf_counter()
+        try:
+            text = await asyncio.wait_for(voice.transcribe(pcm), timeout=config.STT_TIMEOUT_SECONDS)
+        except Exception as e:  # provider error, bad key, timeout, fake provider
+            log.warning("stt failed: %s", type(e).__name__)
+            await _error(conn, "stt_failed", "speech to text failed, type your answer instead")
+            return
+        ms = (time.perf_counter() - start) * 1000  # the transcribe call: upload to transcript
+        await service.record_timing(session_id, "stt", ms, (await service.get_session(session_id))["data"].get("turn", 0) + 1)
+        await _send(conn, "timing", stage="stt", ms=round(ms, 1))
+        text = (text or "").strip()  # do not rely on the provider to strip
+        if not text:
+            await _error(conn, "no_speech", "no speech was recognised, try again")
+            return
+        await answer(text)
+
     try:
         while True:
             msg = await ws.receive()
             if msg.get("type") == "websocket.disconnect":
                 break
             kind, data = _parse(msg)
-            if kind == "binary":  # 16 kHz mono PCM audio
-                # TODO: stream to speech-to-text; send transcript_partial / transcript_final; latency timings.
-                if not audio_warned:
-                    await _error(conn, "voice_not_implemented", "speech-to-text not implemented yet; use text_answer")
-                    audio_warned = True
+            if kind == "binary":  # 16 kHz mono 16-bit PCM, sent while the button is held
+                if len(audio) + len(data) > MAX_AUDIO_BYTES:
+                    if not overflowed:
+                        overflowed = True
+                        await _error(conn, "audio_too_long", "answers are limited to 60 seconds, record it again")
+                else:
+                    audio += data
             elif kind == "start":  # a click in the browser, so audio is allowed to play: speak the opening line
                 current = (await service.get_session(session_id))["data"]
                 if current.get("last_interviewer_text"):
@@ -142,20 +200,13 @@ async def voice_ws(ws: WebSocket, session_id: str):
                     tts_task = asyncio.create_task(
                         _speak(conn, session_id, current["last_interviewer_text"], current.get("turn", 0)))
             elif kind == "text_answer":
-                await stop_tts()  # a new answer cuts off whatever is still playing
-                try:
-                    r = await service.handle_answer(session_id, str(data.get("text", "")))
-                except service.BadRequest as e:
-                    await _error(conn, "bad_answer", str(e))
-                    continue
-                await _send(conn, "transcript_final", text=data.get("text", ""), turn=r["turn"], answer_id=r["answer_id"])
-                await _send(conn, "interviewer_text", text=r["next_question"], turn=r["turn"])
-                await _send(conn, "timing", turn=r["turn"], stage="turn_total", ms=round(r["turn_total_ms"], 1))
-                tts_task = asyncio.create_task(_speak(conn, session_id, r["next_question"], r["turn"]))
-            elif kind == "barge_in":
+                await answer(str(data.get("text", "")))
+            elif kind == "barge_in":  # button pressed: stop the interviewer and start a clean recording
+                audio.clear()
+                overflowed = False
                 await stop_tts()  # the cancelled task sends tts_done with interrupted true
             elif kind == "speech_end":
-                pass  # TODO: start the latency clock once speech-to-text is wired
+                await finish_recording()
             elif kind == "invalid":
                 await _error(conn, "bad_message", "messages must be JSON objects with a type")
             else:

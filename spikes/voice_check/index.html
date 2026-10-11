@@ -24,6 +24,14 @@
   dt { color:var(--muted); } dd { margin:0; }
   #log { max-height:200px; overflow:auto; font:12px/1.4 ui-monospace, monospace; color:var(--muted); white-space:pre-wrap; }
   .err { color:var(--bad); }
+  #debriefBox h2 { font-size:16px; margin:0; }
+  .gap { border-top:1px solid var(--line); padding-top:8px; display:grid; gap:4px; }
+  .gap .tag { color:var(--muted); font-size:12px; }
+  .gap blockquote { margin:0; padding-left:10px; border-left:3px solid var(--line); color:var(--muted); }
+  .gap ul { margin:0; padding-left:18px; }
+  .gap a { color:var(--accent); }
+  .caveat { color:var(--muted); font-size:12px; }
+  .you { border-left-color:var(--muted); background:transparent; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -34,28 +42,62 @@
 
   <section>
     <label>Backend <input id="base" value="127.0.0.1:8000"></label>
-    <label>Job posting <textarea id="posting">Embedded hardware intern: PCB debugging, oscilloscope, UART, SPI.</textarea></label>
-    <label>Resume <textarea id="resume">Built a 3-axis motor controller PCB. Debugged a brownout on the 5V rail with a scope.</textarea></label>
+    <label>Job posting <textarea id="posting">Hardware Engineering Intern, Motor Controls
+Join our drives team building compact brushless motor controllers for robotics. You will bring up new PCB
+revisions, debug power and gate-drive problems on the bench, and write test firmware in C for STM32 parts.
+Requirements: coursework in circuits and digital logic; hands-on experience with oscilloscopes and
+multimeters; familiarity with I2C, SPI and UART; experience reading schematics and datasheets; C or C++.
+Nice to have: KiCad or Altium, buck converters, MOSFET gate drivers, EMI basics, version control for hardware.
+You will work with two senior engineers and present your findings at weekly design reviews.</textarea></label>
+    <label>Resume <textarea id="resume">Alex Rivera, Computer Engineering, third year.
+Projects
+- Three-axis motor controller PCB (team of 3): designed a 4-layer board in KiCad with an STM32G4, three
+  half-bridge gate drivers and a 12V to 5V buck converter. Brought it up and found a brownout that reset the
+  MCU when the motors started; traced it with a scope to the 5V rail dipping under load and added bulk
+  capacitance and a larger inductor.
+- Weather station: ESP32 with an I2C humidity sensor and an SPI flash logger, firmware in C. Fixed a bus
+  lockup by adding pull-up resistors and a timeout in the driver.
+- Digital logic lab: built a traffic light FSM on an FPGA board in Verilog, tested with a self-checking bench.
+Experience: lab assistant for intro circuits, helped students debug breadboards (floating grounds, swapped LED polarity).
+Skills: KiCad, C, Python, oscilloscope, logic analyzer, soldering SMD parts.</textarea></label>
+    <label><input type="checkbox" id="strict" checked style="width:auto"> Strict: the patience meter can end the interview (untick to only watch it)</label>
     <div class="row">
       <button id="begin" class="primary">1. Start session</button>
       <button id="open" disabled>2. Speak opening question</button>
     </div>
   </section>
 
+  <section id="reqsBox" hidden>
+    <div id="reqs"></div>
+  </section>
+
   <section>
+    <div id="you" class="said you" hidden></div>
     <div id="said" class="said" hidden></div>
     <label>Your answer <textarea id="answer" placeholder="Type what you would say"></textarea></label>
     <div class="row">
       <button id="send" class="primary" disabled>Send answer</button>
       <button id="barge" disabled>Barge in (stop audio)</button>
+      <button id="talk" disabled>Hold to talk</button>
+      <button id="showDebrief" disabled>Show debrief</button>
     </div>
+    <p class="note" id="talkNote">Hold the button while you speak, release when you are done. Needs microphone permission.</p>
+  </section>
+
+  <section id="debriefBox" hidden>
+    <h2>Debrief</h2>
+    <div id="debrief"></div>
   </section>
 
   <section>
     <dl>
       <dt>Session</dt><dd id="sid">none</dd>
+      <dt>State</dt><dd id="t_state">none</dd>
+      <dt>Patience meter</dt><dd id="t_meter">off until a session starts</dd>
       <dt>Audio format</dt><dd>16-bit mono PCM, 16000 Hz</dd>
       <dt>Server: reply ready</dt><dd id="t_turn">not measured</dd>
+      <dt>Server: speech to text</dt><dd id="t_stt">not measured</dd>
+      <dt>Heard you say</dt><dd id="t_said">nothing yet</dd>
       <dt>Server: first audio from ElevenLabs</dt><dd id="t_tts">not measured</dd>
       <dt>Heard: answer sent to first sound</dt><dd id="t_heard">not measured</dd>
       <dt>Audio frames / seconds played</dt><dd id="t_frames">0 / 0.00</dd>
@@ -69,7 +111,7 @@
 <script>
 const RATE = 16000;
 const $ = (id) => document.getElementById(id);
-let ws = null, ctx = null, nextTime = 0, sources = [], sentAt = null, heardLogged = false, frames = 0, seconds = 0;
+let sessionId = null, ws = null, ctx = null, nextTime = 0, sources = [], sentAt = null, heardLogged = false, frames = 0, seconds = 0;
 
 function log(msg, cls) {
   const line = document.createElement("div");
@@ -110,10 +152,20 @@ function playChunk(arrayBuffer) {
 function onMessage(ev) {
   if (ev.data instanceof ArrayBuffer) return playChunk(ev.data);
   const m = JSON.parse(ev.data);
+  if (m.type === "debrief_ready") loadDebrief();
+  if (m.type === "meter") $("t_meter").textContent = m.score + " of " + m.threshold + ", " + m.level
+    + (m.unanswered ? ", " + m.unanswered + " unanswered" : "")
+    + (m.checked === false ? "  (could not check that answer, the AI was too slow or busy)" : "");
+  if (m.type === "state") $("t_state").textContent = m.state + (m.reason ? " (" + m.reason + ")" : "");
+  if (m.type === "transcript_final") {
+    $("t_said").textContent = m.text;
+    $("you").hidden = false; $("you").textContent = "You: " + m.text;
+  }
   if (m.type === "interviewer_text") { $("said").hidden = false; $("said").textContent = m.text; }
   else if (m.type === "timing") {
     if (m.stage === "turn_total") $("t_turn").textContent = m.ms + " ms";
     if (m.stage === "tts_first_audio") $("t_tts").textContent = m.ms + " ms";
+    if (m.stage === "stt") $("t_stt").textContent = m.ms + " ms (upload to transcript)";
   } else if (m.type === "tts_done") {
     $("t_done").textContent = m.interrupted ? "interrupted (barge in or new answer)" : "finished normally";
   } else if (m.type === "error") { log("error " + m.code + ": " + m.message, "err"); }
@@ -129,17 +181,24 @@ $("begin").onclick = async () => {
     const plan = await (await fetch(http + "/api/plans", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ job_posting: $("posting").value, resume: $("resume").value, user_id: "voice-check" }) })).json();
     const res = await fetch(http + "/api/sessions", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan_id: plan.plan_id, user_id: "voice-check", consent: true }) });
+      body: JSON.stringify({ plan_id: plan.plan_id, user_id: "voice-check", consent: true, strict: $("strict").checked }) });
     if (!res.ok) throw new Error("session " + res.status + " " + await res.text());
     const s = await res.json();
+    sessionId = s.session_id;
+    $("debriefBox").hidden = true;
     $("sid").textContent = s.session_id;
     log("plan degraded=" + plan.degraded + " (true means generic questions, no model plan)");
+    $("reqsBox").hidden = false;
+    $("reqs").textContent = plan.requirements.length
+      ? "Skills from the posting: " + plan.requirements.map((r) => r.text + " [" + r.level + "]").join(", ")
+      : "No skills were read from the posting, so the patience meter is off.";
+    $("t_meter").textContent = plan.requirements.length ? "0 of 1.0, ok" : "off";
     if (ws) ws.close();
     ws = new WebSocket("ws://" + $("base").value + "/ws/voice/" + s.session_id);
     ws.binaryType = "arraybuffer";
     ws.onmessage = onMessage;
-    ws.onclose = () => { log("socket closed"); ["open", "send", "barge"].forEach((b) => $(b).disabled = true); };
-    ws.onopen = () => { ["open", "send", "barge"].forEach((b) => $(b).disabled = false); log("socket open"); };
+    ws.onclose = () => { log("socket closed"); ["open", "send", "barge", "talk"].forEach((b) => $(b).disabled = true); };
+    ws.onopen = () => { ["open", "send", "barge", "talk", "showDebrief"].forEach((b) => $(b).disabled = false); log("socket open"); };
   } catch (e) { log(String(e), "err"); }
 };
 
@@ -158,6 +217,107 @@ $("send").onclick = async () => {
 };
 
 $("barge").onclick = () => { stopAudio(); ws.send(JSON.stringify({ type: "barge_in", t_client: Date.now() })); };
+
+// ---- debrief: built with DOM methods only, because it shows the candidate's own words ----
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text !== undefined) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+async function loadDebrief() {
+  if (!sessionId) return;
+  try {
+    const res = await fetch("http://" + $("base").value + "/api/sessions/" + sessionId + "/debrief");
+    if (!res.ok) throw new Error(res.status + " " + await res.text());
+    renderDebrief(await res.json());
+  } catch (e) { log("debrief: " + e, "err"); }
+}
+
+function renderDebrief(d) {
+  const box = $("debrief");
+  box.replaceChildren(el("p", d.summary));
+  if (d.gaps.length) box.append(el("h3", "Where to work", "tag"));
+  d.gaps.forEach((g) => {
+    const row = el("div", undefined, "gap");
+    row.append(el("strong", g.title));
+    const how = { unknown: "you said you don't know it", partial: "limited experience", no_answer: "no answer given" }[g.result];
+    row.append(el("span", (g.level ? g.level + ", " : "") + how, "tag"));
+    if (g.evidence_quote) row.append(el("blockquote", "You said: \u201c" + g.evidence_quote + "\u201d"));
+    if (g.tip) row.append(el("div", g.tip));
+    if (g.resources.length) {
+      const list = el("ul");
+      g.resources.forEach((r) => {
+        const li = el("li");
+        const a = el("a", r.title); a.href = r.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+        li.append(a, el("span", " (" + r.source + ", " + r.kind + ")", "tag"), el("div", r.why));
+        if (r.caveat) li.append(el("div", "Note: " + r.caveat, "caveat"));
+        list.append(li);
+      });
+      row.append(list);
+    } else if (g.search_hint) row.append(el("div", g.search_hint));
+    box.append(row);
+  });
+  if (d.strengths.length) {
+    box.append(el("h3", "What you showed", "tag"));
+    d.strengths.forEach((s) => box.append(el("div", s.title + (s.evidence_quote ? ": \u201c" + s.evidence_quote + "\u201d" : ""))));
+  }
+  box.append(el("p", d.resources_note, "caveat"));
+  $("debriefBox").hidden = false;
+}
+
+$("showDebrief").onclick = loadDebrief;
+
+// ---- hold to talk: mic -> 16 kHz 16-bit mono PCM frames -> speech_end on release ----
+let mic = null, recording = false, micNode = null;
+
+function downsample(input, inRate) {
+  const ratio = inRate / RATE, outLen = Math.floor(input.length / ratio), out = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const a = Math.floor(i * ratio), b = Math.min(Math.floor((i + 1) * ratio), input.length);
+    let sum = 0; for (let j = a; j < b; j++) sum += input[j];
+    out[i] = Math.max(-1, Math.min(1, sum / Math.max(1, b - a))) * 0x7fff;
+  }
+  return out;
+}
+
+async function ensureMic() {
+  if (mic) return;
+  mic = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  const source = ctx.createMediaStreamSource(mic);
+  micNode = ctx.createScriptProcessor(4096, 1, 1);   // deprecated but simple, fine for a test page
+  micNode.onaudioprocess = (e) => {
+    if (!recording || !ws || ws.readyState !== 1) return;
+    const pcm = downsample(e.inputBuffer.getChannelData(0), ctx.sampleRate);
+    if (pcm.length) ws.send(pcm.buffer);
+  };
+  source.connect(micNode);
+  micNode.connect(ctx.destination);   // the processor must be connected to run; its output is silent
+}
+
+async function pressTalk(ev) {
+  ev.preventDefault();
+  if (recording) return;
+  try { await ctx.resume(); await ensureMic(); } catch (e) { log("microphone: " + e, "err"); return; }
+  stopAudio();
+  frames = 0; seconds = 0; heardLogged = false;
+  ws.send(JSON.stringify({ type: "barge_in", t_client: Date.now() }));   // stop the interviewer, start a clean recording
+  recording = true;
+  $("talk").textContent = "Listening... release to send";
+}
+
+function releaseTalk() {
+  if (!recording) return;
+  recording = false;
+  $("talk").textContent = "Hold to talk";
+  sentAt = performance.now(); $("t_heard").textContent = "waiting"; $("t_said").textContent = "transcribing..."; $("you").hidden = false; $("you").textContent = "You: (transcribing...)";
+  setTimeout(() => ws.send(JSON.stringify({ type: "speech_end", t_client: Date.now() })), 150);  // let the last frames go out first
+}
+
+const talk = $("talk");
+talk.addEventListener("pointerdown", pressTalk);
+["pointerup", "pointercancel", "pointerleave"].forEach((n) => talk.addEventListener(n, releaseTalk));
 </script>
 </body>
 </html>

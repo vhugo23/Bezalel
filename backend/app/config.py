@@ -48,3 +48,34 @@ SERVE_HTML = os.getenv("SERVE_HTML", "false").strip().lower() in ("1", "true", "
 # Live interview turns need a short limit, the voice loop sits silent while it waits.
 # TASK_TIMEOUT_SECONDS is for background work.
 LIVE_TURN_TIMEOUT_SECONDS = float(os.getenv("LIVE_TURN_TIMEOUT_SECONDS", "5"))
+
+# Speech to text (ElevenLabs, upload endpoint). Input audio must be 16 kHz mono 16-bit PCM.
+ELEVENLABS_STT_MODEL = os.getenv("ELEVENLABS_STT_MODEL", "scribe_v2")
+STT_TIMEOUT_SECONDS = float(os.getenv("STT_TIMEOUT_SECONDS", "15"))
+
+# ElevenLabs voice settings. Blank means "send nothing, use the voice's own settings". Tune by ear with
+# spikes/ab_voice.py. Not every model honors every setting (checked per model, not assumed).
+def _optional_float(name: str):
+    raw = os.getenv(name, "").strip()
+    return float(raw) if raw else None
+
+
+ELEVENLABS_STABILITY = _optional_float("ELEVENLABS_STABILITY")
+ELEVENLABS_SIMILARITY = _optional_float("ELEVENLABS_SIMILARITY")
+ELEVENLABS_STYLE = _optional_float("ELEVENLABS_STYLE")
+ELEVENLABS_SPEED = _optional_float("ELEVENLABS_SPEED")
+
+# Fail threshold ("patience meter", see meter.py). Starting values chosen by hand, not validated.
+# One missed REQUIRED skill (0.6) already starts the wrap-up; two end the interview. A missed PREFERRED skill is small.
+FAIL_THRESHOLD = float(os.getenv("FAIL_THRESHOLD", "1.0"))
+WRAP_UP_AT = float(os.getenv("WRAP_UP_AT", "0.5"))
+PENALTY_REQUIRED_UNKNOWN = float(os.getenv("PENALTY_REQUIRED_UNKNOWN", "0.6"))
+PENALTY_REQUIRED_PARTIAL = float(os.getenv("PENALTY_REQUIRED_PARTIAL", "0.25"))
+PENALTY_PREFERRED_UNKNOWN = float(os.getenv("PENALTY_PREFERRED_UNKNOWN", "0.15"))
+PENALTY_PREFERRED_PARTIAL = float(os.getenv("PENALTY_PREFERRED_PARTIAL", "0.05"))
+ASSESSOR_TIMEOUT_SECONDS = float(os.getenv("ASSESSOR_TIMEOUT_SECONDS", "4"))
+# One answer can add at most this much to the meter, so no single sentence (or one speech-to-text slip) ends an interview.
+MAX_PENALTY_PER_ANSWER = float(os.getenv("MAX_PENALTY_PER_ANSWER", "0.6"))
+# An answer that ignores the interviewer's question. Counts every time (a new question each time), unlike a skill.
+# 0.35 means the second one starts the wrap-up and the third ends a strict interview. Hand-picked, not validated.
+PENALTY_NON_ANSWER = float(os.getenv("PENALTY_NON_ANSWER", "0.35"))

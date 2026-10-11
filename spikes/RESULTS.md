@@ -53,6 +53,17 @@ speech to text about 0.8 to 1.6 s, a lite Gemini model about 1.0 s to first toke
 `timing` readout once the loop exists. Ideas to hide it: speak a short filler acknowledgment while the model
 works, and start TTS on the first sentence.
 
+## Speech in, push-to-talk (`spikes/e2e_stt.py`)
+
+Sat Oct 10, 2026, one run. ElevenLabs spoke a sentence (4.74 s, flash model), the PCM went back through the
+real `/ws/voice` route as 100 ms frames plus `speech_end`, and the transcript was compared with the sentence.
+
+- Heard: the same words, ignoring the final period. Speech to text (`scribe_v2`, upload) took 935 ms.
+- The reply (real Gemini lite) came back as text and 156 audio frames. `speech_end` to the end of the reply audio
+  was 2872 ms. That includes the whole reply being spoken, so it is not the pause before the interviewer starts.
+- This is one synthetic voice. It says nothing about accuracy on real, accented or noisy speech.
+  A real browser microphone check by a person is still needed.
+
 ## Real interviewer, 5 scripted turns (gemini-3.5-flash-lite, `spikes/e2e_interview.py`)
 
 Sat Oct 10, 2026, one laptop, in-memory storage. Posting about 800 characters and resume about 1200 characters
@@ -73,3 +84,111 @@ test follow-up behavior, not interview quality. One plan model call plus 5 live 
   Fixed with one prompt line ("never repeat a question in the same words"). Run 2 rephrased each time.
   Still unsolved: it keeps steering back to the one unanswered question instead of moving on sooner.
 - Retest on venue wifi, with a real person talking, before quoting any number.
+
+## Humanlike interviewer, old versus new persona (`spikes/compare_interviews.py`)
+
+Sat Oct 10, 2026. The same 5 scripted candidate answers, real Gemini lite (`gemini-3.5-flash-lite`), two runs per
+side, 10 replies per side. In each side one of the two runs failed to get a model plan (Gemini 503 "high demand"),
+so it used the generic fallback questions. That makes the sides only roughly comparable. Tiny sample, not a benchmark.
+
+| Measure (10 replies per side) | Old persona | New persona |
+|---|---|---|
+| Average words per reply | 18.5 | 11.7 |
+| Replies over 25 words | 2 | 0 |
+| Replies repeating an earlier opening word | 1 | 0 |
+| First sentence mostly repeats the candidate's answer | 2 | 0 |
+| Verbatim repeated questions | 0 | 0 |
+| Live checker violations (`humanness.check`) | 0 | 0 |
+
+- The live checker found nothing on either side, so it is a guard rail and not evidence of improvement. It did not
+  catch the old "restate what you said, then ask" pattern at its 60 percent threshold, so the comparison uses a looser
+  first-sentence measure.
+- What a person hears is not measured. `spikes/_runs/blind_read.md` has the 10 reply pairs in random order for a
+  blind read, and `spikes/ab_voice.py` writes 12 WAV files (4 lines, 3 voice settings) to listen to. The presets are
+  guesses and the model may ignore settings it does not support. No result is claimed until a person has judged.
+- The plan call takes about 5 s (5 runs: 4.5 to 5.8 s), unlike a live turn at about 1 s. One run in six hit a 503;
+  the plan call now retries once after a pause. Live turns still do not retry.
+
+## Patience meter, real model (`spikes/e2e_threshold.py`, gemini-3.5-flash-lite)
+
+Sat Oct 10, 2026. Made-up posting and resume, scripted answers, several runs. The weights are hand-picked starting
+values. Nothing here validates them, and the labels below are mine, not an independent check.
+
+**Requirements read from the posting.** 12 skills, 7 required and 5 preferred, matching the posting's wording
+("Requirements" versus "Nice to have"). After the prompt asked for one skill per item, "I2C, SPI and UART" came
+back as three items. "KiCad or Altium" stayed one item.
+
+**Assessor against my 15 hand-written answers (one run).** 17 of 20 checks agreed with my labels. Differences:
+EMI "only read about it" came back `unknown` where I labeled `partial`; one label of mine was out of date once the
+"A or B" rule existed. In the one earlier run, a "buck converters are new to me" answer got no finding, in the next
+run it came back `partial`. The differences went both ways: gentler once (buck converters, no finding) and harsher
+once (EMI, `unknown` where I labeled `partial`). A harsher call costs 0.15 instead of 0.05 on a preferred skill.
+No answer without a gap was flagged as a gap. "Never used Altium, only know KiCad" correctly counted as met for
+"KiCad or Altium" after the prompt said either one meets it. Before that fix it was marked `unknown`, an unfair penalty.
+
+**Meter movement, live interviews.**
+
+| Scenario | Meter after each answer | Outcome |
+|---|---|---|
+| One missed required skill (SPI) | 0.0, 0.6, 0.6 | `wrapping_up` from 0.6, not ended |
+| Three missed preferred skills (gate drivers, buck converters, EMI partial) | 0.0, 0.15, 0.30, 0.35 | stayed `ok`, never ended |
+| Two missed required skills (SPI, I2C), one clean run | 0.0, 0.6, 1.2 | ended with a closing line, session in `debrief` |
+
+The two-required-skills ending reproduced only once. In the latest runs about half the Gemini calls returned "busy"
+errors even after the one retry, so the reply fell back to a planned question and the gap check returned nothing
+(by design no penalty, so the meter stayed at 0.0). Non-strict mode was not exercised against the real model, only in tests.
+
+**Timing, one clean run.** A turn took about 1.3 to 1.4 s with the gap check running next to the reply, against
+about 1.3 s for the reply alone, so the check adds cost but no visible wait. The plan call took 1.7 s (earlier runs
+4.5 to 5.8 s).
+
+**Reliability caveat.** Gemini lite was busy or erroring in bursts: right after about 25 calls in under a minute, and
+once for several minutes. This may be rate limiting on the free key or general demand, not confirmed. The gap check
+doubles the model calls per turn. Check the key's rate limits before a demo with several people at once.
+
+**Not yet done.** The false-end rate on about 10 scripted answers is only a smoke test here (my labels). Before the
+first tester session, hand-check it with a second person's labels.
+
+## Patience meter, answers that ignore the question (`spikes/e2e_nonanswer.py`, gemini-3.5-flash-lite)
+
+Sat Oct 10, 2026, one run. Added after a tester noticed the meter did not move when they simply did not answer.
+Before this the meter only reacted to someone saying they did not know a skill from the posting.
+
+**Judging 14 question and answer pairs I wrote and labeled** (my labels, not independent): it agreed on 14 of 14.
+It flagged 7 of 7 real dodges ("I mostly did the power stage" to a question about capacitor sizing, "Um, not sure, idk",
+"I'd rather talk about the firmware", "I don't know", an off-topic remark about the project, pizza, "Next question please")
+and none of the 7 real answers, including a short unsure answer, a clarifying question back, and a half answer.
+Every flag came with a quote of the candidate's own words. A sample this small only shows it can do the job.
+
+**Live interview where the candidate keeps dodging.** The first dodge moved the meter to 0.35 as designed. The next
+two turns timed out on Gemini (assessor limit 4 s, reply limit 5 s), so nothing was judged, the meter stayed at 0.35, and
+the replies fell back to planned questions. So in this run the "third strike ends it" did not get a live demonstration.
+The tests cover it with a stubbed model. The meter message now carries `checked`, false when the check could not run.
+
+**Honest caveat.** When Gemini is slow or busy the meter silently under-counts. It errs toward not ending an interview,
+and with `checked` the UI can say so. If that happens often in a demo, the options are a faster or paid model, a second
+fallback model, or applying a late result on the next turn.
+
+## Debrief and learning resources (`spikes/e2e_debrief.py`, `spikes/check_resource_links.py`)
+
+Sat Oct 10, 2026.
+
+**The resource library (24 entries).** I picked candidates, opened each one with the fetch tool and read what it
+covers. Rejected: a SparkFun datasheet tutorial (404), and two All About Circuits textbook pages (403 to scripts, so I
+could not confirm them). The two Texas Instruments notes loaded as PDFs the fetch tool could not read, so I read the
+saved files directly and confirmed their titles ("Basic Calculation of a Buck Converter's Power Stage (Rev. C)", 9 pages;
+"Fundamentals of MOSFET and IGBT Gate Driver Circuits", 48 pages). Caveats found are recorded on the entries: a SparkFun page
+marked retired, a C guide that calls itself beta quality, Wikipedia pages that are articles and not tutorials.
+**None has been reviewed by a person, and every entry says so (`reviewed: false`).** Skills without a match
+(for example Altium) get a search term instead of a link.
+
+**Link check from a script.** 21 of 24 load. 3 return 403 to a script (DigiKey and two Wikipedia pages), but all
+three loaded when read earlier with the fetch tool, so they are probably blocking scripts. Open them in a browser to be sure.
+The check says a page loads, not that its content still matches the description.
+
+**One live run, real Gemini.** The interview ended after 4 answers (meter 0.0, 0.6, 0.95, 1.55). The debrief listed SPI and UART
+as required gaps with the candidate's exact words, linked the right SparkFun page for each, listed the dodged
+question with a TI gate driver note (the question was about gate drivers), and listed oscilloscopes and I2C as strengths.
+Limit seen: the same last answer also said they had never worked with MOSFET gate drivers, and the model did not report
+that one, so it is missing from the debrief. When one answer admits several gaps, only some may be caught. That errs
+toward not penalizing.

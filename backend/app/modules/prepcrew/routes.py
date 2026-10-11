@@ -5,7 +5,7 @@ from app.core import voice
 from app.core.sse import sse_response
 from app.modules.prepcrew import service
 from app.modules.prepcrew.schemas import (
-    DeleteResponse, EndSessionResponse, LessonResponse, MasteryResponse, MetricsResponse,
+    DebriefResponse, DeleteResponse, EndSessionResponse, LessonResponse, MasteryResponse, MetricsResponse,
     PlanRequest, PlanResponse, ProbeEvent, ProbeRequest, ReportResponse, RetestRequest,
     SessionStartRequest, SessionStartResponse, SkillsResponse, TurnRequest, TurnResponse,
 )
@@ -27,20 +27,22 @@ def _session_response(rec: dict, voice_token: str | None = None) -> SessionStart
     d = rec["data"]
     opening = d.get("last_interviewer_text") if d["kind"] == "interview" else None
     return SessionStartResponse(session_id=rec["id"], kind=d["kind"], pair_code=d["pair_code"],
-                                voice_token=voice_token, state=d["state"], opening=opening)
+                                voice_token=voice_token, strict=d.get("strict", True), state=d["state"],
+                                opening=opening)
 
 
 @router.post("/plans", response_model=PlanResponse)
 async def create_plan(body: PlanRequest):
     p = await service.create_plan(body.job_posting, body.resume, body.user_id)
     return PlanResponse(plan_id=p["plan_id"], topics=p["topics"], questions=p["questions"],
-                        scenario_ids=p["scenario_ids"], project=p["project"], degraded=p["degraded"])
+                        scenario_ids=p["scenario_ids"], project=p["project"], requirements=p["requirements"],
+                        degraded=p["degraded"])
 
 
 @router.post("/sessions", response_model=SessionStartResponse)
 async def start_session(body: SessionStartRequest):
     try:
-        rec = await service.create_session(body.plan_id, body.user_id, body.consent)
+        rec = await service.create_session(body.plan_id, body.user_id, body.consent, strict=body.strict)
     except (service.NotFound, service.BadRequest) as e:
         raise _http(e)
     return _session_response(rec, await voice.mint_token())
@@ -54,7 +56,7 @@ async def take_turn(session_id: str, body: TurnRequest):
     except (service.NotFound, service.BadRequest) as e:
         raise _http(e)
     return TurnResponse(answer_id=r["answer_id"], next_question=r["next_question"], done=r["done"],
-                        degraded=r["degraded"], source=r["source"])
+                        degraded=r["degraded"], source=r["source"], ended_early=r["ended_early"], meter=r["meter"])
 
 
 @router.post("/sessions/{session_id}/probe", response_model=ProbeEvent)
@@ -97,6 +99,15 @@ async def report(session_id: str):
         raise _http(e)
     return ReportResponse(session_id=session_id, status=d.get("status", "not_ended"),
                           results=d.get("results", []), skill_flags=d.get("skill_flags", []))
+
+
+@router.get("/sessions/{session_id}/debrief", response_model=DebriefResponse)
+async def debrief(session_id: str):
+    """What stood out, what went fine, and where to learn each gap. Shown when the interview ends."""
+    try:
+        return await service.build_debrief(session_id)
+    except service.NotFound as e:
+        raise _http(e)
 
 
 @router.delete("/sessions/{session_id}", response_model=DeleteResponse)
