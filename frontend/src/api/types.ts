@@ -702,6 +702,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/sessions/{sid}/quit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quit Session
+         * @description The "I don't know" button: skip this step, or end the lesson with next steps.
+         */
+        post: operations["quit_session_api_v2_sessions__sid__quit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/sessions/{sid}/events": {
         parameters: {
             query?: never;
@@ -1887,6 +1907,66 @@ export interface components {
              * @description Defaults to the session's current scenario.
              */
             scenario_id?: string | null;
+        };
+        /** QuitInput */
+        QuitInput: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "lost" | "unclear" | "time" | "technical" | "wrong_track" | "other";
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** QuitPlan */
+        QuitPlan: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "lost" | "unclear" | "time" | "technical" | "wrong_track" | "other";
+            /** Reason Label */
+            reason_label: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Headline */
+            headline: string;
+            /** Summary */
+            summary: string;
+            /** Next Steps */
+            next_steps: components["schemas"]["QuitStep"][];
+            /**
+             * Source
+             * @default authored
+             * @constant
+             */
+            source: "authored";
+        };
+        /** QuitResult */
+        QuitResult: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "moved_on" | "ended";
+            /** Message */
+            message: string;
+            plan?: components["schemas"]["QuitPlan"] | null;
+        };
+        /** QuitStep */
+        QuitStep: {
+            /** Title */
+            title: string;
+            /** Detail */
+            detail: string;
+            /** Action */
+            action?: ("grade" | "restart" | "plan" | "intake" | "history") | null;
         };
         /** Registration */
         Registration: {
@@ -3736,6 +3816,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Event"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quit_session_api_v2_sessions__sid__quit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuitInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuitResult"];
                 };
             };
             /** @description Validation Error */
