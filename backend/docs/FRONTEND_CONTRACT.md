@@ -48,11 +48,23 @@ Calling the backend directly also works: CORS allows localhost:5173 and localhos
 6. `GET /api/sessions/{id}/report`, `GET /api/lessons/{skill_id}`, `POST /api/retests`, `GET /api/mastery?user_id=`
 7. Consent: `DELETE /api/sessions/{id}` removes everything for a tester
 
+### Voice and interview details the UI needs
+- **Audio in:** while the talk button is held send binary frames of 16 kHz mono 16-bit PCM. On press send `{"type":"barge_in"}` first, on release `{"type":"speech_end"}`. The server transcribes and answers as if the text had been typed. Typed fallback: `{"type":"text_answer","text":"..."}`.
+- **Audio out:** the interviewer's voice arrives as binary frames, 16-bit mono PCM at 16000 Hz, always whole samples (`ws.binaryType = "arraybuffer"`). Text arrives first (`interviewer_text`), then the audio, then `tts_done`. Send `{"type":"start"}` after a click to hear the opening question (browsers block audio before a click).
+- **Patience meter:** after each spoken answer the socket sends `meter {score, threshold, level, unanswered, checked}`. `level` is `ok`, `wrapping_up` or `ended`. `checked: false` means the model was too slow or busy to judge that answer, so nothing moved. Do not tell the candidate how they are doing, the interviewer does not.
+- **Early end:** when the meter ends a strict interview the socket sends the closing line, `state: debrief` with `reason: "requirement_gaps"`, then `debrief_ready`. Fetch `GET /api/sessions/{id}/debrief` and show it. More answers are refused with `error bad_answer`, the socket stays open. `POST /api/sessions` takes `strict: false` for demos where the interview must never end.
+- **Debrief:** summary text, gaps (the candidate's own words plus up to two links, or a search term), strengths, and a note that the links have not been reviewed by a person. Show that note. Render quotes as text, never as HTML.
+- **Errors on the voice socket never close it:** `bad_answer`, `no_audio`, `too_short`, `no_speech`, `stt_failed`, `audio_too_long`, `tts_failed`. Offer the typed fallback after `stt_failed`.
+- Full message list: `contracts/ws_messages.md`. Routes and fields: `contracts/api.md`.
+
 ## What is real vs stubbed today
-Real: sessions, consent, pair codes, answers stored, probe events with server-side seq and readings from scenario
-files, grading pipeline + SSE (runs when a rubric is marked `reviewed`), mastery, metrics, deletion, WebSocket message routing.
-Stubbed: interviewer replies (text says TODO), speech-to-text and TTS audio, the evaluator model call,
-plan generation, lessons content, vision critique. Endpoints keep their shapes when these are filled in.
+Real: plans (Gemini, with generic fallback questions if the model fails), sessions, consent, pair codes, the spoken interview
+(Gemini replies, ElevenLabs voice out, push-to-talk speech in), the patience meter, the debrief with resources, answers stored,
+probe events with server-side seq and readings from scenario files, grading pipeline + SSE (runs when a rubric is marked
+`reviewed`), mastery, metrics (measured stt, first audio, turn total), deletion, WebSocket message routing.
+Stubbed or missing: the interviewer during the circuit walkthrough (a placeholder reply), memory for session two, the evaluator
+model call (Opus), lessons and the skill graph, scenarios (only the contract example exists), vision critique, the retest loop.
+Every field added so far is optional with a default, so older clients keep working. Resource links are unreviewed (`reviewed: false`).
 
 ## Deploy
 Either host the React build and the API as two services (set `CORS_ORIGINS` to the frontend's URL), or put
