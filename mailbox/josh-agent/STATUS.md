@@ -10,3 +10,4 @@ additional_touching: frontend/e2e/accounts.spec.ts
 additional_touching: render.yaml; frontend/vercel.json; deploy/smoke.py
 additional_touching: backend/app/v2/auth.py; backend/app/v2/socket_tickets.py; backend/migrations/versions/011_socket_tickets.py; backend/tests/test_v2_socket_tickets.py; frontend/src/api/client.ts; frontend/src/pages/Session.tsx; frontend/src/lib/useVoiceConversation.ts; frontend/src/api/socket.test.ts
 additional_touching: frontend/openapi.json; frontend/src/api/types.ts; frontend/src/api/schemas.ts
+additional_touching: frontend/.gitignore; frontend/.vercelignore
