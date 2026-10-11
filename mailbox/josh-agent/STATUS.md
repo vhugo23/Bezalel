@@ -1,14 +1,14 @@
-updated: 2026-10-11T07:52:49Z
+updated: 2026-10-11T08:14:06Z
 branch: main
-doing: continuing checked executable retests and hardware integration; Pi lab is pushed, STAR stays with the teammate
-next: Pi learning loop, hardware circuit integration, remaining catalog engines, accounts/history/privacy and deployment; STAR is handed off
+doing: checked Pi learning loop pushed; continuing the remaining implementation, STAR stays with the teammate
+next: account ownership/history/privacy, hardware circuit integration and remaining engines, deployment; STAR is handed off
 blocked_on: human grading calibration and physical-device/audio field testing remain pending
 touching: backend/app/v2 (except behavioral adapter), backend/migrations, backend/scripts, backend/tests/test_stt.py and dedicated new engine tests, frontend/src (except STAR files and circuitSymbols), frontend/e2e/session.spec.ts, docs/IMPLEMENTATION_ROADMAP.md
 handed_off: Behavioral STAR drill; reserved for Joshua's teammate, see STAR_HANDOFF.md
 
 ## Implemented and pushed
 
-Latest feature commit: `f7ef60f` (runnable Pi lab); `df324f1` adds board/device reliability and `1b56bc2` adds implicit memory. Earlier slices are on main.
+Latest feature commits: `ca263e3` (checked Pi lessons/retests), `f7ef60f` (runnable Pi lab); `df324f1` adds board/device reliability and `1b56bc2` adds implicit memory. Earlier slices are on main.
 
 - Canonical FastAPI `/api/v2` and Vite/React/TypeScript UI; root `prototype.html` is the visual reference.
 - Tiger v2.3 migrations through `009_pi_linux`, seed catalog, three hypertables and two continuous aggregates. Legacy public-schema tables are preserved.
@@ -18,8 +18,8 @@ Latest feature commit: `f7ef60f` (runnable Pi lab); `df324f1` adds board/device 
 - Inline/paired board PNG critique, validated stroke targets, local geometry, separate annotations, pause review, actual QR, private-token reconnect, journal/replay, Undo/Clear and stale-review rejection. Exact demo board uses labelled recorded critique.
 - Parallel evaluators, deterministic evidence checks plus independent model review, per-skill assessment, gap lesson and changed retest.
 - Backboard ranks locally verified gaps for implicit openers. Durable sync/erasure outbox and evidence-derived follow-up settings; no memory UI. Live authentication verified, live CRUD result not captured and not counted as passed.
-- Pi: five-stage deterministic Linux fault engine, saved terminal/editor/browser/power actions, reference validation, private state, exact tool evidence and progression gates. Commands, hardware and timings are simulated; see docs/PI_LAB.md. Existing-plan migration 009 ran on Tiger and made eight proposed Pi tracks ready. Checked executable retests and full 3D interaction remain pending.
-- Last completed verification: 553 backend tests plus four newly merged circuit-stamp contract tests; 84 frontend tests and build; all eight isolated browser journeys across the suite and focused reruns. Fresh Tiger migration, synthetic/mock queue and memory-race acceptance passed. Human grading quality is not established by these fixtures.
+- Pi: five-stage deterministic Linux fault engine, saved terminal/editor/browser/power actions, reference validation, private state, exact tool evidence and progression gates. Commands, hardware and timings are simulated; see docs/PI_LAB.md. Existing-plan migration 009 ran on Tiger and made eight proposed Pi tracks ready. Checked lessons and executable retests now run through the durable queue. Two authored variants change the port, directory traversal, log lifecycle and power-history interpretation while retaining the rubric. Full 3D interaction remains pending.
+- Last completed verification: 568 backend tests; 85 frontend tests and build; all eight isolated browser journeys across the suite and focused reruns. Fresh Tiger migration, synthetic/mock queue and memory-race acceptance passed; synthetic/recorded Pi learning acceptance verifies rejected-review nonpublication, audited retry, changed engine, same rubric, source citations and idempotent retest start. Human grading quality is not established by these fixtures.
 
 ## Run locally (PowerShell, from repo root)
 
