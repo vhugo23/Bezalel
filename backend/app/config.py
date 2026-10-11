@@ -31,6 +31,11 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 EVALUATOR_CONCURRENCY = int(os.getenv("EVALUATOR_CONCURRENCY", "4"))
 EVALUATOR_TIMEOUT_SECONDS = float(os.getenv("EVALUATOR_TIMEOUT_SECONDS", "60"))
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
+# Model id sent with each TTS request. Blank uses ElevenLabs' default. eleven_flash_v2_5 had the lowest
+# first-audio times in spikes/RESULTS.md (tried by name, not confirmed from docs).
+ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "")
+# pcm_16000 = 16-bit mono little-endian at 16 kHz. This is what the browser player must expect.
+ELEVENLABS_OUTPUT_FORMAT = os.getenv("ELEVENLABS_OUTPUT_FORMAT", "pcm_16000")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
 
 # ---- Frontend integration

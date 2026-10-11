@@ -1,16 +1,17 @@
-import os
-
-os.environ["SERVE_HTML"] = "true"  # tests cover the HTML fallback pages too
-
 import pytest
 
 from app import config
+from app.core import bus, store
 
 
 @pytest.fixture(autouse=True)
-def no_database(monkeypatch):
-    """Tests never touch your real database, even if .env has DATABASE_URL."""
+def isolated(monkeypatch):
+    """Tests never touch your real database or AI keys, even if .env has them, and start with empty storage."""
     monkeypatch.setattr(config, "DATABASE_URL", "")
     monkeypatch.setattr(config, "MEMORY_BACKEND", "")
     monkeypatch.setattr(config, "LLM_PROVIDER", "fake")
     monkeypatch.setattr(config, "APP_API_KEY", "")
+    store._records.clear()
+    store._events.clear()
+    bus._history.clear()
+    yield
