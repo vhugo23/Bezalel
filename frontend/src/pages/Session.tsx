@@ -10,6 +10,7 @@ import { Shell } from '../components/Shell';
 import { Whiteboard } from '../components/Whiteboard';
 import { PiLab, labReady } from '../components/PiLab';
 import { DemoAutoplay } from '../components/DemoAutoplay';
+import { QuitLesson, savedQuitPlan } from '../components/QuitLesson';
 import { Badge, Button, ErrorNotice, Icon, Modal } from '../components/ui';
 
 const labels = {off:'Ready when you are',connecting:'Connecting your microphone',loading:'Loading local speech',listening:'Listening to you',transcribing:'Transcribing your answer',thinking:'Dana is thinking',speaking:'Dana is speaking',muted:'Microphone muted'};
@@ -77,6 +78,10 @@ export function SessionPage() {
   const hasAnswer=turns.some(e=>e.actor==='candidate'&&e.step===step);
   const done=(steps.length>0&&step>=steps.length)||session?.status==='graded';
   useEffect(()=>{if(session?.paused)voice.end();},[session?.paused]);
+  // A quit session reopens on its saved next steps until the dialog is closed.
+  const ended=session?.status==='ended';
+  const [quitUi,setQuitUi]=useState<{id:string;open:boolean}|null>(null);
+  const quitOpen=quitUi?.id===id?quitUi.open:ended;
 
   const conversation=<div className="voice-transcript" ref={transcript} role="log" aria-label="Interview transcript" aria-live="polite" onScroll={e=>{const el=e.currentTarget;follow.current=el.scrollHeight-el.scrollTop-el.clientHeight<70;}}>
     <div className="conversation-intro"><span>YOUR INTERVIEW</span><p>A conversation with Dana</p>{events.some(e=>e.payload.demo_autoplay===true)&&<small className="demo-candidate-label">Scripted demo candidate · graded from saved evidence</small>}</div>
@@ -96,14 +101,14 @@ export function SessionPage() {
     <main inert={demoRunning} className={`sgrid session-grid voice-session ${isBoard||isLab?'with-board':''} ${demoRunning?'demo-session-running':''}`}>
       <aside className="gcol">
         <section className="card"><div className="ch"><h3>Track</h3><Badge>{done?'Complete':`Step ${step+1} of ${steps.length}`}</Badge></div><div className="cb step-list">{steps.map(({title:name,surface},i)=><div className={`step ${i<step?'done':i===step?'cur':''}`} key={name}><span className="n">{i<step?<Icon name="check"/>:i+1}</span><div><b>{name}</b><small>{surface}</small></div></div>)}</div></section>
-        <section className="card"><div className="cb"><div className="turn"><b>{done?'Nicely done':'Your turn'}</b><span>{steps[step]?.task||'Send the conversation and drawing to the evaluators.'}</span></div><div className="row session-actions">{!done?<Button size="sm" disabled={next.isPending||voice.busy||isBoard||session?.paused||!hasAnswer||(isLab&&!labReady(session?.engine_state?.lab))} onClick={()=>next.mutate()}>Next step<Icon/></Button>:<Button size="sm" disabled={end.isPending} onClick={()=>{voice.end();end.mutate();}}>{end.isPending?'Starting evaluators…':'Finish session'}<Icon/></Button>}</div></div></section>
+        <section className="card"><div className="cb"><div className="turn"><b>{ended?'Lesson ended':done?'Nicely done':'Your turn'}</b><span>{ended?'You ended this lesson early. Your transcript is saved.':steps[step]?.task||'Send the conversation and drawing to the evaluators.'}</span></div><div className="row session-actions">{ended?<Button size="sm" variant="outline" onClick={()=>setQuitUi({id,open:true})}>See next steps</Button>:!done?<><Button size="sm" disabled={next.isPending||voice.busy||isBoard||session?.paused||!hasAnswer||(isLab&&!labReady(session?.engine_state?.lab))} onClick={()=>next.mutate()}>Next step<Icon/></Button><Button size="sm" variant="outline" disabled={session?.status!=='live'||session?.paused||next.isPending} onClick={()=>setQuitUi({id,open:true})}>I don’t know</Button></>:<Button size="sm" disabled={end.isPending} onClick={()=>{voice.end();end.mutate();}}>{end.isPending?'Starting evaluators…':'Finish session'}<Icon/></Button>}</div></div></section>
         <div className="session-status"><span className={connected?'dotok':'dotwait'}/>{connected?'Conversation saved':'Reconnecting…'}<span className="fine">{events.length} events in your session</span></div>
         {session?.demo&&<p className="fine demo-note">Recorded demo replies. Your transcript and drawing are saved.</p>}
       </aside>
       <section className="card voice-stage">
         <header className="voice-header">
           <div className={`voice-presence ${voice.phase}`} title={voice.speechNote||undefined}><DanaOrb phase={voice.phase} level={voice.level} paused={!!session?.paused}/><div><b>Dana</b><span role="status">{demoRunning?(demoCandidate?'Demo candidate is speaking':voice.phase==='speaking'?'Dana is speaking':'Demo playback in progress'):session?.paused?'Interview paused · your work is saved':voice.active?labels[voice.phase]:session?.demo?'Recorded demo · press Start voice to talk':'Press Start voice to talk, or type below'}</span></div></div>
-          {!done&&<div className="voice-tools">
+          {!done&&!ended&&<div className="voice-tools">
             {voice.active?<><button className={`icon-button ${voice.muted?'on':''}`} onClick={voice.toggleMute} aria-pressed={voice.muted} aria-label={voice.muted?'Unmute microphone':'Mute microphone'} title={voice.muted?'Unmute':'Mute'}><Icon name={voice.muted?'micOff':'mic'}/></button>{voice.phase==='speaking'?<button className="icon-button" onClick={voice.interrupt} aria-label="Interrupt Dana" title="Interrupt Dana"><Icon name="stop"/></button>:<button className="icon-button" onClick={voice.sendNow} disabled={voice.phase!=='listening'} aria-label="Send now" title="Send now — don’t wait for the pause"><Icon name="send"/></button>}<button className="icon-button danger" onClick={voice.end} aria-label="End voice" title="End voice"><Icon name="hangup"/></button></>:<Button size="sm" className="voice-start" onClick={startVoice} disabled={!session||voice.busy||session?.paused}><Icon name="mic"/>Start voice</Button>}
             <span className="voice-tools-divider"/>
             {!!steps[step]?.hints?.length&&<button className="icon-button" disabled={hint.isPending||session?.paused} onClick={()=>hint.mutate()} aria-label="Ask for a hint" title="Ask for a hint"><Icon name="bulb"/></button>}
@@ -116,7 +121,7 @@ export function SessionPage() {
           {isLab&&session&&<div className="drawing-panel"><PiLab key={id} session={session} onChange={refresh} demoAction={demoLabAction}/></div>}
           {conversation}
         </div>
-        {!done&&<footer className="voice-dock">
+        {!done&&!ended&&<footer className="voice-dock">
           <form className="comp one voice-composer" onSubmit={e=>{e.preventDefault();submit();}}><textarea aria-label="Your answer" rows={1} value={text} onChange={e=>setText(e.target.value)} placeholder={voice.active?'Or type to Dana…':isBoard?'Explain your drawing, or ask Dana a question…':'Message Dana…'} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}}}/><Button size="sm" disabled={session?.paused||next.isPending||!text.trim()||(!voice.active&&voice.busy)}>Send</Button></form>
         </footer>}
         <Modal open={!!voice.loadProgress&&!hideLoading} onClose={()=>setHideLoading(true)} title="Setting up Dana’s voice" description={voice.speechNote||'Speech models run on this device.'}>
@@ -124,6 +129,7 @@ export function SessionPage() {
           <p className="fine model-modal-note">Files are saved on this device, so this only downloads once. You can keep typing while it loads.</p>
           <div className="row model-modal-actions"><Button variant="ghost" size="sm" onClick={voice.end}>End voice</Button><Button size="sm" onClick={()=>setHideLoading(true)}>Keep typing</Button></div>
         </Modal>
+        {session&&<QuitLesson key={id} sid={id} trackId={session.track_id} open={quitOpen} saved={savedQuitPlan(events)} onClose={()=>setQuitUi({id,open:false})} onResult={result=>{if(result.outcome==='ended')voice.end();void refresh();}}/>}
       </section>
     </main>
     {session&&<DemoAutoplay session={session} onRefresh={refresh} onStart={()=>{voice.end();useApp.setState({voice:true});}} onStop={voice.end} onRunning={setDemoRunning} onCandidate={setDemoCandidate} onLabAction={setDemoLabAction} speakDana={event=>voice.replay(event,true)} onFinish={()=>nav(`/fleet/${id}`)}/>}

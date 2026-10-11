@@ -58,6 +58,21 @@ export const api = {
     if(!response.ok){const value:unknown=await apiJson(response).catch(()=>null);const error=z.object({detail:z.string()}).safeParse(value);throw new Error(error.success?error.data.detail:'Could not import this file.');}
     return schemas.SourceDocument.parse(await apiJson(response)) as Model<'SourceDocument'>;
   },
+  scanSource:(id:string)=>request('WorkItem',`/sources/${id}/scan`,{}),
+  atsReview:(id:string,job_id?:string)=>request('WorkItem',`/sources/${id}/ats`,job_id?{job_id}:{},'AtsRequest'),
+  atsResult:async(id:string,job_id?:string):Promise<Model<'AtsReview'>|null>=>{
+    const response=await apiFetch(`/sources/${id}/ats${job_id?'?job_id='+encodeURIComponent(job_id):''}`);
+    if(!response.ok){const value:unknown=await apiJson(response).catch(()=>null);const error=z.object({detail:z.string()}).safeParse(value);throw new Error(error.success?error.data.detail:'Could not load the saved review.');}
+    return z.union([schemas.AtsReview,z.null()]).parse(await apiJson(response)) as Model<'AtsReview'>|null;
+  },
+  atsApply:(id:string,body:Model<'AtsApply'>)=>request('SourceDocument',`/sources/${id}/ats/apply`,body,'AtsApply'),
+  resumePdf:async(id:string):Promise<Blob>=>{
+    const response=await apiFetch(`/sources/${id}/pdf`);
+    if(!response.ok){const value:unknown=await apiJson(response).catch(()=>null);const error=z.object({detail:z.string()}).safeParse(value);throw new Error(error.success?error.data.detail:'Could not create the PDF.');}
+    const blob=await response.blob();
+    if(responseEpoch.get(response)!==accountEpoch)throw new Error('The account changed. Reopen this view.');
+    return blob;
+  },
   plan:(id:string)=>request('Plan',`/plans/${id}`),
   createPlan:(body:Intake)=>request('Plan','/plans',body,'Intake'),
   createPlanJob:(body:Intake)=>request('WorkItem','/plans/jobs',body,'Intake'),
@@ -76,6 +91,7 @@ export const api = {
   end:(id:string)=>request('Report',`/sessions/${id}/end`,{}),
   pause:(id:string,paused:boolean)=>request('Session',`/sessions/${id}/pause`,{paused},'PauseInput'),
   hint:(id:string)=>request('Event',`/sessions/${id}/hint`,{}),
+  quit:(id:string,body:Model<'QuitInput'>)=>request('QuitResult',`/sessions/${id}/quit`,body,'QuitInput'),
   report:(id:string)=>request('Report',`/sessions/${id}/report`),
   metrics:(id:string)=>request('Metrics',`/sessions/${id}/metrics`),
   lesson:(id:string)=>request('Lesson',`/sessions/${id}/lesson`),

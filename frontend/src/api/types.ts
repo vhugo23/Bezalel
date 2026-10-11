@@ -531,6 +531,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/sources/{source_id}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Source Scan */
+        post: operations["source_scan_api_v2_sources__source_id__scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/sources/{source_id}/ats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ats Read */
+        get: operations["ats_read_api_v2_sources__source_id__ats_get"];
+        put?: never;
+        /** Ats Start */
+        post: operations["ats_start_api_v2_sources__source_id__ats_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/sources/{source_id}/ats/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ats Apply */
+        post: operations["ats_apply_api_v2_sources__source_id__ats_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/sources/{source_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source Pdf */
+        get: operations["source_pdf_api_v2_sources__source_id__pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/sources/{source_id}/confirm": {
         parameters: {
             query?: never;
@@ -627,6 +696,26 @@ export interface paths {
         put?: never;
         /** Hint */
         post: operations["hint_api_v2_sessions__sid__hint_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/sessions/{sid}/quit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quit Session
+         * @description The "I don't know" button: skip this step, or end the lesson with next steps.
+         */
+        post: operations["quit_session_api_v2_sessions__sid__quit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1052,6 +1141,122 @@ export interface components {
             target_seq: number;
             /** Event Seq */
             event_seq: number;
+        };
+        /** AtsApply */
+        AtsApply: {
+            /** Job Id */
+            job_id?: string | null;
+            /** Suggestion Ids */
+            suggestion_ids: number[];
+        };
+        /** AtsCategoryResult */
+        AtsCategoryResult: {
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "format" | "sections" | "keywords" | "impact" | "clarity";
+            /** Rating */
+            rating: number;
+            /** Weight */
+            weight: number;
+            /** Findings */
+            findings: components["schemas"]["AtsFinding"][];
+        };
+        /** AtsCoverage */
+        AtsCoverage: {
+            /** Quote */
+            quote: string;
+            /** Term */
+            term: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "required" | "preferred";
+            /** Mentioned */
+            mentioned: boolean;
+            /** Resume Quote */
+            resume_quote?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "found" | "evidence" | "missing";
+        };
+        /** AtsFacts */
+        AtsFacts: {
+            /** Words */
+            words: number;
+            /** Email */
+            email: boolean;
+            /** Phone */
+            phone: boolean;
+            /** Sections */
+            sections: string[];
+        };
+        /** AtsFinding */
+        AtsFinding: {
+            /** Issue */
+            issue: string;
+            /** Quote */
+            quote?: string | null;
+        };
+        /** AtsRequest */
+        AtsRequest: {
+            /** Job Id */
+            job_id?: string | null;
+        };
+        /** AtsReview */
+        AtsReview: {
+            /** Resume Id */
+            resume_id: string;
+            /** Job Id */
+            job_id?: string | null;
+            /** Job Title */
+            job_title?: string | null;
+            /** Score */
+            score?: number | null;
+            /** Categories */
+            categories: components["schemas"]["AtsCategoryResult"][];
+            facts: components["schemas"]["AtsFacts"];
+            /** Suggestions */
+            suggestions: components["schemas"]["AtsSuggestion"][];
+            /** Rejected */
+            rejected: number;
+            /** Coverage */
+            coverage?: components["schemas"]["AtsCoverage"][];
+            /** Provider */
+            provider: string;
+            /** Rubric Version */
+            rubric_version: string;
+            /** Source Job Id */
+            source_job_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** AtsSuggestion */
+        AtsSuggestion: {
+            /** Id */
+            id: number;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "format" | "sections" | "keywords" | "impact" | "clarity";
+            /** Original */
+            original: string;
+            /** Replacement */
+            replacement: string;
+            /** Reason */
+            reason: string;
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
         };
         /** AuthState */
         AuthState: {
@@ -1702,6 +1907,66 @@ export interface components {
              * @description Defaults to the session's current scenario.
              */
             scenario_id?: string | null;
+        };
+        /** QuitInput */
+        QuitInput: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "lost" | "unclear" | "time" | "technical" | "wrong_track" | "other";
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** QuitPlan */
+        QuitPlan: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "lost" | "unclear" | "time" | "technical" | "wrong_track" | "other";
+            /** Reason Label */
+            reason_label: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Headline */
+            headline: string;
+            /** Summary */
+            summary: string;
+            /** Next Steps */
+            next_steps: components["schemas"]["QuitStep"][];
+            /**
+             * Source
+             * @default authored
+             * @constant
+             */
+            source: "authored";
+        };
+        /** QuitResult */
+        QuitResult: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "moved_on" | "ended";
+            /** Message */
+            message: string;
+            plan?: components["schemas"]["QuitPlan"] | null;
+        };
+        /** QuitStep */
+        QuitStep: {
+            /** Title */
+            title: string;
+            /** Detail */
+            detail: string;
+            /** Action */
+            action?: ("grade" | "restart" | "plan" | "intake" | "history") | null;
         };
         /** Registration */
         Registration: {
@@ -3199,6 +3464,171 @@ export interface operations {
             };
         };
     };
+    source_scan_api_v2_sources__source_id__scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ats_read_api_v2_sources__source_id__ats_get: {
+        parameters: {
+            query?: {
+                job_id?: string | null;
+            };
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtsReview"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ats_start_api_v2_sources__source_id__ats_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AtsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ats_apply_api_v2_sources__source_id__ats_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AtsApply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    source_pdf_api_v2_sources__source_id__pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     source_confirm_api_v2_sources__source_id__confirm_post: {
         parameters: {
             query?: never;
@@ -3386,6 +3816,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Event"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quit_session_api_v2_sessions__sid__quit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuitInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuitResult"];
                 };
             };
             /** @description Validation Error */

@@ -7,3 +7,14 @@ touching: nothing
 release: https://prepcrew.vercel.app (Vercel production); https://prepcrew-api.onrender.com (Render Free, deployed c8f61b0). Free artifact images are ephemeral; external DB records persist. No paid disk/service created.
 validation: 670 backend tests, 126 frontend tests, production build, isolated session/Pi/account browser acceptance. Live HTTPS smoke all 4 passed; live cookie/export/isolation/second-device history/direct WebSocket single-use tickets/logout revocation passed. No paid provider calls during live acceptance. Four synthetic accounts and two untouched sessions retained, all logins signed out.
 frontend_update: 2026-10-11T16:01:00Z user frontend refinements committed a5ad293 and deployed production dpl_BC4KfVR8wgDJyrPwpqmJ5BMbSB2n. Build and126 frontend tests passed; live HTML/privacy/health/auth smoke passed. Served CSS and Plan bundle visibly contain latest edits. All three local subagents completed. Full MVP outstanding items unchanged.
+touching_header_refresh: frontend/src/components/Shell.tsx; frontend/src/styles.css. User requested cleaner top bar and removal of Sound button; branch josh/header-refresh.
+additional_touching_header: frontend/e2e/accounts.spec.ts (open account menu before existing history/sign-out assertions).
+header_complete: josh/header-refresh PR #17, commit4eeb12c; Vercel header production deployed4f50961 (subsequent commits only E2E selectors). Sound toggle removed, avatar account menu with desktop/mobile navigation and dismissal. Build, desktop/mobile visual and keyboard checks, account browser journey33s and HTTPS smoke4checks passed. touching: nothing.
+
+autoplay: implementing user-requested scripted demo playback for system design and Pi. touching: frontend/src/pages/Session.tsx; frontend/src/styles.css; frontend/src/components/DemoAutoplay.tsx; frontend/src/lib/demoAutoplay.ts
+
+autoplay_scope: touching Session.tsx and new DemoAutoplay.tsx/.css, lib/demoAutoplay.ts and tests; styles.css is NOT touched (Trey reservation).
+
+autoplay_pi_visuals: additionally touching frontend/src/components/PiLab.tsx to show the scripted terminal/editor/browser/parts interactions while playback runs.
+
+autoplay_learning_fix: reserving backend/app/v2/learning_variants.py for clearer Pi generation/review instructions after two live reviewer rejections. Keep port/repair leakage and technical validity checks strict.
