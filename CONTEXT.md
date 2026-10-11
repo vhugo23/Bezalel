@@ -4,6 +4,38 @@ Written Sat Oct 10, 2026, late evening, from the working session. Read this firs
 `contracts/ws_messages.md` and `spikes/RESULTS.md`. The original brief (`prepcrew-opus-brief.md`, outside the repo) still
 sets the rules; the short version is below.
 
+## Current state (refreshed hourly; last 2026-10-11T05:40Z at `ed43a21`)
+This section is kept current by trey-agent's hourly review. Where it disagrees with an older section below, this one is right.
+The detail behind it is in `mailbox/REVIEW.md`.
+
+**Time left:** Devpost submission is due Sun Oct 11 at noon Central (17:00Z). Hacking ends 1 PM.
+
+**There are now two apps in the repo, and they do not share the interviewer.**
+- Legacy path: `backend/app/modules/prepcrew`, routes under `/api`, sockets `/ws/voice` and `/ws/board`, test page `spikes/voice_check`. This is the hardware and embedded voice interviewer with the patience meter, assessor, humanlike persona and debrief. Pull requests #1 to #8 are all merged.
+- v2 path: `backend/app/v2`, routes under `/api/v2`, the React app in `frontend/`, Alembic migrations in `backend/migrations`, schema `prepcrew` in Tiger Data. It has its own voice loop (`v2/voice.py`, `v2/realtime.py`), whiteboard critique, evidence-checked grading, lessons and retests. Its one working session is a software rate-limiter design. It does not call the legacy interviewer, meter or debrief.
+- Nobody has decided which one is the demo. That is the most important open decision.
+
+**Who is doing what**
+| Agent | Last seen | Doing | Landed since Oct 10 evening |
+|---|---|---|---|
+| trey-agent | 05:38Z | Hourly review, this file. No lane 1 code changes since #7. | Mailbox, review, two messages to josh-agent |
+| josh-agent | 05:33Z | Generic session steps and rubric selection in v2; next durable generation and personalized plans | `9399673` React app, v2 backend, migrations, `docs/IMPLEMENTATION_ROADMAP.md`. `ed43a21` isolated browser acceptance, `V2_DATABASE_SCHEMA`, `docs/GRADING_REVIEW.md` |
+| shamah-agent | no mailbox activity | Unknown. Shamah's own commits (before the mailbox) did backend and data. | Tiger time-series tables, Backboard memory across sessions, fresh-database fix, backend cleanup, grading moved from Opus to Gemini |
+| hugo-agent | no mailbox activity | Unknown | Nothing |
+
+All josh-agent code went straight to `main`, with no pull request. The lanes table in `mailbox/README.md` is still unfilled for josh and shamah, and still assumes hugo owns backend and data.
+
+**Open problems right now**
+1. `backend/app/config.py` reads `.env` from the repo root since `9399673`. A machine with keys only in `backend/.env` starts with no keys, fake providers and in-memory storage, and prints no error. Local workaround: copy `backend/.env` to the repo root (it is gitignored there too). Fix requested from josh-agent.
+2. `docs/IMPLEMENTATION_ROADMAP.md` is an 11 phase product plan (12 tracks, code sandboxes, accounts, deployment). It is not a plan for the hours left. josh-agent has been asked for a cut list.
+3. Run `pip install -r backend/requirements.txt` after pulling. Four packages were added and the tests fail to collect without them.
+
+**Checked at this refresh:** `pytest` in `backend/` at `b1d5939`, 321 passed (fake providers, no database). Not re-run at `ed43a21`. Frontend tests and build not run on this machine (no Node). The live Gemini and Tiger Data checks described in the roadmap and `frontend/README.md` are josh-agent's and were not repeated.
+
+**Waiting on**
+- josh-agent: replies to `20261011-053600_from-trey-agent_env-path-change.md` and `20261011-053700_from-trey-agent_scope-versus-deadline.md`.
+- Humans: which app is the demo; what is cut before noon; confirm Gemini instead of Opus for grading; fill in the lanes table.
+
 ## What this is
 PrepCrew is a voice interview coach for hardware and embedded engineering students, built for CodeRED: Orion
 (University of Houston). Hacking ends Sun Oct 11, 1 PM Central; submit on Devpost by noon. The venue locks 12 AM to 9 AM.
@@ -21,6 +53,7 @@ schematic with a planted fault, evaluators that grade with quoted evidence, a de
 8. Write tests that try to break the main flow: bad model JSON, timeouts, dropped websockets.
 
 ## People and lanes
+(Written Oct 10 evening. The frontend now exists and lanes have moved; see "Current state" above.)
 The user is on GitHub as KTreyD. The repo is `vhugo23/Bezalel` (teammate owns it). Lane 1 voice and interviewer is what this
 session built. Lane 3 backend and data (a teammate) wrote the `service.py` / routes / websocket skeleton and `sql/`.
 Lane 4 frontend and deploy has not started: there is no `frontend/` folder and no Node install on this machine. `prototype.html`
@@ -30,7 +63,8 @@ on `main` is a design prototype only (it makes no API calls). Lane 2 circuit and
 Windows, Git Bash or PowerShell. Python 3.13 here; the code needs 3.11 or newer (`asyncio.timeout`).
 
     cd backend
-    .venv\Scripts\python -m pytest -q                      # 219 pass, no keys or network needed
+    .venv\Scripts\python -m pip install -r requirements.txt  # needed again after 9399673
+    .venv\Scripts\python -m pytest -q                      # 321 pass at b1d5939, no keys or network needed
     # backend with real providers, in-memory storage (never the real database):
     set VOICE_PROVIDER=elevenlabs & set ELEVENLABS_MODEL=eleven_flash_v2_5 & set DATABASE_URL= & .venv\Scripts\python -m uvicorn app.main:app --port 8000
     cd spikes\voice_check & python -m http.server 5173     # test page: http://localhost:5173/  (Ctrl+F5)
@@ -53,6 +87,7 @@ To stop servers: find the listeners on ports 8000 and 5173 with PowerShell `Get-
 - Main flow: plan, session (consent, `strict`), opening question, answers (typed or spoken), meter, closing line on an early end (state `debrief`, then `debrief_ready`), `POST /end` for grading, report.
 
 ## Pull requests
+All of #1 to #8 are merged as of Oct 11, and none are open. The rest of this paragraph is history.
 #1 and #2 are merged. #3 (real interviewer check) was merged into `main` on its own. #4 speech in, #5 humanlike interviewer, #6 patience meter and
 #7 debrief were built as a stack, so **#7 contains all of them and is the one to merge** (a regular merge commit, not a squash). It was merged with the
 newest `main` (teammate's prototype and schema, and #3) and was mergeable and clean when last checked. #4 shows as conflicting because #3 landed separately;
@@ -66,6 +101,7 @@ ignore it, #7 carries its changes, and close #4 to #6 after #7 merges.
 - A full spoken turn (speech to text, reply, first audio) has NOT been measured end to end.
 
 ## Known problems and risks
+(Written Oct 10 evening, about the legacy path. Since then: memory for session two, the Tiger time-series tables and a frontend have been built, and grading uses Gemini, not Opus. Items 5, 6, 9 and 10 are partly out of date.)
 1. **Gemini availability.** In bursts about half the calls return busy errors or time out even after the retry. The system degrades safely (planned questions, no penalty) but the meter then under-counts, and `checked: false` says so. Likely free-key rate limits, not confirmed. A backup model or a paid key would fix it.
 2. The assessor sometimes misses a gap when one answer admits several. It errs toward being gentle.
 3. A wrong "unknown" would end a real person's practice interview. Hand-check the false-end rate with a second person's labels before the first tester session.
