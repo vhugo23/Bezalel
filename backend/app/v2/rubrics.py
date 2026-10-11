@@ -4,6 +4,8 @@ The event/quote checks adapt the upstream evaluator's assemble-then-validate
 contract to v2 sequence references. A score is inseparable from its criterion.
 """
 from dataclasses import dataclass, asdict
+import hashlib
+import json
 from .models import RubricEvaluation
 
 VERSION = 'system-design-practice-v2'
@@ -40,14 +42,53 @@ ANCHORS = {
     4: 'Gives a precise explanation including consequences or boundary cases.',
 }
 
+@dataclass(frozen=True)
+class Policy:
+    version: str
+    evaluators: dict[str, list[Criterion]]
 
-def specification(name):
-    return {'version':VERSION,'criteria':[asdict(c) for c in RUBRICS[name]],'score_anchors':ANCHORS,
+
+DEFAULT = Policy(VERSION,RUBRICS)
+
+
+def load(payload, engine_id='conceptual'):
+    if not isinstance(payload,dict) or not payload.get('evaluators'):
+        if engine_id!='conceptual':raise ValueError('This engine has no reviewed rubric')
+        return DEFAULT
+    evaluators={}
+    raw=payload['evaluators']
+    if not isinstance(raw,dict) or not 1<=len(raw)<=6:raise ValueError('Invalid evaluator selection')
+    for name,criteria in raw.items():
+        if not isinstance(name,str) or not name.strip() or len(name)>80 or not isinstance(criteria,list) or not 1<=len(criteria)<=8:
+            raise ValueError('Invalid rubric criteria')
+        definitions=[]
+        for item in criteria:
+            c=Criterion(**item)
+            if not c.id or not c.skill_id or not c.description or not c.steps or any(not isinstance(i,int) or not 0<=i<=9 for i in c.steps):
+                raise ValueError('Invalid criterion definition')
+            if not c.rules or any(rule not in ('question','quoted_turn','board_explanation','drawing') for rule in c.rules):
+                raise ValueError('Invalid evidence rule')
+            definitions.append(c)
+        if len({c.id for c in definitions})!=len(definitions):raise ValueError('Duplicate criterion id')
+        evaluators[name]=definitions
+    canonical={name:[asdict(c) for c in values] for name,values in evaluators.items()}
+    fingerprint=hashlib.sha256(json.dumps(canonical,sort_keys=True).encode()).hexdigest()[:16]
+    base=str(payload.get('version','practice-v1')).split(':',1)[0][:120]
+    return Policy(base+':'+fingerprint,evaluators)
+
+
+def dump(policy=DEFAULT):
+    return {'version':policy.version,'evaluators':{name:[asdict(c) for c in values] for name,values in policy.evaluators.items()}}
+
+
+def specification(name, policy=None):
+    policy=policy or DEFAULT
+    return {'version':policy.version,'criteria':[asdict(c) for c in policy.evaluators[name]],'score_anchors':ANCHORS,
             'unassessed':'Use score=null and claims=[] when not observed. Silence, no drawing or missing discussion is not proof of a gap.'}
 
 
-def validate_evaluation(name, evaluation: RubricEvaluation):
-    expected={c.id:c for c in RUBRICS[name]}
+def validate_evaluation(name, evaluation: RubricEvaluation, policy=None):
+    expected={c.id:c for c in (policy or DEFAULT).evaluators[name]}
     ids=[c.id for c in evaluation.criteria]
     if len(ids)!=len(set(ids)) or set(ids)!=set(expected):
         raise ValueError('Missing, duplicated or unknown rubric criterion')

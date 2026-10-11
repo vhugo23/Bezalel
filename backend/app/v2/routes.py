@@ -30,6 +30,31 @@ async def start(body: Start): return await s.start(body)
 @router.get('/sessions/{sid}', response_model=Session)
 async def session(sid: str): return await s.get_session(sid)
 
+@router.post('/sessions/{sid}/pause', response_model=Session)
+async def pause(sid: str, body: PauseInput):
+    async with (await db.pool()).acquire() as conn,conn.transaction():
+        row=await conn.fetchrow('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',sid)
+        if not row:raise HTTPException(404,'Session not found')
+        if row['status']!='live':raise HTTPException(409,'Only a live interview can pause.')
+        if row['engine_state'].get('paused',False)!=body.paused:
+            await conn.execute('UPDATE sessions SET engine_state=engine_state || $2::jsonb WHERE id=$1',sid,{'paused':body.paused})
+            await s.log(sid,'note','system',row['step'],{'paused':body.paused},conn)
+    return await s.get_session(sid)
+
+@router.post('/sessions/{sid}/hint', response_model=Event)
+async def hint(sid: str):
+    from . import engine
+    async with (await db.pool()).acquire() as conn,conn.transaction():
+        row=await conn.fetchrow('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',sid)
+        if not row:raise HTTPException(404,'Session not found')
+        definition=await engine.context(sid,conn)
+        if row['status']!='live' or row['engine_state'].get('paused') or row['step']>=len(definition['steps']):
+            raise HTTPException(409,'Hints require an active step.')
+        current=definition['steps'][row['step']]
+        used=await conn.fetchval("SELECT count(*) FROM session_events WHERE session_id=$1 AND step=$2 AND kind='hint'",sid,row['step'])
+        if used>=len(current.hints):raise HTTPException(409,'No more hints for this step.')
+        return await s.log(sid,'hint','interviewer',row['step'],{'text':current.hints[used],'hint_index':used,'source':'authored_step'},conn)
+
 @router.get('/sessions/{sid}/events', response_model=list[Event])
 async def events(sid: str, after: int = Query(0,ge=0)): return await s.events(sid,after)
 
@@ -59,10 +84,12 @@ async def board(sid: str, body: BoardInput):
 
 @router.post('/sessions/{sid}/end', response_model=Report)
 async def end(sid: str):
-    from .rubrics import VERSION
+    from . import rubrics,engine
     async with (await db.pool()).acquire() as conn,conn.transaction():
         session=await conn.fetchrow('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',sid)
         if not session:raise HTTPException(404,'Session not found')
+        definition=await engine.context(sid,conn)
+        VERSION=rubrics.load(definition['rubric'],definition['engine_id']).version
         saved=await conn.fetchrow('SELECT * FROM session_reports WHERE session_id=$1',sid)
         complete=saved and saved['report'].get('rubric_version')==VERSION and not saved['stats'].get('partial',False)
         if session['status']!='grading' and not (session['status']=='graded' and complete):
@@ -110,7 +137,7 @@ async def artifact(aid: str):
     return FileResponse(s.ROOT / '.artifacts' / r['blob_key'],media_type='image/png')
 
 @router.post('/sessions/{sid}/audio', response_model=TurnResult)
-async def audio(sid: str, request: Request, step: int = Query(0,ge=0,le=3), board: bool = False):
+async def audio(sid: str, request: Request, step: int = Query(0,ge=0,le=9), board: bool = False):
     from .voice import transcribe
     session = await s.require_session(sid)
     if session['status'] != 'live' or session['step'] != step:
@@ -132,7 +159,7 @@ async def audio(sid: str, request: Request, step: int = Query(0,ge=0,le=3), boar
 async def speech(sid: str, seq: int):
     from .voice import speak
     await s.require_session(sid)
-    r=await db.one("SELECT payload FROM session_events WHERE session_id=$1 AND seq=$2 AND kind='turn' AND actor='interviewer'",sid,seq)
+    r=await db.one("SELECT payload FROM session_events WHERE session_id=$1 AND seq=$2 AND kind IN ('turn','hint') AND actor='interviewer'",sid,seq)
     if not r: raise HTTPException(404,'Interviewer turn not found')
     if DEMO: raise HTTPException(409,'Recorded mode has no live voice.')
     return await speak(sid,r['payload']['text'])

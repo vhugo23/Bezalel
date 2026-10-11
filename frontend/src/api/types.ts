@@ -361,6 +361,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/sessions/{sid}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause */
+        post: operations["pause_api_v2_sessions__sid__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/sessions/{sid}/hint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hint */
+        post: operations["hint_api_v2_sessions__sid__hint_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/sessions/{sid}/events": {
         parameters: {
             query?: never;
@@ -1026,6 +1060,11 @@ export interface components {
              */
             expires_at: string;
         };
+        /** PauseInput */
+        PauseInput: {
+            /** Paused */
+            paused: boolean;
+        };
         /** Plan */
         Plan: {
             /** Id */
@@ -1268,6 +1307,27 @@ export interface components {
             /** Events */
             events: components["schemas"]["Event"][];
             board_review?: components["schemas"]["BoardResult"] | null;
+            /**
+             * Domain
+             * @default sw
+             */
+            domain: string;
+            /**
+             * Engine Id
+             * @default conceptual
+             */
+            engine_id: string;
+            /** Steps */
+            steps?: components["schemas"]["SessionStep"][];
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            /** Engine State */
+            engine_state?: {
+                [key: string]: unknown;
+            };
         };
         /** SessionStartRequest */
         SessionStartRequest: {
@@ -1324,6 +1384,33 @@ export interface components {
              * @description Memories from earlier sessions used for this one. Show as 'Picking up from last time'.
              */
             recalled?: string[];
+        };
+        /** SessionStep */
+        SessionStep: {
+            /** Idx */
+            idx: number;
+            /** Title */
+            title: string;
+            /**
+             * Surface
+             * @default voice
+             * @enum {string}
+             */
+            surface: "voice" | "whiteboard" | "star" | "terminal" | "editor" | "schematic" | "browser" | "pi3d";
+            /** Task */
+            task: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** Hints */
+            hints?: string[];
+            /** Success */
+            success?: {
+                [key: string]: unknown;
+            };
+            /** Rubric Ids */
+            rubric_ids?: string[];
         };
         /** Skill */
         Skill: {
@@ -2110,6 +2197,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_api_v2_sessions__sid__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PauseInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hint_api_v2_sessions__sid__hint_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Event"];
                 };
             };
             /** @description Validation Error */

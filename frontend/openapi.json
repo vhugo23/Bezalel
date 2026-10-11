@@ -828,6 +828,100 @@
         }
       }
     },
+    "/api/v2/sessions/{sid}/pause": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Pause",
+        "operationId": "pause_api_v2_sessions__sid__pause_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/sessions/{sid}/hint": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Hint",
+        "operationId": "hint_api_v2_sessions__sid__hint_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/sessions/{sid}/events": {
       "get": {
         "tags": [
@@ -1443,7 +1537,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 3,
+              "maximum": 9,
               "minimum": 0,
               "default": 0,
               "title": "Step"
@@ -2642,6 +2736,19 @@
         ],
         "title": "PairResult"
       },
+      "PauseInput": {
+        "properties": {
+          "paused": {
+            "type": "boolean",
+            "title": "Paused"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paused"
+        ],
+        "title": "PauseInput"
+      },
       "Plan": {
         "properties": {
           "id": {
@@ -3251,6 +3358,33 @@
                 "type": "null"
               }
             ]
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain",
+            "default": "sw"
+          },
+          "engine_id": {
+            "type": "string",
+            "title": "Engine Id",
+            "default": "conceptual"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/SessionStep"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "paused": {
+            "type": "boolean",
+            "title": "Paused",
+            "default": false
+          },
+          "engine_state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Engine State"
           }
         },
         "type": "object",
@@ -3373,6 +3507,75 @@
           "pair_code"
         ],
         "title": "SessionStartResponse"
+      },
+      "SessionStep": {
+        "properties": {
+          "idx": {
+            "type": "integer",
+            "maximum": 9.0,
+            "minimum": 0.0,
+            "title": "Idx"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "voice",
+              "whiteboard",
+              "star",
+              "terminal",
+              "editor",
+              "schematic",
+              "browser",
+              "pi3d"
+            ],
+            "title": "Surface",
+            "default": "voice"
+          },
+          "task": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Task"
+          },
+          "config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config"
+          },
+          "hints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Hints"
+          },
+          "success": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Success"
+          },
+          "rubric_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rubric Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "idx",
+          "title",
+          "task"
+        ],
+        "title": "SessionStep"
       },
       "Skill": {
         "properties": {
