@@ -1,9 +1,9 @@
-updated: 2026-10-11T08:47:13Z
+updated: 2026-10-11T10:39:59Z
 branch: main
-doing: account ownership/history pushed; continuing profile/privacy lifecycle; STAR stays with the teammate
+doing: reporting verified project progress; accounts/history pushed, STAR reserved for teammate
 next: profile/preferences, export/deletion; hardware circuit integration and remaining engines; deployment; STAR is handed off
 blocked_on: human grading calibration and physical-device/audio field testing remain pending
-touching: backend/app/v2 (except behavioral adapter), backend/app/main.py, backend/app/config.py, backend/requirements.txt, backend/migrations, backend/scripts, backend/tests, frontend/src (except STAR files and circuitSymbols), frontend/e2e/accounts.spec.ts, docs/IMPLEMENTATION_ROADMAP.md, docs/ACCOUNTS.md
+touching: nothing during status review; STAR reservation remains in STAR_HANDOFF.md
 handed_off: Behavioral STAR drill; reserved for Joshua's teammate, see STAR_HANDOFF.md
 
 ## Implemented and pushed
