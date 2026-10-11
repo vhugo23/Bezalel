@@ -4,7 +4,7 @@ An interview gym for hardware and infrastructure roles. Investigate a simulated 
 
 Built for CodeRED: Orion at the University of Houston.
 
-Live site: _(fill in after deploy)_
+Live site: https://prepcrew.vercel.app/plan
 
 ## Why
 
