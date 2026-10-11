@@ -112,3 +112,23 @@ Stop-Process -Id <OwningProcess for each port>
 - [ ] One full rehearsal done and screen-recorded with sound
 - [ ] Volume up, microphone allowed in the browser, wifi checked
 - [ ] Everyone presenting knows to say plainly that the circuit debugging part is not built
+
+## 6. Optional: a backup model for when Gemini is busy
+
+This is off unless you turn it on. It was only tested with a stubbed model. No real model was called, so there is no measured number for how often it helps.
+
+**What it does.** The plan call, the live reply and the gap check each retry once on a busy answer from the main model (`GEMINI_MODEL`), as before. If the main model is still busy (503, 429, 500, 502 or 504) or has not answered in time, the same call is tried once on the model named in `GEMINI_BACKUP_MODEL`. If that also fails, you get today's behaviour: the planned question, and the gap check counts nothing. Bad keys, bad JSON and empty replies do not go to the backup.
+
+**Turn it on.** In the same terminal as the backend, before the launch command in section 1, or in the root `.env` as `GEMINI_BACKUP_MODEL=<name>`:
+
+```
+$env:GEMINI_BACKUP_MODEL = '<a model name your key can use>'
+```
+
+Pick a different model from `GEMINI_MODEL`; the same name is ignored. `spikes/RESULTS.md` has first-token times of about 1 s from two runs each for `gemini-3.5-flash-lite` and `gemini-3.1-flash-lite`, one short prompt. Whether a second model has free capacity at the moment the first is busy has not been measured. A wrong name only shows up as an error when the backup is needed, so check the name once before the demo: `spikes/spike_gemini.py` reads `INTERVIEWER_MODEL` as the model to test and makes a few short calls (not run for this runbook). To turn it off, remove the variable and restart the backend.
+
+**Time.** Each call keeps the limit it already had: 5 s for a live reply (`LIVE_TURN_TIMEOUT_SECONDS`), 4 s for the gap check (`ASSESSOR_TIMEOUT_SECONDS`), 20 s for the plan (`TASK_TIMEOUT_SECONDS`). The backup shares that limit, so a turn is never slower than before. The main model, with its one retry, gets 60 percent of it (3.0 s, 2.4 s and 12 s) and the backup gets what is left, which is more when the main model failed quickly. The cost: a main model that is slow but would have answered after 3 s is now cut off and the backup is asked instead. Raising a limit gives the main model more patience and lengthens the worst silence by the same amount.
+
+**What you will see.** Nothing on the page: a reply from the backup reads like any other, and the Patience meter row still shows the check as done. In the backend terminal, look for lines starting `backup_model`: `trying` (the main model was busy or timed out), `used` (the backup answered) and `failed` (it did not). Count the `used` lines to see how often it helped. Over the typed route (`POST /api/sessions/{id}/turns`) the reply's `source` is `model_backup` instead of `model`, and the stored interviewer events say the same; the test page and the voice socket do not show `source`, so the log is the way to see it there.
+
+**What it does not fix.** Both models busy at once, a bad key, content the model refuses. In those cases the demo looks exactly as in section 4, and the same advice applies. You cannot make Gemini busy on demand, so you cannot rehearse this path from the page. `.\.venv\Scripts\python.exe -m pytest tests/test_backup_model.py -q` runs the logic against a stub model.
