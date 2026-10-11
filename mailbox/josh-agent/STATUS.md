@@ -1,24 +1,9 @@
-updated: 2026-10-11T15:55:00Z
-branch: josh/mvp-release-hardening (PR #16, latest 5ab8833)
-doing: live free-host demo deployed; implementation release ready for human merge
-next: physical device voice/whiteboard and human grading review; teammate STAR integration
-blocked_on: account recovery/deletion not implemented; STAR teammate-owned
+﻿updated: 2026-10-11T17:29:19Z
+branch: josh/demo-autoplay (PR #20, 6dc9b235)
+doing: completed voiced demo autoplay for both original runnable tracks; production deployed
+next: human merge PR #20; after merge Render can return to main (currently release branch, AutoDeploy OFF)
+blocked_on: nothing for autoplay
 touching: nothing
-release: https://prepcrew.vercel.app (Vercel production); https://prepcrew-api.onrender.com (Render Free, deployed c8f61b0). Free artifact images are ephemeral; external DB records persist. No paid disk/service created.
-validation: 670 backend tests, 126 frontend tests, production build, isolated session/Pi/account browser acceptance. Live HTTPS smoke all 4 passed; live cookie/export/isolation/second-device history/direct WebSocket single-use tickets/logout revocation passed. No paid provider calls during live acceptance. Four synthetic accounts and two untouched sessions retained, all logins signed out.
-frontend_update: 2026-10-11T16:01:00Z user frontend refinements committed a5ad293 and deployed production dpl_BC4KfVR8wgDJyrPwpqmJ5BMbSB2n. Build and126 frontend tests passed; live HTML/privacy/health/auth smoke passed. Served CSS and Plan bundle visibly contain latest edits. All three local subagents completed. Full MVP outstanding items unchanged.
-touching_header_refresh: frontend/src/components/Shell.tsx; frontend/src/styles.css. User requested cleaner top bar and removal of Sound button; branch josh/header-refresh.
-additional_touching_header: frontend/e2e/accounts.spec.ts (open account menu before existing history/sign-out assertions).
-header_complete: josh/header-refresh PR #17, commit4eeb12c; Vercel header production deployed4f50961 (subsequent commits only E2E selectors). Sound toggle removed, avatar account menu with desktop/mobile navigation and dismissal. Build, desktop/mobile visual and keyboard checks, account browser journey33s and HTTPS smoke4checks passed. touching: nothing.
-
-autoplay: implementing user-requested scripted demo playback for system design and Pi. touching: frontend/src/pages/Session.tsx; frontend/src/styles.css; frontend/src/components/DemoAutoplay.tsx; frontend/src/lib/demoAutoplay.ts
-
-autoplay_scope: touching Session.tsx and new DemoAutoplay.tsx/.css, lib/demoAutoplay.ts and tests; styles.css is NOT touched (Trey reservation).
-
-autoplay_pi_visuals: additionally touching frontend/src/components/PiLab.tsx to show the scripted terminal/editor/browser/parts interactions while playback runs.
-
-autoplay_learning_fix: reserving backend/app/v2/learning_variants.py for clearer Pi generation/review instructions after two live reviewer rejections. Keep port/repair leakage and technical validity checks strict.
-
-autoplay_authored_pi: reserving backend/app/v2/learning.py, learning_variants.py, targeted learning tests, frontend/src/pages/Fleet.tsx. Reliable authored Pi coaching and reference-tested changed variant, gated by verified grades; honest authored label. Model-reviewed conceptual lessons unchanged.
-
-autoplay_label: additionally touching frontend/src/pages/Plan.tsx to label all next-focus scenarios Targeted retest (authored Pi is not model reviewed).
+release: https://prepcrew.vercel.app and existing Free Render service both deployed6dc9b235; no paid infrastructure or secret changes. Includes main PR18 resume ATS and PR19 quit lesson.
+validation:149 frontend tests,37 targeted backend tests, production build; browser system-design/Pi/Stop journeys passed. Live synthetic final grading found2verified gaps pertrack. ConceptualAIlesson/retest ready; Pi authored coaching and reference-tested changed variant ready,0follow-up provider calls. HTTPS/served bundle checks passed. Demo account untouched by testing.
+remaining_mvp: physical-device voice/whiteboard and broader human grading calibration, account recovery/deletion, teammate STAR integration remain outside completed autoplay scope.
