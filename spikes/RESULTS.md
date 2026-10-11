@@ -63,3 +63,24 @@ real `/ws/voice` route as 100 ms frames plus `speech_end`, and the transcript wa
   was 2872 ms. That includes the whole reply being spoken, so it is not the pause before the interviewer starts.
 - This is one synthetic voice. It says nothing about accuracy on real, accented or noisy speech.
   A real browser microphone check by a person is still needed.
+
+## Real interviewer, 5 scripted turns (gemini-3.5-flash-lite, `spikes/e2e_interview.py`)
+
+Sat Oct 10, 2026, one laptop, in-memory storage. Posting about 800 characters and resume about 1200 characters
+(made-up test text). The candidate answers are scripted and some do not answer the question asked, so they
+test follow-up behavior, not interview quality. One plan model call plus 5 live turns per run, 2 runs.
+
+| Run | Plan | Fallback turns | Reply text ready (ms, server), turns 1 to 5 | First audio after that (ms), turns 1 to 5 |
+|---|---|---|---|---|
+| 1, with TTS | model plan, not degraded | 0 | 1133, 1008, 1076, 964, 974 | 827, 688, 676, 852, 774 |
+| 2, no TTS (prompt tweak) | model plan, not degraded | 0 | 1049, 1081, 1110, 1066, 1270 | not run |
+
+- "Reply text ready" is the server's `turn_total`: storing the answer, the Gemini call, and storing the reply.
+  It is not speech-end to first sound. Adding first audio puts the pause after the answer around 1.6 to 2.0 s
+  on these runs, without speech to text (about 0.8 to 1.6 s in the spike), so expect roughly 2.5 to 3.5 s
+  with a spoken answer. That sum is an estimate from separate measurements, not a measured end to end turn.
+- Every reply referenced something the candidate had just said.
+- Problem found in run 1: with an unanswered question the model repeated it word for word (turns 4 and 5).
+  Fixed with one prompt line ("never repeat a question in the same words"). Run 2 rephrased each time.
+  Still unsolved: it keeps steering back to the one unanswered question instead of moving on sooner.
+- Retest on venue wifi, with a real person talking, before quoting any number.
