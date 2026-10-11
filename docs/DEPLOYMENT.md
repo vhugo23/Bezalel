@@ -69,11 +69,19 @@ free demo. See [Render pricing](https://render.com/pricing),
 
 ## Vercel setup and release gate
 
-Import the repository with Root Directory `frontend`, Vite framework, Node 22,
-`npm ci` installation, `npm run build` build and `dist` output. Replace the
-`REPLACE_WITH_RENDER_SERVICE` occurrence in `frontend/vercel.json` with the
-actual Render hostname before deployment. Set `VITE_WS_URL` to
-`https://YOUR_RENDER_SERVICE.onrender.com` in Vercel's Production build environment;
+Import or link the **repository root**, leaving Vercel Root Directory empty
+(or `.`), with Framework Preset Other and Node 22. The root `vercel.json` sets
+`cd frontend && npm ci` for installation, `cd frontend && npm run build` for
+building, and `frontend/dist` for output. Keep the entire repository available
+during the build: frontend contract checks read the sibling `contracts/`
+directory. Deploying only `frontend/` omits those required files. For CLI use,
+link and deploy from the repository root rather than `--cwd frontend`.
+
+The root `vercel.json` is the active deployment configuration. Its `/api/*`
+rewrite targets `https://prepcrew-api.onrender.com`; update that destination if
+the Render hostname changes. The nested `frontend/vercel.json` does not control
+this root deployment. Set `VITE_WS_URL` to
+`https://prepcrew-api.onrender.com` in Vercel's Production build environment;
 keep `VITE_API_URL` and `VITE_PAIR_ORIGIN` empty. Rebuild after changing Vite
 variables. No provider keys belong on Vercel. Enable only the final production
 Vercel origin in backend trusted origins; preview URLs need separate explicit
