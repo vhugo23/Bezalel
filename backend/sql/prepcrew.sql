@@ -560,6 +560,16 @@ CREATE TABLE IF NOT EXISTS memories (
     last_used_at      TIMESTAMPTZ,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- schema.sql (core) creates a thinner memories table first, so CREATE TABLE IF NOT EXISTS above is skipped
+-- on a fresh database. Add the richer columns in place; this is a no-op when the table above was created.
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS kind              TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('habit','strength','gap','preference','fact'));
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS skill_id          TEXT REFERENCES skills(id) ON DELETE SET NULL;
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS source_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL;
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS source_claim_id   TEXT REFERENCES claims(id) ON DELETE SET NULL;
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS salience          REAL NOT NULL DEFAULT 0.5 CHECK (salience BETWEEN 0 AND 1);
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS backend           TEXT NOT NULL DEFAULT 'postgres' CHECK (backend IN ('postgres','backboard'));
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS external_id       TEXT;
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS last_used_at      TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS memories_owner_idx ON memories (owner_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS memories_recall_idx ON memories (owner_id, kind, salience DESC);
 -- ALTER TABLE memories ADD COLUMN IF NOT EXISTS embedding vector(768);   -- only with pgvector

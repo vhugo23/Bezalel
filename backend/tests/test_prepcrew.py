@@ -221,3 +221,39 @@ def test_board_ws_pairing_and_probe_broadcast(scenario):
         laptop.send_json({"type": "probe", "action": "probe_voltage", "node": "n1", "scenario_id": scenario})
         a, b = laptop.receive_json(), ipad.receive_json()
         assert a == b and a["type"] == "probe_result" and a["value"] == 5.0 and a["seq"] == 0
+
+
+def test_delete_removes_plan_when_no_session_uses_it():
+    from app.core import store
+    s = new_session("del_user")
+    plan_id = (asyncio_run(store.get_record(s["session_id"])))["data"]["plan_id"]
+    retest = client.post("/api/retests", json={"session_id": s["session_id"], "skill_ids": []}).json()
+    client.delete(f"/api/sessions/{s['session_id']}")
+    assert asyncio_run(store.get_record(plan_id)) is not None  # the retest still needs it
+    client.delete(f"/api/sessions/{retest['session_id']}")
+    assert asyncio_run(store.get_record(plan_id)) is None      # last user gone: resume text removed
+
+
+def asyncio_run(coro):
+    import asyncio
+    return asyncio.run(coro)
+
+
+def test_report_is_saved_before_grading_complete_is_announced(monkeypatch):
+    from app.core import bus
+    seen = {}
+    real_publish = bus.publish
+
+    async def spy(channel, event, data):
+        if event == "grading_complete":
+            sid = data["session_id"]
+            seen["status"] = (await __import__("app.core.store", fromlist=["x"]).get_record(sid))["data"]["status"]
+        await real_publish(channel, event, data)
+
+    monkeypatch.setattr(bus, "publish", spy)
+    sid = new_session()["session_id"]
+    client.post(f"/api/sessions/{sid}/turns", json={"answer": "hello"})
+    client.post(f"/api/sessions/{sid}/end")
+    with client.stream("GET", f"/api/sessions/{sid}/events") as r:
+        list(r.iter_lines())
+    assert seen.get("status") == "graded"

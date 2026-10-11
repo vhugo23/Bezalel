@@ -295,6 +295,7 @@ async def run_grading(session_id: str) -> None:
     await store.add_event(session_id, "timing", value=out["total_ms"], data={"stage": "evaluator_fleet"})
     await store.update_record(session_id, {"status": "graded", "results": out["results"],
                                            "skill_flags": sorted(flags), "total_ms": out["total_ms"]})
+    await publish("grading_complete", {"session_id": session_id, "total_ms": out["total_ms"]})
 
 
 # ---- curriculum ----
@@ -357,8 +358,13 @@ async def metrics(session_id: str) -> dict:
 
 
 async def delete_session(session_id: str) -> int:
-    await get_session(session_id)
+    """Consent deletion. Also removes the plan (resume and posting text) once no other session, such as a
+    retest, still uses it."""
+    session = await get_session(session_id)
+    plan_id = session["data"].get("plan_id")
     removed = await store.delete_linked(session_id)
+    if plan_id and not await store.find_records("session", "plan_id", plan_id, limit=1):
+        removed += await store.delete_record(plan_id)
     bus.clear(channel(session_id))
     _seq_next.pop(session_id, None)
     _seq_locks.pop(session_id, None)

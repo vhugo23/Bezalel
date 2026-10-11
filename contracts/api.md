@@ -26,7 +26,7 @@ Routes keep the existing `/api` prefix. The brief's sketch had no prefix, so `/a
 | `evaluator_started` | `{"answer_id", "rubric_id"}` |
 | `evaluator_done` | `{"answer_id", "rubric_id", "duration_ms", "needs_review"}` |
 | `evaluator_failed` | `{"answer_id", "rubric_id", "reason"}` where reason is `timeout`, `bad_json`, or `quote_mismatch` |
-| `grading_complete` | `{"session_id", "total_ms"}` |
+| `grading_complete` | `{"session_id", "total_ms"}`. Sent after the report is saved, so fetching the report right away is safe. |
 
 ## Evaluator pipeline contract
 
@@ -42,7 +42,7 @@ Routes keep the existing `/api` prefix. The brief's sketch had no prefix, so `/a
 - Live turns time out after `LIVE_TURN_TIMEOUT_SECONDS` (default 5). Background work uses `TASK_TIMEOUT_SECONDS`.
 - Per-session locking is in process memory. Run a single uvicorn worker until turns are stored with a row lock or a version check.
 - `/api/plans` and the turns route are not behind `x-api-key`. The browser calls them, so a key would ship in the page. Add a rate limit at deploy.
-- `DELETE /api/sessions/{id}` removes the session, its events and its interview transcript. The plan record (resume and posting text) is only removed if `delete_linked` is extended to it. Check before the first tester session.
+- `DELETE /api/sessions/{id}` removes the session, its events and its interview transcript, and the plan (resume and posting text) once no other session, such as a retest, still uses it.
 
 ## Patience meter (fail threshold)
 

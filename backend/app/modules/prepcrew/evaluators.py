@@ -86,5 +86,6 @@ async def grade_session(session_id: str, answers: list[dict], transcript: str,
                                                "reason": _reason(out["error"])})
 
     total_ms = int((time.perf_counter() - start) * 1000)
-    await publish("grading_complete", {"session_id": session_id, "total_ms": total_ms})
+    # grading_complete is published by the caller AFTER the report is saved, so a client that fetches the
+    # report as soon as it sees grading_complete never gets a half-finished one.
     return {"results": results, "total_ms": total_ms}

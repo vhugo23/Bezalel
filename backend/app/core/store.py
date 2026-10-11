@@ -123,3 +123,20 @@ async def delete_linked(subject_id: str) -> int:
         del _records[rid]
         removed += 1
     return removed
+
+
+async def find_records(kind: str, field: str, value: str, limit: int = 1000) -> list[dict]:
+    """Records of `kind` whose top-level data[field] equals value (as text)."""
+    if _use_db():
+        rows = await db.fetch(
+            "select id, kind, owner_id, data, created_at from records "
+            "where kind = $1 and data->>$2 = $3 order by created_at desc limit $4",
+            kind, field, str(value), limit)
+        return [_row(r) for r in rows]
+    return [r for r in _records.values() if r["kind"] == kind and str(r["data"].get(field)) == str(value)][:limit]
+
+
+async def delete_record(record_id: str) -> int:
+    if _use_db():
+        return int((await db.execute("delete from records where id = $1", record_id)).split()[-1])
+    return 1 if _records.pop(record_id, None) is not None else 0

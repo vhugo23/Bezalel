@@ -10,3 +10,6 @@ __pycache__/
 
 # accidental nested clone of this repo (delete the folder; never commit it)
 Bezalel/
+
+# smoke test output
+scripts/tiger_smoke_server.log
