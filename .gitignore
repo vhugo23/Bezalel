@@ -27,3 +27,4 @@ Thumbs.db
 
 # spike output
 spikes/*.pcm
+spikes/*.wav

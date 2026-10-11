@@ -149,6 +149,11 @@ async def handle_answer(session_id: str, text: str) -> dict:
             "done": done, "degraded": degraded, "source": source}
 
 
+async def record_timing(session_id: str, stage: str, ms: float, turn: int | None = None) -> None:
+    """Store one measured stage (stt, llm_first_token, tts_first_audio, turn_total). GET /metrics reads these."""
+    await store.add_event(session_id, "timing", value=ms, data={"stage": stage, "turn": turn})
+
+
 # ---- circuit probes (contracts/probe_event.schema.json) ----
 async def _next_seq(session_id: str) -> int:
     if session_id not in _seq_next:
