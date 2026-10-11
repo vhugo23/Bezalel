@@ -58,7 +58,7 @@ export function LessonPage(){
  const retest=useMutation({mutationFn:()=>api.retest(id),onSuccess:s=>nav(`/session/${s.id}`)});
  const lesson=query.data;
  return <Shell><main className="page"><div className="wrap lesson-wrap"><Badge tone="acc">Practice loop</Badge><h1 className="top-gap">{lesson?.title||'Your next practice'}</h1><p className="sub">A lesson and a new constraint, grounded in your session.</p><section className="card"><div className="cb lesson-body">
-  {lesson?.id&&<Badge>Gemini · independently reviewed</Badge>}
+  {lesson?.id&&<Badge>{lesson.ai_generated?'AI generated · independently reviewed':'Authored coaching'}</Badge>}
   {lesson?.body?<><p style={{whiteSpace:'pre-line'}}>{lesson.body}</p><h2>Try it yourself.</h2><p style={{whiteSpace:'pre-line'}}>{lesson.practice}</p><p className="fine">{lesson.validation_label}</p></>:<p>{working?job.data?.stage:query.isPending?'Loading your evidence…':'Generate a short lesson and a changed practice scenario for the verified gap below.'}</p>}
   {lesson&&<div className="focus">{lesson.reason}<div className="citations">{lesson.evidence_seq.map(seq=><Link key={seq} to={`/fleet/${id}?evidence=${seq}`}>Event #{seq}</Link>)}</div></div>}
   <ErrorNotice error={query.error||job.error||generate.error||retry.error||cancel.error||retest.error|| (job.data?.error?new Error(job.data.error):null)}/>{working&&<p className="fine" role="status">Progress is saved. You can leave this page and come back.</p>}{job.data?.status==='cancelled'&&<p className="fine">Generation cancelled. Your session evidence is saved.</p>}

@@ -45,3 +45,32 @@ def test_other_engines_cannot_fall_through_to_rate_limiter_retests():
     with pytest.raises(HTTPException) as error:variants.prepare({'engine_id':'behavioral','spec':{},'rubric':{}})
     assert error.value.status_code==409
     with pytest.raises(ValueError):variants.prepare({'engine_id':'linux_fault','params':{'variant':23}})
+
+
+@pytest.mark.parametrize('skill',list(variants.PI_COACHING))
+@pytest.mark.parametrize('old',[0,1])
+def test_authored_pi_coaching_is_skill_specific_and_changed_variant_is_reference_checked(skill,old):
+    original={'id':'old','engine_id':'linux_fault',**pi_lab.definition(old)}
+    prepared=variants.prepare(original)
+    lesson=variants.authored_pi_lesson(skill,prepared['params']['variant'])
+    result=variants.publication(original,prepared,lesson,skill,None,'Authored reference check',authored=True)
+    assert result['validity']['kind']=='reference_run_and_authored_coaching'
+    assert result['validity']['authored_coaching']
+    assert 'model-reviewed' not in result['validity']['label']
+    assert not result['validity']['semantic_guarantee']
+    assert result['validity']['check_job_id'] is None
+    assert len(result['spec']['steps'])==5
+    assert 'five_reference_goals_pass' in result['validity']['checks']
+    assert result['params']['variant']==1-old
+    assert result['spec']['focus_skill']==skill
+    assert not any(word in lesson.retest_prompt for word in ['3000','3001','4000','chmod','truncate','systemctl'])
+    assert lesson.retest_prompt!=original['spec']['prompt']
+
+
+def test_authored_coaching_rejects_unknown_skills_and_modified_content():
+    with pytest.raises(HTTPException):variants.authored_pi_lesson('sw.system_design',0)
+    with pytest.raises(HTTPException):variants.authored_pi_lesson('infra.permissions',23)
+    original={'id':'old','engine_id':'linux_fault',**pi_lab.definition()}
+    prepared=variants.prepare(original)
+    with pytest.raises(ValueError,match='unchanged'):
+        variants.publication(original,prepared,draft(),'infra.permissions',None,'unchecked',authored=True)

@@ -61,10 +61,10 @@ test('accounts isolate plans, sessions, sources, jobs and sockets and restore cr
  expect(await upgrade(ticket.token,'voice')).toBe(false);
  const claimed=await Promise.all([upgrade(ticket.token),upgrade(ticket.token)]);expect(claimed.filter(Boolean)).toHaveLength(1);
  expect(await upgrade(ticket.token)).toBe(false);
- await page.getByRole('link',{name:'Account',exact:true}).click();
+ await page.locator('summary[aria-label="Account menu"]').click();await page.getByRole('link',{name:'Account & data',exact:true}).click();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Download my data'}).click();
  expect((await download).suggestedFilename()).toBe('prepcrew-account.json');
- await expect(page.getByRole('status')).toContainText('Your export is ready.');
+ await expect(page.getByRole('main').getByRole('status')).toContainText('Your export is ready.');
  await page.screenshot({path:'../.artifacts/e2e/accounts-export.png',fullPage:true});
  for(const path of [`/plans/${plan.id}`,`/sessions/${interview.id}`,`/sessions/${interview.id}/events`,`/sessions/${interview.id}/report`,`/sessions/${interview.id}/metrics`,`/sources/${source.id}`,`/jobs/${job.id}`,`/users/${a.id}/sources`]){
   expect((await b.request.get('/api/v2'+path)).status(),path).toBe(404);
