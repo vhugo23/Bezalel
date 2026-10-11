@@ -10,8 +10,9 @@ import { Badge, Button, ErrorNotice, Icon } from '../components/ui';
 type Doc=Model<'SourceDocument'>;type Review=Model<'AtsReview'>;type Kind='resume'|'job_posting';
 const requirementsSchema=z.array(z.object({quote:z.string(),term:z.string(),level:z.enum(['required','preferred'])}));
 const revisionSchema=z.object({format:z.literal('ats_revision')});
+const scanSchema=z.object({provider:z.string()});
 const CATEGORY:Record<Model<'AtsCategoryResult'>['id'],string>={format:'Format',sections:'Sections',keywords:'Keywords',impact:'Impact',clarity:'Clarity'};
-const COVERAGE:Record<Model<'AtsCoverage'>['status'],{label:string;tone:string}>={found:{label:'Keyword found',tone:'ok'},evidence:{label:'Shown in other words',tone:'acc'},missing:{label:'Not on your resume',tone:'warn'}};
+const COVERAGE:Record<Model<'AtsCoverage'>['status'],{label:string;tone:string}>={found:{label:'Keyword found',tone:'ok'},evidence:{label:'AI matched other wording',tone:'acc'},missing:{label:'Not on your resume',tone:'warn'}};
 const active=(status?:string)=>status==='queued'||status==='running';
 const count=(n:number,word:string)=>`${n} ${word}${n===1?'':'s'}`;
 const fileName=(title:string)=>title.replace(/\.(pdf|txt|md)\b/gi,'').replace(/[^\w-]+/g,'-').replace(/^-+|-+$/g,'')||'resume';
@@ -58,7 +59,7 @@ function ReviewResult({review}:{review:Review}){
  const score=review.provider!=='recorded'&&typeof review.score==='number'?review.score:null;
  return <div className="ats-block"><h3>Result</h3>
   {score===null?<p className="focus">Recorded example. Live mode is needed for a score.</p>:<p className="ats-score"><b>{score}</b><span>/ 100</span><Badge tone="acc">AI estimate · no real ATS was run</Badge></p>}
-  {review.categories.length>0&&<div className="ats-cats">{review.categories.map(c=><article className="ats-cat" key={c.id}><header><b>{CATEGORY[c.id]}</b><span>{c.rating} / 4</span></header><div className="progress" aria-hidden="true"><i style={{width:`${c.rating*25}%`}}/></div>{c.findings.length?<ul>{c.findings.map((f,i)=><li key={i}>{f.issue}{f.quote&&<q>{f.quote}</q>}</li>)}</ul>:<p className="fine">No issues noted.</p>}</article>)}</div>}
+  {review.provider!=='recorded'&&review.categories.length>0&&<div className="ats-cats">{review.categories.map(c=><article className="ats-cat" key={c.id}><header><b>{CATEGORY[c.id]}</b><span>{c.rating} / 4</span></header><div className="progress" aria-hidden="true"><i style={{width:`${c.rating*25}%`}}/></div>{c.findings.length?<ul>{c.findings.map((f,i)=><li key={i}>{f.issue}{f.quote&&<q>{f.quote}</q>}</li>)}</ul>:<p className="fine">No issues noted.</p>}</article>)}</div>}
   <dl className="ats-facts"><div><dt>Word count</dt><dd>{review.facts.words}</dd></div><div><dt>Email</dt><dd>{review.facts.email?'Found':'Not found'}</dd></div><div><dt>Phone</dt><dd>{review.facts.phone?'Found':'Not found'}</dd></div><div><dt>Sections detected</dt><dd>{review.facts.sections.join(', ')||'None'}</dd></div></dl>
   {score!==null&&<p className="fine">The score is computed from the category ratings. The weights are hand-picked and have not been checked against a real applicant tracking system.</p>}
  </div>;
@@ -73,10 +74,10 @@ function Suggestions({review,pending,onApply}:{review:Review;pending:boolean;onA
  const [off,setOff]=useState<number[]>([]);const ticked=review.suggestions.filter(s=>!off.includes(s.id)).map(s=>s.id);
  return <div className="ats-block"><h3>Suggested changes</h3>
   {review.suggestions.length===0?<p className="fine">There are no suggested changes.</p>:<>
-   <p className="fine">Each change replaces text that is already in your resume. Untick any you do not want.</p>
+   <p className="fine">Each change replaces text that is already in your resume. Read each one and untick any you do not want: our checks stop new numbers and names, but a rewrite in ordinary words can still overstate what you did.</p>
    {review.suggestions.map((s,i)=><article className="ats-sug" key={s.id}><div className="ats-sug-h"><label><input type="checkbox" checked={!off.includes(s.id)} onChange={()=>setOff(off.includes(s.id)?off.filter(id=>id!==s.id):[...off,s.id])}/>Change {i+1}</label><Badge tone="acc">AI generated</Badge><Badge>{CATEGORY[s.category]}</Badge></div><div className="ats-diff"><div className="before"><small>Original</small><del>{s.original}</del></div><div className="after"><small>Replacement</small><ins>{s.replacement}</ins></div></div><p className="fine">{s.reason}</p></article>)}
    <div className="row top-gap"><Button type="button" disabled={pending||ticked.length===0} onClick={()=>onApply(ticked)}>{pending?'Applying…':`Apply selected (${ticked.length})`}</Button><span className="fine">Creates a new revised resume.</span></div></>}
-  {review.rejected>0&&<p className="fine top-gap">{review.rejected} {review.rejected===1?'suggestion was':'suggestions were'} discarded by our checks because they added a number or a skill your resume does not contain, or could not be matched to your text.</p>}
+  {review.rejected>0&&<p className="fine top-gap">{review.rejected} {review.rejected===1?'suggestion was':'suggestions were'} discarded by our checks because they added a number, a name or a job requirement your resume does not contain, or could not be matched to your text.</p>}
  </div>;
 }
 
@@ -98,11 +99,13 @@ function ReviewPanel({resumeId,jobId,label,auto,onAuto,onAdded,onCheck,children}
  const start=useMutation({mutationFn:()=>api.atsReview(resumeId,jobId),onSuccess:item=>{work.track(item);if(item.status==='succeeded')void cache.invalidateQueries({queryKey:['ats',resumeId,jobId??null]});}});
  const apply=useMutation({mutationFn:(suggestion_ids:number[])=>api.atsApply(resumeId,jobId?{job_id:jobId,suggestion_ids}:{suggestion_ids}),onSuccess:onAdded});
  const status=work.item?.status;const stuck=status==='failed'||status==='cancelled';const revised=apply.data;
+ // Retry stops at three attempts; starting again then makes a new job. A saved review needs no button.
+ const spent=stuck&&(work.item?.attempts??0)>=3;const have=!!review.data&&review.data.provider!=='recorded';
  useEffect(()=>{if(status==='succeeded')void cache.invalidateQueries({queryKey:['ats',resumeId,jobId??null]});},[status,resumeId,jobId,cache]);
  const begin=start.mutate;
  useEffect(()=>{if(auto&&!fired.current){fired.current=true;begin();onAuto();}},[auto,begin,onAuto]);
  return <section className="ats-review" aria-label={jobId?'Tailored review':'General review'}>
-  <div className="ats-offer">{children}{!active(status)&&!stuck&&<Button type="button" disabled={start.isPending} onClick={()=>start.mutate()}>{start.isPending?'Starting…':label}<Icon/></Button>}</div>
+  <div className="ats-offer">{children}{!active(status)&&(!stuck||spent)&&!have&&<Button type="button" disabled={start.isPending} onClick={()=>start.mutate()}>{start.isPending?'Starting…':spent?'Start again':label}<Icon/></Button>}</div>
   <WorkStatus work={work} cancellable/>
   <ErrorNotice error={review.error||start.error||work.error||apply.error}/>
   {review.isLoading&&<p className="fine top-gap">Looking for a saved review…</p>}
@@ -122,13 +125,19 @@ function Tailor({posting,resumeId,auto,onAuto,onAdded,onCheck}:{posting:Doc;resu
  useEffect(()=>{if(unscanned)begin();},[unscanned,begin]);
  useEffect(()=>{if(status==='succeeded')void cache.invalidateQueries({queryKey:['source',id]});},[status,id,cache]);
  const required=requirements?.filter(r=>r.level==='required').length||0;
+ // An empty list is not a count of the posting: a recorded example scans nothing, and a live scan can keep nothing.
+ const found=!!requirements&&requirements.length>0;const recorded=scanSchema.safeParse(source.data?.extracted.scan).data?.provider==='recorded';
+ const spent=(status==='failed'||status==='cancelled')&&(work.item?.attempts??0)>=3;
+ const again=<Button type="button" variant="outline" size="sm" disabled={scan.isPending} onClick={()=>scan.mutate()}>Scan again</Button>;
  return <div className="ats-tailor"><ErrorNotice error={source.error||scan.error||work.error}/>
-  {requirements?<p className="fine" role="status">{count(requirements.length,'requirement')} found ({required} required, {requirements.length-required} preferred)</p>
-   :scan.isError?<Button type="button" variant="outline" size="sm" onClick={()=>scan.mutate()}>Scan again</Button>
-   :work.item&&status!=='succeeded'?<WorkStatus work={work}/>
+  {active(status)?<WorkStatus work={work}/>
+   :found?<p className="fine" role="status">{count(requirements.length,'requirement')} found ({required} required, {requirements.length-required} preferred)</p>
+   :requirements?<div className="ats-work"><p className="fine" role="status">{recorded?'Recorded example. Live mode is needed to scan a posting.':'No requirements were found in this posting, so there is nothing to tailor to.'}</p>{!recorded&&again}</div>
+   :scan.isError?again
+   :work.item&&status!=='succeeded'?<><WorkStatus work={work}/>{spent&&again}</>
    :status==='succeeded'&&!source.isFetching?<p className="fine">The scan finished but no requirements were saved for this posting.</p>
    :!source.isError&&<div className="ats-work"><p role="status"><span className="spin" aria-hidden="true"/>{source.isFetching&&!work.id?'Opening the job posting…':'Scanning the job posting…'}</p></div>}
-  {requirements&&(resumeId?<ReviewPanel key={`${resumeId}:${id}`} resumeId={resumeId} jobId={id} label="Tailor my resume" auto={auto} onAuto={onAuto} onAdded={onAdded} onCheck={onCheck}><h3>Tailor your resume for {posting.title}?</h3></ReviewPanel>:<p className="fine">Pick a resume above to tailor it.</p>)}
+  {found&&(resumeId?<ReviewPanel key={`${resumeId}:${id}`} resumeId={resumeId} jobId={id} label="Tailor my resume" auto={auto} onAuto={onAuto} onAdded={onAdded} onCheck={onCheck}><h3>Tailor your resume for {posting.title}?</h3></ReviewPanel>:<p className="fine">Pick a resume above to tailor it.</p>)}
  </div>;
 }
 

@@ -29,18 +29,20 @@ The model's output is treated as a draft. `backend/app/v2/resume.py` checks it:
 | Model output | Local check | If it fails |
 |---|---|---|
 | A finding's quote | Must be verbatim resume text | The quote is removed, the finding stays |
-| A job requirement | Its quote must be in the posting and its keyword in that quote | Dropped |
-| "Mentioned" for a requirement | Not taken from the model: a literal, case-insensitive keyword match against the resume | n/a |
+| A job requirement | Its quote must be in the posting and its keyword must be a word of that quote | Dropped |
+| "Mentioned" for a requirement | Not taken from the model: a literal keyword match against the resume. Case is ignored, except for a short capitalised name such as "Go" or "AI" | n/a |
 | Evidence for a requirement | Must be verbatim resume text | Discarded |
 | A suggested change | See below | Dropped and counted |
 
-A suggested change is dropped when:
+A suggested change is checked against the resume **as it would read after the edit**, not against the replacement text alone. It is dropped when:
 
-- its original text is not in the resume exactly once, or it overlaps another accepted change;
-- its replacement contains a number that is not in the resume (this blocks invented metrics);
-- when tailoring, its replacement adds a requirement keyword the resume does not mention (a keyword of up to three letters must appear as a word of its own; a longer one is also caught inside a derivative such as "Dockerized");
-- its replacement is the same as the original, or far longer than it.
+- its original text is blank or not in the resume exactly once, or it overlaps or touches another accepted change;
+- its replacement is the same as the original, far longer than it, or uses a character the resume does not (this stops look-alike letters and invisible characters);
+- the edited resume would contain a **number** the resume does not have. A number is the whole token it is written in, so `5` → `15`, `0.5%` → `5%` and `12` → `12k` are all new numbers. The same years written as a range (`2021 - 2024` → `2021 to 2024`) are allowed;
+- the edited resume would contain a new **name**: a new word that is capitalised mid-sentence, mixed-case, all capitals or alphanumeric, such as a tool, an employer, a job title or a degree. New ordinary words are allowed;
+- when tailoring, the edited resume would mention a **requirement the resume lacks** more often than before, as a word or inside a variant (`Dockerized`, `MySQL`, `Golang`, `CAN-bus`).
 
+When changes are applied, the chosen set is checked together once more, and refused if the combination adds any of the above.
 The page shows how many suggestions were dropped.
 
 ## Missing skills are flagged, never added
@@ -73,13 +75,16 @@ Scans and reviews run in the durable work queue (`jobs.py`, kinds `job_scan` and
 ## Limits
 
 - The score is an AI estimate. Nothing here has been compared with a real ATS.
-- The guards catch new numbers and missing keywords. They cannot catch every overstated claim, so the user reviews each change before applying it.
+- The ratings come from the model, so the same resume can score differently on two runs. Two tailored runs on one synthetic resume and posting gave 79 and 67.
+- The checks catch new numbers, new names and missing keywords. They cannot judge meaning: "Assisted with" rewritten as "Led", a claim added in ordinary lower-case words, a number spelled out, or a number that is elsewhere in the resume reused in a new place all pass. Every change is shown before and after, and the user chooses which to apply.
+- A tool written in lower case ("docker") is an ordinary word to the name check. When tailoring, the requirement check still catches it if the posting asks for it.
+- "AI matched other wording" in the coverage table means the model quoted real resume text as evidence. The quote is verified to be in the resume; whether it shows the skill is the model's judgment.
 - An uploaded PDF is kept as extracted text only. The generated PDF uses a plain one-column template and will not look like the original.
 - The bundled PDF font (DejaVu Sans) has no Chinese, Japanese or Korean glyphs; those characters print as `?`.
 - Scanned or encrypted PDFs and job posting URLs are not supported. Paste the text.
 - A posting that offers alternatives ("FreeRTOS or Zephyr") is scanned as one requirement per skill, so the one the candidate lacks is listed as missing.
-- The number check compares digit runs only. A number already in the resume can be reused elsewhere, and spelled-out numbers are not checked.
-- In recorded demo mode (`DEMO_MODE=true`) a review has no score and no suggestions.
+- In recorded demo mode (`DEMO_MODE=true`) a review has no score, no ratings and no suggestions, a scan finds no requirements, and neither replaces a real result already saved.
+- A posting with no requirements found cannot be tailored to; it can be scanned again.
 - Resume and posting text are sent to Gemini and kept in `generation_jobs.request`, as source extraction already does.
 
 ## Checks

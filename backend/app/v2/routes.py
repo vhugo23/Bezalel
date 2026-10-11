@@ -139,7 +139,8 @@ async def source_pdf(source_id: str):
     from . import sources, resume_pdf
     row=await sources.read(source_id)
     if row['kind']!='resume':raise HTTPException(422,'Only a resume can be downloaded as a PDF.')
-    data=await asyncio.to_thread(resume_pdf.render,row['title'] or 'Resume',row['body'])
+    async with sources._pdf_slots:  # rendering is CPU-bound; share the cap PDF extraction uses
+        data=await asyncio.to_thread(resume_pdf.render,row['title'] or 'Resume',row['body'])
     return Response(data,media_type='application/pdf',headers={'Content-Disposition':'attachment; filename="resume.pdf"','Cache-Control':'private, no-store'})
 
 @router.post('/sources/{source_id}/confirm', response_model=SourceDocument)

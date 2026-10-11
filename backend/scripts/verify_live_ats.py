@@ -90,13 +90,13 @@ def check(review, requirements, body, posting):
     assert all(finding.quote is None or finding.quote in body for item in review.categories for finding in item.findings)
     assert all(item['quote'] in posting and item['term'].lower() in item['quote'].lower() for item in requirements)
     assert all(row.quote in posting and (row.resume_quote is None or row.resume_quote in body) for row in review.coverage)
-    numbers = set(re.findall(r'\d+', body))
-    absent = [row.term for row in review.coverage if not row.mentioned]
+    absent = resume.missing_terms(review.coverage)
     for item in review.suggestions:
         assert body[item.start:item.end] == item.original and body.count(item.original) == 1
-        assert set(re.findall(r'\d+', item.replacement)) <= numbers
-        # No accepted change adds a requirement the resume does not mention.
-        assert not any(resume._occurrences(term, item.replacement) > resume._occurrences(term, item.original) for term in absent)
+        # No accepted change adds a number, a name or a requirement the resume does not have.
+        assert resume._added_claim(body, body[:item.start] + item.replacement + body[item.end:], absent) is None
+    chosen = [item.id for item in review.suggestions]
+    assert resume._added_claim(body, resume.apply_suggestions(body, review.suggestions, chosen), absent) is None
 
 
 async def main():

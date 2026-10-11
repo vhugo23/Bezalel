@@ -47,9 +47,11 @@ def _blocks(body, glyphs):
         if markdown:
             line = markdown[1]
         bullet = _BULLET.fullmatch(line)
-        if not named:
+        # The first line is the name only if it looks like one: a resume pasted as one long line, or one
+        # that opens with a bullet, has no name line to enlarge.
+        first, named = not named, True
+        if first and not bullet and len(line) <= 60:
             blocks.append(['name', line])
-            named = True
         elif bullet:
             blocks.append(['bullet', bullet[1].strip()])
         elif (markdown and len(line) <= 80) or _is_heading(line):

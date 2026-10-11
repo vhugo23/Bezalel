@@ -137,6 +137,13 @@ def test_lines_are_classified():
         ['bullet', 'first continued'], ['bullet', 'second'], ['text', 'plain'], ['gap', ''], ['heading', 'EDUCATION']]
 
 
+def test_a_first_line_that_is_not_a_name_is_not_drawn_as_one():
+    glyphs = set(range(0x20, 0x250)) | {0x2022}
+    assert resume_pdf._blocks('word ' * 40, glyphs)[0][0] == 'text'            # a resume pasted as one long line
+    assert resume_pdf._blocks('- Built a thing\nAda Lovelace', glyphs) == [['bullet', 'Built a thing'], ['text', 'Ada Lovelace']]
+    assert resume_pdf._blocks('Ada Lovelace\nEDUCATION', glyphs)[0] == ['name', 'Ada Lovelace']
+
+
 def test_concurrent_renders_are_independent():
     def job(index):
         return index, resume_pdf.render(f'resume {index}', RESUME.replace(NAME, f'Candidate Number{index}'))

@@ -2,8 +2,10 @@
 
 Gemini rates the resume in the role of an applicant tracking system. Everything
 it returns is checked here before it is saved: the score is computed in code,
-quotes must be verbatim, and a suggestion that adds a number or a skill the
-resume does not contain is dropped. No real ATS is run. See docs/RESUME_ATS.md.
+quotes must be verbatim, and a suggestion is dropped if the resume would then
+contain a number, a name (a tool, employer, title or degree) or a missing job
+requirement that it does not contain now. No real ATS is run. A rewrite in
+ordinary words can still overstate; see the limits in docs/RESUME_ATS.md.
 
 Results live in source_documents.extracted (no table of their own):
   job posting row: extracted['requirements'] = [JobRequirement, ...]
@@ -14,6 +16,7 @@ suggestions creates a NEW resume source; the original is never changed.
 from datetime import datetime, timezone
 import json
 import re
+import unicodedata
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -42,6 +45,10 @@ SECTIONS = {
     'publications': ('publications', 'selected publications'),
 }
 HEADINGS = {alias: section for section, aliases in SECTIONS.items() for alias in aliases}
+# A word, keeping the marks that are part of a name: C++, C#, Node.js, CI/CD, low-level.
+WORD = re.compile(r"[^\W\d_][\w+#]*(?:[.'’/\-][\w+#]+)*")
+WORD_PARTS = re.compile(r"[.'’/\-]")
+TYPOGRAPHY = '‘’“”–—•·…'  # marks a rewrite may use even if the resume does not
 
 # Authored anchors. The model only picks a rating; score() does the arithmetic.
 ANCHORS = {
@@ -107,23 +114,94 @@ def _verbatim(quote, body):
     return quote if quote and body.find(quote) >= 0 else None
 
 
-def _mentions(term, text):
+def _clean(text):
+    # Compare what a reader sees: compatibility forms folded ('⁴⁰' is '40'), invisible format characters removed.
+    return ''.join(c for c in unicodedata.normalize('NFKC', text) if unicodedata.category(c) != 'Cf')
+
+
+def _pattern(term, exact_case=False):
     # Literal match. A word edge is required only where the term itself starts or ends with a word
     # character, so 'C' is not found in 'Circuit', 'C++' or 'C#', while 'C++' and 'Node.js' are found.
-    parts = term.split()
-    if not parts:
-        return False
-    before = r'(?<!\w)' if re.match(r'\w', parts[0]) else ''
+    # A term that starts with punctuation ('.NET') must not continue a word or a domain ('example.net').
+    parts = re.split(r'[\s\-]+', _clean(term).strip())
+    before = r'(?<!\w)' if re.match(r'\w', parts[0]) else r'(?<![\w.])'
     after = r'(?!\w|\+\+|#)' if re.search(r'\w$', parts[-1]) else ''
-    return re.search(before + r'\s+'.join(re.escape(part) for part in parts) + after, text, re.IGNORECASE) is not None
+    return re.compile(before + r'[\s\-]+'.join(re.escape(part) for part in parts) + after, 0 if exact_case else re.IGNORECASE)
+
+
+def _mentions(term, text):
+    if not term.strip():
+        return False
+    # A short name with a capital ('Go', 'AI', 'C') is matched in that case, so 'go live' is not the language.
+    return _pattern(term, len(term.strip()) <= 3 and term != term.lower()).search(_clean(text)) is not None
 
 
 def _occurrences(term, text):
-    # A short term ('Go', 'AI') needs a word edge or it matches inside ordinary words ('going', 'maintained').
-    # A longer one is counted as a substring, so a derivative ('Dockerized') still counts as the skill.
-    if len(term) <= 3:
-        return len(re.findall(r'(?<!\w)' + re.escape(term) + r'(?!\w|\+\+|#)', text, re.IGNORECASE))
-    return text.lower().count(term.lower())
+    """(as a word, loosely) counts of a term. The loose count catches a derivative or variant of the
+    skill: 'Dockerized', 'PLCs', 'MySQL', 'Golang'. Both are compared before and after an edit."""
+    term, text = _clean(term).strip(), _clean(text)
+    word = len(_pattern(term).findall(text))
+    squash = lambda value: re.sub(r'[\s\-]+', ' ', value)
+    if len(term) == 1:
+        loose = word  # one letter is inside almost every word
+    elif len(term) > 3:
+        loose = squash(text).casefold().count(squash(term).casefold())
+    elif term.isupper():
+        loose = text.count(term)  # 'SQL' in 'MySQL', but not 'ai' in 'maintained'
+    else:
+        loose = len(re.findall(r'(?<!\w)' + re.escape(term), text))  # 'Go' in 'Golang', in that case only
+    return word, loose
+
+
+def _number_tokens(text):
+    # A number is the whole token it is written in: '40%', '1,000', '4.5x', 'STM32'. Changing any
+    # character of it makes a different number.
+    return {chunk.strip('()[]{}<>,.;:!?"\'`*_|~$€£“”‘’') for chunk in _clean(text).split()
+            if any(c.isdigit() or unicodedata.category(c) in ('No', 'Nl') for c in chunk)}
+
+
+def _range_parts(token):
+    return [part for part in re.split(r'[-–—/~]', token) if part]
+
+
+def _vocabulary(text):
+    words = set()
+    for match in WORD.finditer(_clean(text)):
+        word = match.group().casefold()
+        words.add(word)
+        words.update(part for part in WORD_PARTS.split(word) if part)
+    return words
+
+
+def _added_claim(before, after, missing):
+    """Why the text `after` says something `before` did not, or None. Works on whole documents, so text
+    built by an edit touching what is next to it ('5' made into '15') is seen as well."""
+    allowed = _number_tokens(before)
+    allowed |= {part for token in allowed for part in _range_parts(token)}
+    for token in _number_tokens(after):
+        parts = _range_parts(token)
+        if token not in allowed and not (len(parts) > 1 and all(part in allowed for part in parts)):
+            return 'number'
+    for term in missing:
+        was, now = _occurrences(term, before), _occurrences(term, after)
+        if now[0] > was[0] or now[1] > was[1]:
+            return 'requirement'
+    # A new word may be an ordinary one ('wrote', or 'Wrote' opening a sentence). A new capitalised,
+    # mixed-case or alphanumeric word is a name: a tool, an employer, a title, a degree.
+    known, text = _vocabulary(before), _clean(after)
+    for match in WORD.finditer(text):
+        word = match.group()
+        parts = [part for part in WORD_PARTS.split(word) if part]
+        if word == 'I' or word.casefold() in known or all(part.casefold() in known for part in parts):
+            continue
+        fresh = [part for part in parts if part.casefold() not in known]
+        if any(not part.isalpha() or (len(part) > 1 and not part[1:].islower()) for part in fresh):
+            return 'name'
+        prefix = text[:match.start()].rstrip(' \t')
+        opens = not prefix or prefix[-1] in '.!?:;\n•*-–—|'
+        if any(part[0].isupper() and not (opens and part is parts[0]) for part in fresh):
+            return 'name'
+    return None
 
 
 def _saved(extracted, job_id):
@@ -136,8 +214,11 @@ async def _enqueue(kind, user_id, subject_id, payload, saved):
     result is no longer saved (a tailored review was trimmed, or the row was overwritten), the request
     has to run again, so the payload is made different by naming the job it replaces."""
     item = await jobs.enqueue(kind, user_id, subject_id, payload)
-    for _ in range(10):
-        if saved or item.status != 'succeeded':
+    for _ in range(50):
+        lost = item.status == 'succeeded' and not saved
+        # jobs.retry refuses a fourth attempt; without a new job the document could never be tried again.
+        spent = item.status in ('failed', 'cancelled') and item.attempts >= 3
+        if not (lost or spent):
             break
         item = await jobs.enqueue(kind, user_id, subject_id, {**payload, 'rerun': item.id})
     return item
@@ -161,7 +242,8 @@ def validate_requirements(draft: JobScanDraft, posting: str) -> list[JobRequirem
     kept, seen = [], set()
     for item in draft.requirements:
         term = item.term.strip()
-        if posting.find(item.quote) < 0 or not term or term.lower() not in item.quote.lower() or term.lower() in seen:
+        # The term must stand in the quote as a word: 'Go' is not named by 'a good team player'.
+        if posting.find(item.quote) < 0 or not term or not _mentions(term, item.quote) or term.lower() in seen:
             continue
         seen.add(term.lower())
         kept.append(JobRequirement(quote=item.quote, term=term, level=item.level))
@@ -185,34 +267,37 @@ def coverage(requirements: list[JobRequirement], resume_body: str, evidence: lis
 
 
 def guard_suggestions(drafts: list[AtsSuggestionDraft], resume_body: str, covered: list[AtsCoverage]) -> tuple[list[AtsSuggestion], int]:
-    """Return (accepted, rejected_count). A draft is dropped when: original is not in the resume exactly
-    once; it overlaps an accepted suggestion; replacement equals original; replacement contains a number
-    absent from the resume; replacement adds the term of a coverage row whose mentioned is False (it has
-    the term more often than original does); or replacement is longer than 2*len(original)+200.
-    Ids are 0..n-1 in accepted order."""
-    numbers = set(re.findall(r'\d+', resume_body))
-    missing = [row.term.strip() for row in covered if not row.mentioned and row.term.strip()]
+    """Return (accepted, rejected_count). A draft is dropped when: original is blank or not in the resume
+    exactly once; it overlaps or touches an accepted suggestion; replacement equals original, is longer
+    than 2*len(original)+40, or has a character the resume does not use; or the resume with the edit
+    made would contain a number the resume does not have, more of a requirement whose mentioned is
+    False, or a new name (see _added_claim). Ids are 0..n-1 in accepted order."""
+    missing = missing_terms(covered)
     accepted = []
     for draft in drafts:
         original, text = draft.original, draft.replacement
         start = resume_body.find(original)
         end = start + len(original)
-        if start < 0 or resume_body.find(original, start + 1) >= 0:
+        if not original.strip() or start < 0 or resume_body.find(original, start + 1) >= 0:
             continue  # the edit must have exactly one place to go
-        if any(start < other.end and other.start < end for other in accepted):
+        # Touching edits count as overlapping: side by side they could spell what neither says alone.
+        if any(start <= other.end and other.start <= end for other in accepted):
             continue
-        if text == original or len(text) > 2 * len(original) + 200:
+        if text == original or len(text) > 2 * len(original) + 40:
             continue
-        # Compare whole digit runs: '40' is new even if the resume says '2040'. This blocks invented metrics.
-        if any(run not in numbers for run in re.findall(r'\d+', text)):
+        # No look-alike or invisible characters: a zero-width space inside '40', a Cyrillic 'е' in a skill.
+        if any((ord(c) > 126 and c not in resume_body and c not in TYPOGRAPHY) or (ord(c) < 32 and c not in '\n\t') for c in text):
             continue
-        # Flag a missing skill, never add it. Text the original already had ('JavaScript' when 'Java' is
-        # the missing term) may stay; only an added occurrence is refused.
-        if any(_occurrences(term, text) > _occurrences(term, original) for term in missing):
+        if _added_claim(resume_body, resume_body[:start] + text + resume_body[end:], missing):
             continue
         accepted.append(AtsSuggestion(id=len(accepted), category=draft.category, original=original,
                                       replacement=text, reason=draft.reason, start=start, end=end))
     return accepted, len(drafts) - len(accepted)
+
+
+def missing_terms(covered: list[AtsCoverage]) -> list[str]:
+    """Requirement terms the resume does not mention. Flagged, never added."""
+    return [row.term.strip() for row in covered if not row.mentioned and row.term.strip()]
 
 
 def score(categories: list[AtsCategoryDraft], tailoring: bool) -> tuple[int, dict[str, int]]:
@@ -249,7 +334,8 @@ async def enqueue_scan(source_id: str) -> WorkItem:
         raise HTTPException(422, 'Only a job posting can be scanned.')
     return await _enqueue('job_scan', row['user_id'], source_id,
         {'source_id': source_id, 'content_hash': row['content_hash'], 'rubric': RUBRIC_VERSION, 'recorded': DEMO},
-        'requirements' in row['extracted'])
+        # A scan that kept nothing can be asked for again; a recorded example cannot improve by rerunning.
+        bool(row['extracted'].get('requirements')) or (row['extracted'].get('scan') or {}).get('provider') == 'recorded')
 
 
 async def scan(row) -> dict:
@@ -289,6 +375,9 @@ async def enqueue_review(resume_id: str, job_id: str | None) -> WorkItem:
             raise HTTPException(422, 'Tailor a resume against a job posting.')
         if 'requirements' not in job['extracted']:
             raise HTTPException(409, 'Scan the job posting first.')
+        if not job['extracted']['requirements']:
+            # Tailoring weights keywords double; with nothing to match that would only lower the score.
+            raise HTTPException(409, 'No requirements were found in this job posting, so there is nothing to tailor to.')
         payload.update(job_id=job_id, job_hash=job['content_hash'])
     return await _enqueue('ats_review', row['user_id'], resume_id, payload, _saved(row['extracted'], job_id))
 
@@ -340,7 +429,10 @@ async def review(row) -> dict:
         if not current:
             raise HTTPException(409, 'The resume changed.')
         ats = dict(current['extracted'].get('ats') or {})
-        if job:
+        kept = _saved(current['extracted'], job['id'] if job else None)
+        if provider == 'recorded' and kept and kept.get('provider') != 'recorded':
+            pass  # a recorded example never replaces a real review
+        elif job:
             older = sorted(((key, value) for key, value in (ats.get('jobs') or {}).items() if key != job['id']),
                            key=lambda pair: datetime.fromisoformat(pair[1]['created_at']), reverse=True)
             ats['jobs'] = {job['id']: saved, **dict(older[:MAX_JOB_REVIEWS - 1])}
@@ -374,11 +466,15 @@ async def apply(resume_id: str, body: AtsApply) -> SourceDocument:
         text = apply_suggestions(row['body'], checked.suggestions, body.suggestion_ids)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+    # Each change was checked alone when the review was saved. Check the chosen set together as well.
+    if _added_claim(row['body'], text, missing_terms(checked.coverage)):
+        raise HTTPException(422, 'These changes cannot be applied together. Untick one and try again.')
     suffix = ' (tailored)' if body.job_id else ' (revised)'
     try:
         revised = SourceInput(user_id=row['user_id'], kind='resume', title=(row['title'] or 'Resume')[:160 - len(suffix)] + suffix, body=text)
     except ValidationError:
         raise HTTPException(422, 'The revised resume must be between 10 and 60,000 characters.')
-    # sources.create only inserts: the reviewed resume row is left exactly as it was.
+    # sources.create inserts a new document (or returns an identical one already saved). It never
+    # changes the body of the resume that was reviewed.
     return await sources.create(revised, {'format': 'ats_revision', 'parent_id': resume_id, 'job_id': body.job_id,
         'applied': sorted(body.suggestion_ids), 'review_job_id': checked.source_job_id})

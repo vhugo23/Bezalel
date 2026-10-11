@@ -52,6 +52,8 @@ test('a recorded review never shows a number even if one is sent',async()=>{
  mount('/resume?source=r1',resumes,async()=>review({provider:'recorded',score:88}));
  await screen.findByText('Recorded example. Live mode is needed for a score.');
  expect(screen.queryByText('88')).toBeNull();
+ // Ratings are model judgments too: none are drawn for a recorded example.
+ expect(screen.queryByText(/\d \/ 4/)).toBeNull();
 });
 test('Apply selected sends only the ticked suggestions and shows the revised resume',async()=>{
  const revised=doc('r3','resume','First resume (revised)',{origin:{format:'ats_revision'}},'2026-10-03T00:00:00Z');
@@ -87,7 +89,7 @@ test('Check this version selects the revised resume and starts its review; Downl
  expect(screen.queryByText(LABEL)).toBeNull();
 });
 test('the discarded-suggestions line appears only when some were rejected',async()=>{
- const line=/suggestions were discarded by our checks because they added a number or a skill your resume does not contain, or could not be matched to your text\./;
+ const line=/suggestions were discarded by our checks because they added a number, a name or a job requirement your resume does not contain, or could not be matched to your text\./;
  mount('/resume?source=r1',resumes,async()=>review({rejected:0}));
  await screen.findByText(LABEL);
  expect(screen.queryByText(line)).toBeNull();
@@ -104,7 +106,7 @@ test('a tailored review lists coverage, and a missing requirement has no control
  expect(within(missing).queryByRole('checkbox')).toBeNull();
  expect(within(missing).queryByRole('button')).toBeNull();
  expect(missing.querySelector('input,button,select')).toBeNull();
- expect(within(within(panel).getByText('Shown in other words').closest('tr')!).getByText('Built a FreeRTOS scheduler')).toBeDefined();
+ expect(within(within(panel).getByText('AI matched other wording').closest('tr')!).getByText('Built a FreeRTOS scheduler')).toBeDefined();
  expect(within(panel).getByText('Keyword found')).toBeDefined();
  expect(within(panel).getByText(LABEL)).toBeDefined();
  expect(screen.getByText('3 requirements found (2 required, 1 preferred)')).toBeDefined();
@@ -135,8 +137,8 @@ test('tailoring starts a review with the job id and applies with the same job id
 test('an unscanned posting is scanned automatically and then offered for tailoring',async()=>{
  const unscanned=doc('j1','job_posting','Firmware Engineer');
  let scanned=false;
- const scan=vi.spyOn(api,'scanSource').mockImplementation(async()=>{scanned=true;return work({id:'w3',kind:'source_scan',subject_id:'j1',status:'succeeded',stage:'Done'});});
- vi.spyOn(api,'job').mockResolvedValue(work({id:'w3',kind:'source_scan',subject_id:'j1',status:'succeeded',stage:'Done'}));
+ const scan=vi.spyOn(api,'scanSource').mockImplementation(async()=>{scanned=true;return work({id:'w3',kind:'job_scan',subject_id:'j1',status:'succeeded',stage:'Done'});});
+ vi.spyOn(api,'job').mockResolvedValue(work({id:'w3',kind:'job_scan',subject_id:'j1',status:'succeeded',stage:'Done'}));
  mount('/resume?source=r1&job=j1',[...resumes,unscanned],async()=>null);
  vi.spyOn(api,'source').mockImplementation(async()=>scanned?posting:unscanned);
  expect(await screen.findByText('3 requirements found (2 required, 1 preferred)')).toBeDefined();
@@ -160,6 +162,33 @@ test('a failed work item shows its error and a Retry button',async()=>{
  await waitFor(()=>expect(retry).toHaveBeenCalledWith('w1'));
  expect(await screen.findByText('Still failing.')).toBeDefined();
  expect((screen.getByRole('button',{name:'Retry'}) as HTMLButtonElement).disabled).toBe(true);
+ // Three attempts used: Retry is closed, so the page offers a fresh start (the server makes a new job).
+ const fresh=vi.spyOn(api,'atsReview').mockResolvedValue(work({id:'w9',status:'queued',attempts:0}));
+ vi.spyOn(api,'job').mockResolvedValue(work({id:'w9',status:'queued',attempts:0}));
+ fireEvent.click(screen.getByRole('button',{name:'Start again'}));
+ await waitFor(()=>expect(fresh).toHaveBeenCalledWith('r1',undefined));
+ expect(await screen.findByText('Reading your resume')).toBeDefined();
+});
+test('a posting with no requirements is not counted or offered for tailoring, and can be scanned again',async()=>{
+ const empty=doc('j1','job_posting','Firmware Engineer',{requirements:[],scan:{job_id:'g1',provider:'gemini'}});
+ const scan=vi.spyOn(api,'scanSource').mockResolvedValue(work({id:'w4',kind:'job_scan',subject_id:'j1',status:'queued',stage:'Reading the job posting'}));
+ vi.spyOn(api,'job').mockResolvedValue(work({id:'w4',kind:'job_scan',subject_id:'j1',status:'queued',stage:'Reading the job posting'}));
+ mount('/resume?source=r1&job=j1',[...resumes,empty],async()=>null);
+ expect(await screen.findByText('No requirements were found in this posting, so there is nothing to tailor to.')).toBeDefined();
+ expect(screen.queryByText(/requirements? found/)).toBeNull();
+ expect(screen.queryByRole('button',{name:'Tailor my resume'})).toBeNull();
+ expect(scan).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Scan again'}));
+ await waitFor(()=>expect(scan).toHaveBeenCalledWith('j1'));
+ expect(await screen.findByText('Reading the job posting')).toBeDefined();
+});
+test('a recorded scan says so and offers neither a count nor tailoring nor a rescan',async()=>{
+ const recorded=doc('j1','job_posting','Firmware Engineer',{requirements:[],scan:{job_id:'g1',provider:'recorded'}});
+ mount('/resume?source=r1&job=j1',[...resumes,recorded],async()=>null);
+ expect(await screen.findByText('Recorded example. Live mode is needed to scan a posting.')).toBeDefined();
+ expect(screen.queryByText(/requirements? found/)).toBeNull();
+ expect(screen.queryByRole('button',{name:'Tailor my resume'})).toBeNull();
+ expect(screen.queryByRole('button',{name:'Scan again'})).toBeNull();
 });
 test('a queued review shows its stage with Cancel, then loads the result when it succeeds',async()=>{
  let done=false;

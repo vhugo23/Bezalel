@@ -164,9 +164,10 @@ def test_a_number_already_in_the_resume_may_be_reused():
 def test_replacement_naming_a_missing_requirement_is_rejected_in_any_case():
     drafts = [suggestion(DUTY, 'Maintained KUBERNETES deployment scripts.'), suggestion(LATENCY, 'Reduced API latency with kubernetes.')]
     assert resume.guard_suggestions(drafts, RESUME, missing('Kubernetes')) == ([], 2)
-    # The same edits pass when Kubernetes is not a missing requirement, so the term check is what drops them.
-    assert resume.guard_suggestions(drafts, RESUME, [])[1] == 0
-    assert resume.guard_suggestions(drafts, RESUME, missing('Python'))[1] == 0
+    # The lower-case edit passes when Kubernetes is not a missing requirement, so the term check is what
+    # drops it. (The upper-case one is also a new name, which is refused in any review.)
+    assert [item.original for item in resume.guard_suggestions(drafts, RESUME, [])[0]] == [LATENCY]
+    assert [item.original for item in resume.guard_suggestions(drafts, RESUME, missing('Python'))[0]] == [LATENCY]
 
 
 def test_a_short_missing_term_is_matched_as_a_word_not_inside_other_words():
@@ -202,9 +203,95 @@ def test_text_the_original_already_had_is_not_an_added_skill():
 
 
 def test_replacement_that_is_too_long_is_rejected():
-    limit = 2 * len(LATENCY) + 200
+    limit = 2 * len(LATENCY) + 40
     assert resume.guard_suggestions([suggestion(LATENCY, 'x' * (limit + 1))], RESUME, []) == ([], 1)
     assert resume.guard_suggestions([suggestion(LATENCY, 'x' * limit)], RESUME, [])[1] == 0
+
+
+# The checks below look at the resume as it would read after the edit, not at the replacement alone.
+
+@pytest.mark.parametrize('original,replacement', [
+    ('for 12 warehouse', 'for 112 warehouse'),                 # a new number inside the replacement
+    ('sensor data for ', 'sensor data for 1'),                 # '1' is in the resume, but it lands against '12'
+    (' warehouse robots.', '0 warehouse robots.'),             # '0' lands after '12'
+    ('with 4 years', 'with 4.5 years'),                        # '5' is in the phone number; '4.5' is new
+    ('for 12 warehouse', 'for 12k warehouse'),                 # a unit changes the number
+    ('for 12 warehouse', 'for 1​2 warehouse'),            # an invisible character inside a number
+    ('for 12 warehouse', 'for ¹² warehouse'),        # superscript digits
+    ('with 4 years', 'with ½ a year'),                    # a fraction character
+])
+def test_a_number_the_resulting_resume_would_not_have_is_rejected(original, replacement):
+    assert RESUME.count(original) == 1
+    assert resume.guard_suggestions([suggestion(original, replacement)], RESUME, []) == ([], 1)
+
+
+def test_a_date_range_may_be_rewritten_with_the_same_years():
+    for replacement in ('2021 to 2024', '2021-2024', '2021 – 2024'):
+        assert resume.guard_suggestions([suggestion('2021 - 2024', replacement)], RESUME, [])[1] == 0
+    assert resume.guard_suggestions([suggestion('2021 - 2024', '2019 - 2024')], RESUME, []) == ([], 1)
+
+
+@pytest.mark.parametrize('term,original,replacement', [
+    ('Robot', 'warehouse robots.', 'warehouse robot.'),                                  # a longer word cut down to the term
+    ('Postgres', 'Node.js, PostgreSQL', 'Node.js, Postgres'),
+    ('Kubernetes', 'maintaining the deployment', 'maintaining the Kuber­netes deployment'),   # soft hyphen
+    ('Kubernetes', 'maintaining the deployment', 'maintaining the Kubernеtes deployment'),    # Cyrillic e
+    ('CAN bus', 'maintaining the deployment', 'maintaining the can-bus deployment'),     # hyphen for the space
+    ('SQL', 'Node.js, PostgreSQL', 'Node.js, PostgreSQL, MySQL'),                        # a short term inside a variant
+    ('Go', 'maintaining the deployment', 'maintaining the Golang deployment'),
+])
+def test_a_missing_requirement_cannot_be_written_in_by_a_variant(term, original, replacement):
+    gap = missing(term)
+    assert gap[0].mentioned is False and RESUME.count(original) == 1
+    assert resume.guard_suggestions([suggestion(original, replacement)], RESUME, gap) == ([], 1)
+
+
+@pytest.mark.parametrize('original,replacement', [
+    (DUTY, 'Maintained Kubernetes and Terraform deployment scripts on AWS.'),   # tools
+    ('Software Engineer, 2021', 'Senior Staff Engineer at Google, 2021'),       # a title and an employer
+    ('B.S. Computer Science', 'Ph.D. Computer Science'),                        # a degree
+    (LATENCY, 'Reduced API latency with the platform team in March.'),          # a date
+])
+def test_a_new_name_is_rejected_even_without_a_job_posting(original, replacement):
+    assert RESUME.count(original) == 1
+    assert resume.guard_suggestions([suggestion(original, replacement)], RESUME, []) == ([], 1)
+
+
+def test_ordinary_new_words_and_known_names_are_allowed():
+    drafts = [suggestion(ROBOTS, 'Wrote a Python service that handles sensor-data streams for 12 warehouse robots.'),
+              suggestion(LATENCY, 'Reduced API latency with the platform team at Acme Robotics.'),
+              suggestion(DUTY, 'I maintained the deployment scripts.')]
+    assert resume.guard_suggestions(drafts, RESUME, missing('Kubernetes'))[1] == 0
+
+
+def test_touching_edits_are_treated_as_overlapping():
+    first, second = suggestion('Worked on reducing API latency', 'Reduced API latency'), suggestion(' with the platform team.', ' for the platform team.')
+    assert RESUME.find(first.original) + len(first.original) == RESUME.find(second.original)
+    accepted, rejected = resume.guard_suggestions([first, second], RESUME, [])
+    assert rejected == 1 and [item.original for item in accepted] == [first.original]
+    assert resume.guard_suggestions([second], RESUME, [])[1] == 0
+
+
+def test_a_blank_original_is_rejected():
+    body = RESUME.replace('\n\nSummary', '\n     \nSummary')
+    assert resume.guard_suggestions([suggestion('\n     \n', '\nAward winner\n')], body, []) == ([], 1)
+
+
+def test_a_short_capitalised_term_is_not_found_in_ordinary_words_or_domains():
+    body = RESUME + '\nHelped the team go live. Portfolio: www.example.net'
+    rows = resume.coverage([JobRequirement(quote='Experience with ' + term, term=term, level='required') for term in ('Go', '.NET', 'Python')], body, [])
+    assert [row.mentioned for row in rows] == [False, False, True]
+    # Because they are missing, they cannot be written in.
+    assert resume.guard_suggestions([suggestion(DUTY, 'Maintained the deployment scripts in Go.')], body, rows) == ([], 1)
+    assert resume.guard_suggestions([suggestion(DUTY, 'Maintained the .NET deployment scripts.')], body, rows) == ([], 1)
+
+
+def test_a_requirement_term_must_be_a_word_of_its_quote():
+    posting = 'Excellent communication skills. A good team player. Experience with Go.'
+    draft = JobScanDraft(requirements=[{'quote': 'Excellent communication skills', 'term': 'C', 'level': 'required'},
+                                       {'quote': 'A good team player', 'term': 'Go', 'level': 'required'},
+                                       {'quote': 'Experience with Go', 'term': 'Go', 'level': 'required'}])
+    assert [(item.term, item.quote) for item in resume.validate_requirements(draft, posting)] == [('Go', 'Experience with Go')]
 
 
 def test_rejections_are_counted_and_ids_stay_dense():
@@ -682,6 +769,68 @@ def test_a_finished_scan_whose_requirements_are_gone_runs_again(monkeypatch):
     enqueue = finished_queue(monkeypatch, [source('job-1', 'job_posting', POSTING), scanned_posting('job-2')], finished={None})
     assert asyncio.run(resume.enqueue_scan('job-1')).status == 'queued' and enqueue.await_count == 2
     assert asyncio.run(resume.enqueue_scan('job-2')).status == 'succeeded' and enqueue.await_count == 3
+
+
+def test_a_scan_that_kept_nothing_can_run_again_but_a_recorded_one_is_final(monkeypatch):
+    empty = source('job-1', 'job_posting', POSTING, {'origin': {}, 'requirements': [], 'scan': {'job_id': 'g', 'provider': 'gemini'}})
+    recorded = source('job-2', 'job_posting', POSTING, {'origin': {}, 'requirements': [], 'scan': {'job_id': 'g', 'provider': 'recorded'}})
+    enqueue = finished_queue(monkeypatch, [empty, recorded], finished={None})
+    assert asyncio.run(resume.enqueue_scan('job-1')).status == 'queued' and enqueue.await_count == 2
+    assert asyncio.run(resume.enqueue_scan('job-2')).status == 'succeeded' and enqueue.await_count == 3
+
+
+def test_tailoring_is_refused_when_the_posting_has_no_requirements(monkeypatch):
+    empty = source('job-1', 'job_posting', POSTING, {'origin': {}, 'requirements': []})
+    enqueue = queue(monkeypatch, [source('resume-1', 'resume', RESUME), empty])
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(resume.enqueue_review('resume-1', 'job-1'))
+    assert exc.value.status_code == 409 and 'nothing to tailor' in exc.value.detail
+    enqueue.assert_not_called()
+
+
+@pytest.mark.parametrize('status', ['failed', 'cancelled'])
+def test_a_job_that_used_all_three_attempts_is_replaced_by_a_new_one(monkeypatch, status):
+    # jobs.retry refuses a fourth attempt, and the same payload would return this spent job for ever.
+    rows = {'resume-1': source('resume-1', 'resume', RESUME)}
+    spent = work_item('ats_review', 'resume-1').model_copy(update={'id': 'spent', 'status': status, 'attempts': 3})
+    enqueue = AsyncMock(side_effect=lambda kind, user, subject, payload: work_item(kind, subject) if 'rerun' in payload else spent)
+    monkeypatch.setattr(resume.jobs, 'enqueue', enqueue)
+    monkeypatch.setattr(resume.sources, 'read', AsyncMock(side_effect=lambda sid: rows[sid]))
+    item = asyncio.run(resume.enqueue_review('resume-1', None))
+    assert item.status == 'queued' and enqueue.await_args_list[1].args[3]['rerun'] == 'spent'
+
+
+def test_a_failed_job_with_attempts_left_is_returned_for_retry(monkeypatch):
+    rows = {'resume-1': source('resume-1', 'resume', RESUME)}
+    failed = work_item('ats_review', 'resume-1').model_copy(update={'status': 'failed', 'attempts': 1})
+    enqueue = AsyncMock(return_value=failed)
+    monkeypatch.setattr(resume.jobs, 'enqueue', enqueue)
+    monkeypatch.setattr(resume.sources, 'read', AsyncMock(side_effect=lambda sid: rows[sid]))
+    assert asyncio.run(resume.enqueue_review('resume-1', None)) is failed and enqueue.await_count == 1
+
+
+def test_a_recorded_review_does_not_replace_a_real_one(monkeypatch):
+    row = reviewed_resume()
+    real = copy.deepcopy(row['extracted']['ats']['general'])
+    _, log, rows = wire(monkeypatch, [row], ats_draft(), provider='recorded')
+    asyncio.run(resume.review(review_job(row)))
+    assert rows['resume-1']['extracted']['ats']['general'] == real and real['provider'] == 'gemini'
+
+
+def test_apply_checks_the_chosen_changes_together(monkeypatch):
+    # Each edit reuses a number the resume has ('12' and '4'), but side by side they would read '124'.
+    # guard_suggestions refuses touching edits; a saved review that has them anyway must not apply.
+    first = resume.AtsSuggestion(id=0, category='impact', original='for 12', replacement='for 12', start=RESUME.find('for 12'), end=RESUME.find('for 12') + 6, reason='x')
+    second = resume.AtsSuggestion(id=1, category='impact', original=' warehouse', replacement='4 warehouse', start=first.end, end=first.end + 10, reason='x')
+    row = reviewed_resume()
+    row['extracted']['ats']['general']['suggestions'] = [first.model_dump(), second.model_dump()]
+    create = AsyncMock()
+    monkeypatch.setattr(resume.sources, 'read', AsyncMock(return_value=row))
+    monkeypatch.setattr(resume.sources, 'create', create)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(resume.apply('resume-1', AtsApply(suggestion_ids=[0, 1])))
+    assert exc.value.status_code == 422 and 'together' in exc.value.detail
+    create.assert_not_called()
 
 
 # Reading and applying a saved review
