@@ -1,6 +1,6 @@
-updated: 2026-10-11T17:11:56Z
-branch: resume-ats (pull request #18) and quit-lesson (pushed, f7cfe92, no pull request yet). Both merge cleanly with main and with each other.
-doing: nothing. Resume check feature is finished and waiting for a human to look at it in a browser and merge.
+updated: 2026-10-11T17:25:43Z
+branch: local-both (tracks origin/main). resume-ats merged as pull request #18 (90a123f), quit-lesson merged as pull request #19 (5e484fc).
+doing: nothing. Answered a question for Trey about when the live site updates.
 next: nothing scheduled. This inbox is only read when Trey starts a session.
 blocked_on: nothing
 touching: nothing
