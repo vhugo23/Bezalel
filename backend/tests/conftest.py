@@ -10,7 +10,6 @@ def isolated(monkeypatch):
     monkeypatch.setattr(config, "DATABASE_URL", "")
     monkeypatch.setattr(config, "MEMORY_BACKEND", "")
     monkeypatch.setattr(config, "LLM_PROVIDER", "fake")
-    monkeypatch.setattr(config, "APP_API_KEY", "")
     store._records.clear()
     store._events.clear()
     bus._history.clear()

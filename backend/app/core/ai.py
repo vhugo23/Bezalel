@@ -53,33 +53,7 @@ class GeminiProvider:
         return text
 
 
-class OpenAIProvider:
-    """Calls the OpenAI chat completions REST API. Needs OPENAI_API_KEY and OPENAI_MODEL in .env.
-    OPENAI_BASE_URL can point at any OpenAI-compatible service."""
-    name = "openai"
-
-    async def text(self, prompt: str, system: str | None = None) -> str:
-        import httpx  # lazy import
-        if not config.OPENAI_API_KEY:
-            raise AIError("OPENAI_API_KEY is empty. Add it to .env and restart the server.")
-        if not config.OPENAI_MODEL:
-            raise AIError("OPENAI_MODEL is empty. Set it in .env to a model your account can use.")
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{config.OPENAI_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {config.OPENAI_API_KEY}"},
-                json={"model": config.OPENAI_MODEL, "messages": messages},
-            )
-        if resp.status_code != 200:
-            raise AIError(f"OpenAI error {resp.status_code}: {resp.text[:300]}")
-        return resp.json()["choices"][0]["message"]["content"]
-
-
-PROVIDERS = {"fake": FakeProvider, "gemini": GeminiProvider, "openai": OpenAIProvider}
+PROVIDERS = {"fake": FakeProvider, "gemini": GeminiProvider}
 
 
 def get_provider():

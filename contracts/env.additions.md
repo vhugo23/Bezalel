@@ -1,7 +1,7 @@
 # Env additions
 
 The current `backend/.env.example` has: `DATABASE_URL`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`,
-`BACKBOARD_API_KEY`, `LLM_PROVIDER`, `VOICE_PROVIDER`, `MEMORY_BACKEND`, `ENABLED_MODULES`, `APP_API_KEY`,
+`BACKBOARD_API_KEY`, `LLM_PROVIDER`, `VOICE_PROVIDER`, `MEMORY_BACKEND`,
 `TASK_TIMEOUT_SECONDS`. Keep those names. `DATABASE_URL` is also the Tiger Data connection string.
 
 Missing, needed for the contracts:

@@ -13,7 +13,7 @@ The running backend publishes the exact shapes at `/openapi.json` (browse them a
 
 ## Rules
 1. **Namespaces.** Backend routes live only under `/api` (HTTP) and `/ws` (WebSockets). A test fails if a
-   backend route lands anywhere else. The backend serves no pages and no `/static` (SERVE_HTML=false).
+   backend route lands anywhere else. The backend serves no pages and no static files.
 2. **One base URL.** The frontend reads it from one env var (`VITE_API_URL`) or uses the dev proxy below. Never hardcode it.
 3. **No keys in the frontend.** Voice tokens come from `POST /api/sessions` (`voice_token`).
 4. **Types from the schema, not by hand:**

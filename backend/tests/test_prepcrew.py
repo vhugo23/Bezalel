@@ -31,11 +31,20 @@ def new_session(user="u1"):
 
 # ---- namespaces: the frontend owns everything outside /api and /ws ----
 def test_backend_serves_no_pages_by_default():
-    assert config.SERVE_HTML is False
     assert client.get("/").json()["docs"] == "/docs"
     for path in ["/plan", "/session/x", "/report/x", "/lesson/x", "/season", "/static/app.js"]:
         assert client.get(path).status_code == 404, path
-    owned = [r.path for r in app.routes if getattr(r, "path", None)]
+    def walk(routes, prefix=""):  # newer FastAPI nests included routers; look inside them
+        for r in routes:
+            if hasattr(r, "original_router"):
+                yield from walk(r.original_router.routes, prefix)
+            elif getattr(r, "routes", None) is not None and not getattr(r, "path", None):
+                yield from walk(r.routes, prefix)
+            elif getattr(r, "path", None):
+                yield prefix + r.path
+
+    owned = sorted(set(walk(app.routes)))
+    assert "/api/plans" in owned and "/ws/voice/{session_id}" in owned  # proves the walk sees module routes
     allowed = ("/api/", "/ws/", "/docs", "/redoc", "/openapi.json")
     stray = [p for p in owned if p != "/" and not p.startswith(allowed)]
     assert stray == [], f"routes outside /api and /ws would clash with the frontend: {stray}"

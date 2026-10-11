@@ -14,33 +14,37 @@ def test_health():
     assert body["status"] == "ok"
 
 
-def test_records_roundtrip():
-    created = client.post("/api/records/note", json={"data": {"a": 1}, "owner_id": "u1"}).json()
-    assert client.get(f"/api/record/{created['id']}").json()["data"] == {"a": 1}
-    merged = client.patch(f"/api/record/{created['id']}", json={"data": {"b": 2}}).json()
-    assert merged["data"] == {"a": 1, "b": 2}
-    listed = client.get("/api/records/note", params={"owner_id": "u1"}).json()
-    assert any(r["id"] == created["id"] for r in listed)
-    assert client.get("/api/record/does-not-exist").status_code == 404
+def test_store_records_roundtrip():
+    """The generic store is internal now (no public endpoint), so test it directly."""
+    from app.core import store
+
+    async def go():
+        created = await store.create_record("note", {"a": 1}, owner_id="u1")
+        assert (await store.get_record(created["id"]))["data"] == {"a": 1}
+        merged = await store.update_record(created["id"], {"b": 2})
+        assert merged["data"] == {"a": 1, "b": 2}
+        assert any(r["id"] == created["id"] for r in await store.list_records("note", owner_id="u1"))
+        assert await store.get_record("does-not-exist") is None
+
+    asyncio.run(go())
 
 
-def test_events():
-    client.post("/api/events", json={"subject_id": "s1", "kind": "score", "value": 0.5})
-    events = client.get("/api/events/s1", params={"kind": "score"}).json()
-    assert events and events[0]["value"] == 0.5
+def test_store_events():
+    from app.core import store
+
+    async def go():
+        await store.add_event("s1", "score", value=0.5)
+        events = await store.list_events("s1", kind="score")
+        assert events and events[0]["value"] == 0.5
+
+    asyncio.run(go())
 
 
-def test_ai_fake_provider():
-    assert "text" in client.post("/api/ai/text", json={"prompt": "hi"}).json()
-    assert "note" in client.post("/api/ai/json", json={"prompt": "hi"}).json()
-
-
-def test_ai_key_guard(monkeypatch):
-    from app import config
-    monkeypatch.setattr(config, "APP_API_KEY", "secret")
-    assert client.post("/api/ai/text", json={"prompt": "hi"}).status_code == 401
-    ok = client.post("/api/ai/text", json={"prompt": "hi"}, headers={"x-api-key": "secret"})
-    assert ok.status_code == 200
+def test_removed_endpoints_stay_removed():
+    """Open read/write and AI endpoints were removed on purpose: they exposed session data and the AI key."""
+    for method, path in [("post", "/api/records/note"), ("get", "/api/record/x"), ("post", "/api/events"),
+                         ("get", "/api/events/s1"), ("post", "/api/ai/text"), ("post", "/api/ai/json")]:
+        assert client.request(method.upper(), path).status_code in (404, 405), path
 
 
 def test_generate_json_retries_then_fails(monkeypatch):

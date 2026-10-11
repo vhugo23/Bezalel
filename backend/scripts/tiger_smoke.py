@@ -113,9 +113,6 @@ async def drive(dsn_schema: str, schema: str, has_scenario: bool):
         async with httpx.AsyncClient(base_url=base, timeout=30) as c:
             h = (await c.get("/api/health")).json()
             check("server is using the database", h.get("database") is True, h)
-            r = (await c.post("/api/records/note", json={"data": {"a": 1}, "owner_id": "smoke"})).json()
-            m = (await c.patch(f"/api/record/{r['id']}", json={"data": {"b": 2}})).json()
-            check("generic record write + JSON merge", m.get("data") == {"a": 1, "b": 2}, m)
             plan = (await c.post("/api/plans", json={"job_posting": "Embedded intern", "resume": "Motor driver",
                                                      "user_id": "smoke_user"})).json()
             check("plan", "plan_id" in plan, plan)
@@ -227,7 +224,7 @@ def main():
             added_scenario = True
         print("\n2. backend on the throwaway schema (fake AI and voice)")
         env = {**os.environ, "DATABASE_URL": with_search_path(dsn, path), "LLM_PROVIDER": "fake",
-               "VOICE_PROVIDER": "fake", "MEMORY_BACKEND": "", "APP_API_KEY": ""}
+               "VOICE_PROVIDER": "fake", "MEMORY_BACKEND": ""}
         log = open(BACKEND / "scripts" / "tiger_smoke_server.log", "w", encoding="utf-8")
         proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT)],
                                 cwd=BACKEND, env=env, stdout=log, stderr=subprocess.STDOUT)
