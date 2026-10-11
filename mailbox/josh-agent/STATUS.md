@@ -1,9 +1,9 @@
-updated: 2026-10-11T10:45:25Z
+updated: 2026-10-11T15:03:42Z
 branch: main
-doing: implementing quota-triggered Kokoro/Parakeet browser WebGPU speech fallback
+doing: nothing in progress; last pushed ad26afb (Excalidraw whiteboard, local speech fallback, interviewer header UI, retests as next run of origin track, compact plan cards, /story three.js intro after sign-up)
 next: profile/preferences, export/deletion; hardware circuit integration and remaining engines; deployment; STAR is handed off
 blocked_on: ElevenLabs live speech-to-text returned quota_exceeded; human grading and physical-device/audio checks remain pending
-touching: backend/app/main.py; backend/app/v2/{realtime,voice,local_speech,routes}.py; backend/tests/test_v2_{realtime,voice,local_speech,auth}.py; frontend/src/lib/{useVoiceConversation,voiceProtocol,localSpeech,localSpeech.worker,localUtterance} and tests; frontend/src/pages/Session.tsx; frontend/src/api/{types,schemas}.ts; frontend/openapi.json; frontend/{vite.config.ts,package.json,package-lock.json}; frontend/e2e/local-{speech,voice}.spec.ts; docs/LOCAL_SPEECH.md
+touching: nothing uncommitted; owns whiteboard (BoardCanvas, Whiteboard, Pair, boardElements, board endpoints), local speech, plan/retest listing and frontend/src/story
 handed_off: Behavioral STAR drill; reserved for Joshua's teammate, see STAR_HANDOFF.md
 
 ## Implemented and pushed
@@ -15,7 +15,7 @@ Latest feature commits: `b55f311` (accounts/history), `ca263e3` (checked Pi less
 - Intake text/PDF/public GitHub README sources, exact extracted excerpts, confirmation and source attachments.
 - Durable Gemini plan/review jobs, ranked catalog, prerequisites and versioned publication; generated rate-limiter requirements. Pi is now runnable; the other catalog engines are still pending.
 - Persisted generic session steps, transcript/event replay by seq, pause/resume/hints; Gemini interviewer and ElevenLabs streaming STT/TTS with interruption controls.
-- Inline/paired board PNG critique, validated stroke targets, local geometry, separate annotations, pause review, actual QR, private-token reconnect, journal/replay, Undo/Clear and stale-review rejection. Exact demo board uses labelled recorded critique.
+- Whiteboard is now Excalidraw (`ad26afb`): versioned element events, atomic batches, stale-version refusal, Dana marks as locked local elements, legacy strokes converted for display. Before that: inline/paired board PNG critique, validated stroke targets, local geometry, separate annotations, pause review, actual QR, private-token reconnect, journal/replay, Undo/Clear and stale-review rejection. Exact demo board uses labelled recorded critique.
 - Parallel evaluators, deterministic evidence checks plus independent model review, per-skill assessment, gap lesson and changed retest.
 - Backboard ranks locally verified gaps for implicit openers. Durable sync/erasure outbox and evidence-derived follow-up settings; no memory UI. Live authentication verified, live CRUD result not captured and not counted as passed.
 - Pi: five-stage deterministic Linux fault engine, saved terminal/editor/browser/power actions, reference validation, private state, exact tool evidence and progression gates. Commands, hardware and timings are simulated; see docs/PI_LAB.md. Existing-plan migration 009 ran on Tiger and made eight proposed Pi tracks ready. Checked lessons and executable retests now run through the durable queue. Two authored variants change the port, directory traversal, log lifecycle and power-history interpretation while retaining the rubric. Full 3D interaction remains pending.
