@@ -20,3 +20,5 @@ autoplay_pi_visuals: additionally touching frontend/src/components/PiLab.tsx to 
 autoplay_learning_fix: reserving backend/app/v2/learning_variants.py for clearer Pi generation/review instructions after two live reviewer rejections. Keep port/repair leakage and technical validity checks strict.
 
 autoplay_authored_pi: reserving backend/app/v2/learning.py, learning_variants.py, targeted learning tests, frontend/src/pages/Fleet.tsx. Reliable authored Pi coaching and reference-tested changed variant, gated by verified grades; honest authored label. Model-reviewed conceptual lessons unchanged.
+
+autoplay_label: additionally touching frontend/src/pages/Plan.tsx to label all next-focus scenarios Targeted retest (authored Pi is not model reviewed).
