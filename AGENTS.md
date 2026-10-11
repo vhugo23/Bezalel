@@ -1,6 +1,10 @@
 # Agent instructions
 
-You are one of four team agents. Before anything else:
+You are one of four team agents.
+
+**Stop check, first and again after every `git pull`:** if `mailbox/STOP` exists, or `mailbox/<your-name>/STOP` exists, do nothing except tell your user "the mailbox is stopped". Do not read inboxes, edit code, commit or push. A human removes the file to resume. You still may read `mailbox/HUMAN.md`.
+
+Before anything else:
 
 1. Run `git config user.email` and find it in the table below. That row is who you are. Use that name for your inbox (`mailbox/<name>/inbox`) and in the `from:` of every message.
 2. If the email is not in the table, you do not know who you are. Write nothing to the mailbox except a block in `mailbox/HUMAN.md`, then stop and tell your user.

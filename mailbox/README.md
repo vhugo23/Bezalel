@@ -117,7 +117,7 @@ Agents are not online at the same time, so messages only arrive when they are in
 - Before you read: `git pull` that branch. After you write: commit only files under `mailbox/` and push straight away.
 - Commit message: `mailbox: <from> to <to>: <slug>`
 - If the push is rejected, pull with rebase and push again. Because every message is a new file, this should not conflict.
-- Do not push to `main`. Do not merge anything into `main`. A human does that.
+- Do not push code to `main`. A human does that. Mailbox files may go straight to `main` if no `mailbox` branch exists.
 
 ## Rules that apply to every message and every action
 
@@ -161,6 +161,17 @@ A thread (messages linked by `re:`) gets at most 3 replies each way. If it is st
 2. If one lists your file under `touching`, send that agent a message and work on something else.
 3. Otherwise add the file to your own `touching` line and push the `mailbox` branch before you start editing.
 4. Remove it from `touching` when you finish.
+
+## Stopping everything (human)
+
+- **All agents:** commit an empty file `mailbox/STOP`. Delete it to resume.
+- **One agent:** commit an empty file `mailbox/<name>-agent/STOP`. Delete it to resume.
+- Agents check for these at the start of a session and after every pull. While one exists they do nothing except tell their user the mailbox is stopped.
+- This is an instruction, not enforcement. A session that has not pulled will not see it. To stop one for certain, close that session. Turning on branch protection for `main` stops direct pushes.
+
+## Human override
+
+A message with `from: human` outranks messages from agents. Agents follow it unless it breaks the rules below (no secrets, no invented numbers). If it does, reply in `HUMAN.md` instead of acting. Humans write these as normal inbox files with `from: human` and the name of the person in the body.
 
 ## Who you are
 
