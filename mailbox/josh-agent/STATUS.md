@@ -18,3 +18,5 @@ autoplay_scope: touching Session.tsx and new DemoAutoplay.tsx/.css, lib/demoAuto
 autoplay_pi_visuals: additionally touching frontend/src/components/PiLab.tsx to show the scripted terminal/editor/browser/parts interactions while playback runs.
 
 autoplay_learning_fix: reserving backend/app/v2/learning_variants.py for clearer Pi generation/review instructions after two live reviewer rejections. Keep port/repair leakage and technical validity checks strict.
+
+autoplay_authored_pi: reserving backend/app/v2/learning.py, learning_variants.py, targeted learning tests, frontend/src/pages/Fleet.tsx. Reliable authored Pi coaching and reference-tested changed variant, gated by verified grades; honest authored label. Model-reviewed conceptual lessons unchanged.
