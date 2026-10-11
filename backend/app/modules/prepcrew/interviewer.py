@@ -115,7 +115,8 @@ async def next_question(plan: dict, turns: list[dict]) -> tuple[str | None, str]
         f"Planned questions, in order: {plan['questions']}\n\n"
         f"Conversation so far:\n{_history(turns)}\n\n"
         "Ask the next question. Follow up on their last answer if it left something unclear, "
-        "otherwise move to the next planned question. Reply with the spoken line only."
+        "otherwise move to the next planned question. Never repeat a question you already asked in the same "
+        "words: if it went unanswered, rephrase it once or move on. Reply with the spoken line only."
     )
     try:
         text = await asyncio.wait_for(ai.generate_text(prompt, PERSONA), timeout=config.LIVE_TURN_TIMEOUT_SECONDS)
