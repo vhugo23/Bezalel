@@ -10,6 +10,8 @@ from . import db
 
 
 def provider_error(status: int, code: str = '') -> HTTPException:
+    if code == 'quota_exceeded' or status == 402:
+        return HTTPException(503, 'ElevenLabs speech quota is exhausted.', headers={'X-PrepCrew-Speech-Fallback':'quota'})
     if code == 'missing_permissions':
         return HTTPException(503, 'The ElevenLabs key lacks permission for this operation. Enable speech-to-text and text-to-speech access on the key.')
     if status == 401:
@@ -83,7 +85,7 @@ async def speak(sid: str, text: str):
             raise provider_error(response.status_code,error_code(response))
     except Exception as exc:
         if response: await response.aclose()
-        await client.aclose();await failed(jid,'Voice provider request failed')
+        await client.aclose();await failed(jid,str(exc.detail) if isinstance(exc,HTTPException) else 'Voice provider request failed')
         if isinstance(exc,HTTPException): raise
         raise HTTPException(503,'Dana’s voice could not connect. Her transcript is saved.')
 

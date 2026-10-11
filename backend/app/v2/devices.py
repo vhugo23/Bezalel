@@ -8,7 +8,13 @@ from datetime import datetime,timezone
 from fastapi import HTTPException, WebSocketDisconnect
 from pydantic import ValidationError
 from . import db, engine, service
-from .models import EventInput, Stroke
+from .models import BoardElementsInput
+
+
+def batch(raw):
+    # Echo the device's batch id so it can settle exactly the edits a reply refers to.
+    value=raw.get('batch') if isinstance(raw,dict) else None
+    return {'batch':value} if isinstance(value,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,100}',value) else {}
 
 
 def token_hash(value):
@@ -70,21 +76,13 @@ async def paired(ws,code):
             try:
                 if not drawable:raise HTTPException(409,'Drawing is paused or this step has no whiteboard.')
                 if not isinstance(raw,dict):raise ValueError('Unknown device action')
-                if raw.get('type')=='stroke':
-                    stroke=Stroke.model_validate(raw.get('stroke'))
-                    event=await service.append(session['id'],EventInput(kind='stroke',step=raw.get('step'),payload=stroke.model_dump()))
-                    await ws.send_json({'type':'ack','id':stroke.id,'seq':event.seq})
-                elif raw.get('type')=='remove':
-                    ids=raw.get('ids')
-                    active=service.active_strokes(history,session['step'])
-                    if not isinstance(ids,list) or not 1<=len(ids)<=1000 or any(not isinstance(i,str) or i not in active for i in ids):raise ValueError('Unknown stroke to remove')
-                    event=await service.append(session['id'],EventInput(kind='note',step=raw.get('step'),payload={'remove_strokes':ids}))
-                    await ws.send_json({'type':'event','event':event.model_dump(mode='json')})
+                if raw.get('type')=='elements':
+                    body=BoardElementsInput.model_validate({'step':raw.get('step'),'elements':raw.get('elements')})
+                    saved=await service.append_elements(session['id'],body)
+                    await ws.send_json({'type':'ack','ids':[f"{e.payload['id']}:{e.payload['version']}" for e in saved],'seq':max(e.seq for e in saved),**batch(raw)})
                 else:raise ValueError('Unknown device action')
             except (ValidationError,ValueError,HTTPException) as exc:
-                bad_stroke=raw.get('stroke') if isinstance(raw,dict) else None
-                await ws.send_json({'type':'error','id':str(bad_stroke.get('id',''))[:100] if isinstance(bad_stroke,dict) else '',
-                    'message':str(exc.detail) if isinstance(exc,HTTPException) else 'Invalid drawing message.'})
+                await ws.send_json({'type':'error','message':str(exc.detail) if isinstance(exc,HTTPException) else 'Invalid drawing message.',**batch(raw)})
     except (WebSocketDisconnect,RuntimeError,HTTPException):pass
     finally:
         await asyncio.shield(db.execute("UPDATE session_devices SET status='disconnected' WHERE id=$1 AND connection_id=$2",row['id'],connection_id))

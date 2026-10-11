@@ -1,18 +1,26 @@
 import math
-from .models import Stroke, Mark, ClaimDraft
+from .models import BoardElement, Stroke, Mark, ClaimDraft
 
-def geometry(mark: Mark, strokes: list[Stroke]):
-    ids = [s.id for s in strokes]
+def item_bounds(item: BoardElement | Stroke):
+    if isinstance(item, BoardElement):
+        return item.bounds()
+    xs, ys = [p.x for p in item.points], [p.y for p in item.points]
+    return min(xs), min(ys), max(xs), max(ys)
+
+def geometry(mark: Mark, items: list[BoardElement] | list[Stroke]):
+    ids = [s.id for s in items]
     if len(ids) != len(set(ids)):
-        raise ValueError('Duplicate stroke ids')
-    target = next((s for s in strokes if s.id == mark.target), None)
+        raise ValueError('Duplicate board element ids')
+    target = next((s for s in items if s.id == mark.target), None)
     if target is None:
         raise ValueError('Unknown annotation target')
-    xs, ys = [p.x for p in target.points], [p.y for p in target.points]
-    if not all(math.isfinite(v) for v in xs + ys):
+    left, top, right, bottom = item_bounds(target)
+    if not all(math.isfinite(v) for v in (left, top, right, bottom)):
         raise ValueError('Non-finite geometry')
-    x, y = max(0, min(xs)-12), max(0, min(ys)-12)
-    right, bottom = min(900, max(xs)+12), min(540, max(ys)+12)
+    x, y, right, bottom = left-12, top-12, right+12, bottom+12
+    # Legacy strokes lived on a fixed 900 x 540 board; Excalidraw boards are unbounded.
+    if isinstance(target, Stroke):
+        x, y, right, bottom = max(0, x), max(0, y), min(900, right), min(540, bottom)
     return {'x': x, 'y': y, 'w': right-x, 'h': bottom-y,
             'cx': (x+right)/2, 'cy': (y+bottom)/2, 'rx': (right-x)/2, 'ry': (bottom-y)/2}
 

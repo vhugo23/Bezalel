@@ -42,6 +42,7 @@ def test_auth_bypass_is_impossible_in_normal_or_provider_enabled_schema(monkeypa
     '/sessions/foreign','/sessions/foreign/events','/sessions/foreign/report',
     '/sessions/foreign/metrics','/sessions/foreign/lesson','/sessions/foreign/lesson/jobs',
     '/sessions/foreign/speech/1','/artifacts/foreign/png','/sources/foreign','/plans/foreign','/jobs/foreign',
+    '/sessions/foreign/local-speech/jobs',
     '/users/account-b/sources',
     '/sources/github','/sources/upload','/plans/jobs',
 ])

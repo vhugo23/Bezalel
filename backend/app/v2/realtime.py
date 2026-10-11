@@ -63,11 +63,12 @@ def failure_message(exc):
 
 
 class Command(BaseModel):
-    type: Literal['interrupt','commit','mute','text','playback_started','playback_done','playback_failed','stop','replay']
+    type: Literal['interrupt','commit','mute','text','playback_started','playback_done','playback_failed','stop','replay','local_partial','local_final']
     text: str = Field(default='',max_length=5000)
     muted: bool = False
     seq: int = Field(default=0,ge=0)
     revision: int = Field(default=0,ge=0)
+    inference_id: str = Field(default='',max_length=100)
 
 
 def words(text):
@@ -125,7 +126,10 @@ class Conversation:
             if final:self.discard_segment=False
             return
         if self.muted or not meaningful(text):
-            if final: self.partial=''
+            if final:
+                had_partial=bool(self.partial)
+                self.partial=''
+                if had_partial:await self.send({'type':'partial','text':''})
             return
         if (self.playing is not None or time.monotonic()<self.echo_until) and playback_echo(text,self.last_dana):
             if final:
@@ -191,6 +195,45 @@ class Conversation:
             with suppress(asyncio.CancelledError):await self.task
 
 
+async def receive_browser(ws,conversation,send,upstream=None):
+    sid=conversation.sid
+    while True:
+        message=await ws.receive()
+        if message['type']=='websocket.disconnect':return
+        if message.get('bytes') is not None:
+            if upstream is None:continue
+            data=message['bytes']
+            if len(data)>64000 or len(data)%2:raise HTTPException(422,'Invalid audio frame.')
+            if conversation.muted:data=bytes(len(data))
+            await upstream.send(json.dumps({'message_type':'input_audio_chunk','audio_base_64':base64.b64encode(data).decode(),'sample_rate':16000}))
+        else:
+            command=Command.model_validate_json(message.get('text',''))
+            if command.type=='stop':return
+            if command.type=='interrupt':await conversation.interrupt('button')
+            elif command.type=='mute':
+                if upstream is not None and command.muted and conversation.partial:conversation.discard_segment=True
+                conversation.muted=command.muted
+                conversation.partial=''
+                await send({'type':'partial','text':''})
+            elif command.type=='commit' and upstream is not None:
+                await upstream.send(json.dumps({'message_type':'input_audio_chunk','audio_base_64':base64.b64encode(bytes(3200)).decode(),'commit':True,'sample_rate':16000}))
+            elif command.type=='text' and command.text.strip():
+                conversation.source_job=None
+                await conversation.submit(command.text.strip())
+            elif command.type in ('local_partial','local_final'):
+                if upstream is not None:raise HTTPException(409,'Local transcription is not active.')
+                from .local_speech import consume_transcript
+                conversation.source_job=await consume_transcript(sid,command.inference_id,command.text,command.type=='local_final')
+                await conversation.transcript(command.text,command.type=='local_final')
+            elif command.type=='playback_done':await conversation.playback_done(command.seq,command.revision)
+            elif command.type=='playback_failed':await conversation.interrupt('playback_failed')
+            elif command.type=='replay':
+                event=next((e for e in await s.events(sid) if e.seq==command.seq and e.kind=='turn' and e.actor=='interviewer'),None)
+                if event:
+                    await conversation.interrupt('replay')
+                    await conversation.deliver(event,conversation.revision)
+
+
 async def serve(ws: WebSocket,sid: str):
     await ws.accept()
     lock=asyncio.Lock()
@@ -225,37 +268,9 @@ async def serve(ws: WebSocket,sid: str):
                     elif kind not in ('session_started','warning','committed_transcript_with_timestamps'):
                         raise RuntimeError('Realtime transcription interrupted')
 
-            async def receive_browser():
-                while True:
-                    message=await ws.receive()
-                    if message['type']=='websocket.disconnect':return
-                    if message.get('bytes') is not None:
-                        data=message['bytes']
-                        if len(data)>64000 or len(data)%2:raise HTTPException(422,'Invalid audio frame.')
-                        if conversation.muted:data=bytes(len(data))
-                        await upstream.send(json.dumps({'message_type':'input_audio_chunk','audio_base_64':base64.b64encode(data).decode(),'sample_rate':16000}))
-                    else:
-                        command=Command.model_validate_json(message.get('text',''))
-                        if command.type=='stop':return
-                        if command.type=='interrupt':await conversation.interrupt('button')
-                        elif command.type=='mute':
-                            if command.muted and conversation.partial:conversation.discard_segment=True
-                            conversation.muted=command.muted
-                            conversation.partial=''
-                            await send({'type':'partial','text':''})
-                        elif command.type=='commit':
-                            await upstream.send(json.dumps({'message_type':'input_audio_chunk','audio_base_64':base64.b64encode(bytes(3200)).decode(),'commit':True,'sample_rate':16000}))
-                        elif command.type=='text' and command.text.strip():await conversation.submit(command.text.strip())
-                        elif command.type=='playback_done':await conversation.playback_done(command.seq,command.revision)
-                        elif command.type=='playback_failed':await conversation.interrupt('playback_failed')
-                        elif command.type=='replay':
-                            event=next((e for e in await s.events(sid) if e.seq==command.seq and e.kind=='turn' and e.actor=='interviewer'),None)
-                            if event:
-                                await conversation.interrupt('replay')
-                                await conversation.deliver(event,conversation.revision)
 
             reader=asyncio.create_task(receive_transcripts())
-            browser=asyncio.create_task(receive_browser())
+            browser=asyncio.create_task(receive_browser(ws,conversation,send,upstream))
             try:
                 done,_=await asyncio.wait([reader,browser],return_when=asyncio.FIRST_COMPLETED)
                 for task in done:task.result()
@@ -269,7 +284,21 @@ async def serve(ws: WebSocket,sid: str):
         outcome='failed'
         failure=failure_message(exc)
         logger.warning('Voice relay failed: %s (%s)',type(exc).__name__,exc.code if isinstance(exc,ProviderStreamError) else 'see audited error')
-        with suppress(Exception):await send({'type':'error','message':failure,'fatal':True})
+        if isinstance(exc,ProviderStreamError) and exc.code=='quota_exceeded':
+            if jid:
+                await db.execute("UPDATE generation_jobs SET status='failed',error=$2,stage='Realtime stream failed',finished_at=now() WHERE id=$1",jid,failure)
+                jid=None
+            try:
+                conversation.discard_segment=False
+                conversation.partial=''
+                conversation.source_job=None
+                await send({'type':'fallback','provider':'parakeet','reason':'quota'})
+                await receive_browser(ws,conversation,send)
+            except (WebSocketDisconnect,):pass
+            except Exception as local_exc:
+                with suppress(Exception):await send({'type':'error','message':failure_message(local_exc),'fatal':True})
+        else:
+            with suppress(Exception):await send({'type':'error','message':failure,'fatal':True})
     finally:
         if registered:ACTIVE.discard(sid)
         await conversation.close()

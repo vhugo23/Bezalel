@@ -2,6 +2,14 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useVoiceConversation } from './useVoiceConversation';
+const localMocks=vi.hoisted(()=>({all:[] as {kind:string;load:ReturnType<typeof vi.fn>;infer:ReturnType<typeof vi.fn>;close:ReturnType<typeof vi.fn>;released:boolean}[]}));
+vi.mock('./localSpeech',()=>{
+ class LocalSpeech {
+  kind:string;load=vi.fn(async()=>{});infer=vi.fn(async()=>({text:'Can we support bursts?',inference_id:'local-job',wav:new ArrayBuffer(44)}));close=vi.fn();released=false;
+  constructor(kind:string){this.kind=kind;localMocks.all.push(this);}
+ }
+ return {LocalSpeech,acquireSpeech:(kind:string)=>new LocalSpeech(kind),releaseSpeech:(speech:LocalSpeech|null)=>{if(speech)speech.released=true;}};
+});
 
 const track={stop:vi.fn(),enabled:true};
 class FakeSocket {
@@ -26,6 +34,9 @@ const messages=(ws:FakeSocket)=>ws.sent.filter(x=>typeof x==='string').map(x=>JS
 
 beforeEach(()=>{
  vi.useFakeTimers();FakeSocket.all=[];FakeWorklet.all=[];FakeAudio.all=[];track.stop.mockClear();track.enabled=true;
+ localMocks.all=[];
+ vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,status:200,headers:new Headers(),blob:async()=>new Blob(['synthetic audio'])})));
+ URL.createObjectURL=vi.fn(()=> 'blob:synthetic');URL.revokeObjectURL=vi.fn();
  vi.stubGlobal('WebSocket',FakeSocket);vi.stubGlobal('Audio',FakeAudio);vi.stubGlobal('AudioWorkletNode',FakeWorklet);
  vi.stubGlobal('AudioContext',class {
   destination={};audioWorklet={addModule:vi.fn(async()=>{})};
@@ -44,6 +55,44 @@ async function start(){
 }
 
 describe('full duplex voice lifecycle',()=>{
+ it('switches quota to local STT on the same socket without sending more microphone audio upstream',async()=>{
+  const {result,ws,capture}=await start();act(()=>capture.frame());const sent=ws.sent.filter(x=>x instanceof ArrayBuffer).length;
+  await act(async()=>ws.receive({type:'fallback',provider:'parakeet',reason:'quota'}));
+  expect(result.current.active).toBe(true);expect(result.current.speechNote).toContain('Parakeet');expect(result.current.loadProgress).toBeNull();
+  await act(async()=>{for(let n=0;n<12;n++)capture.frame();});
+  expect(ws.sent.filter(x=>x instanceof ArrayBuffer)).toHaveLength(sent);
+  expect(messages(ws)).toContainEqual({type:'local_partial',text:'Can we support bursts?',inference_id:'local-job'});
+  await act(async()=>result.current.sendNow());
+  expect(messages(ws)).toContainEqual({type:'local_final',text:'Can we support bursts?',inference_id:'local-job'});
+  act(()=>result.current.end());expect(localMocks.all[0].released).toBe(true);expect(localMocks.all[0].close).not.toHaveBeenCalled();expect(track.stop).toHaveBeenCalled();
+ });
+ it('handles quota before ready and replays the opening only after local recognition loads',async()=>{
+  const hook=renderHook(()=>useVoiceConversation(options()));await act(async()=>hook.result.current.start(reply));const ws=FakeSocket.all[0];
+  await act(async()=>ws.receive({type:'fallback',provider:'parakeet',reason:'quota'}));
+  expect(hook.result.current.active).toBe(true);expect(messages(ws)).toContainEqual({type:'replay',seq:2});
+  act(()=>vi.advanceTimersByTime(16000));expect(hook.result.current.active).toBe(true);
+ });
+ it('uses Kokoro only for explicit quota and keeps it for subsequent replies',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response('',{status:503,headers:{'X-PrepCrew-Speech-Fallback':'quota'}})));
+  const {ws}=await start();await act(async()=>ws.receive({type:'reply',event:reply,revision:1}));
+  expect(localMocks.all[0].kind).toBe('tts');expect(localMocks.all[0].infer).toHaveBeenCalledWith('session',{seq:2});
+  expect(messages(ws).some(m=>m.type==='playback_done')).toBe(false);
+  await act(async()=>FakeAudio.all[0].onended?.());
+  expect(messages(ws)).toContainEqual({type:'playback_done',seq:2,revision:1});
+  await act(async()=>ws.receive({type:'reply',event:{...reply,seq:3},revision:2}));expect(fetch).toHaveBeenCalledTimes(1);
+ });
+ it('does not conceal authentication or provider failures by loading local models',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response('',{status:503})));
+  const {ws,opts}=await start();await act(async()=>ws.receive({type:'reply',event:reply,revision:1}));
+  expect(localMocks.all).toHaveLength(0);expect(opts.onError).toHaveBeenCalledWith(expect.objectContaining({message:expect.stringContaining('unavailable')}));
+ });
+ it('discards local results recognized across mute and never sends them as evidence',async()=>{
+  const {result,ws,capture}=await start();await act(async()=>ws.receive({type:'fallback',provider:'parakeet',reason:'quota'}));
+  let resolve!:(v:unknown)=>void;localMocks.all[0].infer.mockImplementationOnce(()=>new Promise(r=>resolve=r));
+  act(()=>{for(let n=0;n<12;n++)capture.frame();});act(()=>result.current.toggleMute());
+  await act(async()=>resolve({text:'Old speech',inference_id:'old-job'}));
+  expect(messages(ws).some(m=>m.type==='local_partial'||m.type==='local_final')).toBe(false);
+ });
  it('streams microphone frames while Dana is speaking, and cancels audio on barge-in',async()=>{
   const {result,ws,capture}=await start();
   await act(async()=>ws.receive({type:'reply',event:reply,revision:1}));

@@ -641,6 +641,119 @@
         }
       }
     },
+    "/api/v2/sessions/{sid}/local-speech/jobs": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Local Speech Start",
+        "operationId": "local_speech_start_api_v2_sessions__sid__local_speech_jobs_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalSpeechStart"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalSpeechJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/sessions/{sid}/local-speech/jobs/{jid}": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Local Speech Finish",
+        "operationId": "local_speech_finish_api_v2_sessions__sid__local_speech_jobs__jid__post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          },
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalSpeechFinish"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalSpeechJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/history": {
       "get": {
         "tags": [
@@ -1590,6 +1703,62 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/sessions/{sid}/board/elements": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Board Elements",
+        "operationId": "board_elements_api_v2_sessions__sid__board_elements_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoardElementsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Event"
+                  },
+                  "title": "Response Board Elements Api V2 Sessions  Sid  Board Elements Post"
+                }
               }
             }
           },
@@ -2559,16 +2728,70 @@
         "type": "object",
         "title": "AuthState"
       },
-      "BoardInput": {
+      "BoardElement": {
         "properties": {
-          "strokes": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,100}$",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "maximum": 2000000000.0,
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "element": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Element"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "element"
+        ],
+        "title": "BoardElement",
+        "description": "One saved version of an Excalidraw element. A later version of the same id\nreplaces it; `isDeleted` versions remove it from the board."
+      },
+      "BoardElementsInput": {
+        "properties": {
+          "step": {
+            "type": "integer",
+            "maximum": 9.0,
+            "minimum": 0.0,
+            "title": "Step"
+          },
+          "elements": {
             "items": {
-              "$ref": "#/components/schemas/Stroke"
+              "$ref": "#/components/schemas/BoardElement"
             },
             "type": "array",
-            "maxItems": 1000,
+            "maxItems": 200,
             "minItems": 1,
-            "title": "Strokes"
+            "title": "Elements"
+          }
+        },
+        "type": "object",
+        "required": [
+          "step",
+          "elements"
+        ],
+        "title": "BoardElementsInput"
+      },
+      "BoardInput": {
+        "properties": {
+          "elements": {
+            "items": {
+              "$ref": "#/components/schemas/BoardElement"
+            },
+            "type": "array",
+            "maxItems": 2000,
+            "minItems": 1,
+            "title": "Elements"
           },
           "png": {
             "type": "string",
@@ -2578,7 +2801,7 @@
         },
         "type": "object",
         "required": [
-          "strokes",
+          "elements",
           "png"
         ],
         "title": "BoardInput"
@@ -3523,6 +3746,83 @@
         ],
         "title": "LessonResponse"
       },
+      "LocalSpeechFinish": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 5000,
+            "title": "Text",
+            "default": ""
+          },
+          "latency_ms": {
+            "type": "integer",
+            "maximum": 600000.0,
+            "minimum": 0.0,
+            "title": "Latency Ms",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "LocalSpeechFinish"
+      },
+      "LocalSpeechJob": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "LocalSpeechJob"
+      },
+      "LocalSpeechStart": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "stt",
+              "tts"
+            ],
+            "title": "Kind"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "LocalSpeechStart"
+      },
       "MasteryPoint": {
         "properties": {
           "day": {
@@ -3928,35 +4228,6 @@
           "scenario_ids"
         ],
         "title": "PlanResponse"
-      },
-      "Point": {
-        "properties": {
-          "x": {
-            "type": "number",
-            "maximum": 900.0,
-            "minimum": 0.0,
-            "title": "X"
-          },
-          "y": {
-            "type": "number",
-            "maximum": 540.0,
-            "minimum": 0.0,
-            "title": "Y"
-          },
-          "pressure": {
-            "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Pressure",
-            "default": 0.5
-          }
-        },
-        "type": "object",
-        "required": [
-          "x",
-          "y"
-        ],
-        "title": "Point"
       },
       "ProbeEvent": {
         "properties": {
@@ -4989,48 +5260,6 @@
         ],
         "title": "Start"
       },
-      "Stroke": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Id"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "path",
-              "rect",
-              "arrow",
-              "text"
-            ],
-            "title": "Kind"
-          },
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/Point"
-            },
-            "type": "array",
-            "maxItems": 10000,
-            "minItems": 1,
-            "title": "Points"
-          },
-          "label": {
-            "type": "string",
-            "maxLength": 200,
-            "title": "Label",
-            "default": ""
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "points"
-        ],
-        "title": "Stroke"
-      },
       "Track": {
         "properties": {
           "id": {
@@ -5068,24 +5297,6 @@
             ],
             "title": "Reason"
           },
-          "reason_session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason Session Id"
-          },
-          "reason_evidence_seq": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Reason Evidence Seq"
-          },
           "recommended": {
             "type": "boolean",
             "title": "Recommended",
@@ -5101,6 +5312,16 @@
               }
             ],
             "title": "Priority Reason"
+          },
+          "next_focus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrackFocus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -5113,6 +5334,49 @@
           "ready"
         ],
         "title": "Track"
+      },
+      "TrackFocus": {
+        "properties": {
+          "gap": {
+            "type": "string",
+            "title": "Gap"
+          },
+          "lesson_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lesson Title"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "evidence_seq": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Evidence Seq"
+          }
+        },
+        "type": "object",
+        "required": [
+          "gap"
+        ],
+        "title": "TrackFocus",
+        "description": "A checked retest waiting on this track: its next run uses the changed scenario for this gap."
       },
       "TurnInput": {
         "properties": {
@@ -5360,6 +5624,77 @@
           "updated_at"
         ],
         "title": "WorkItem"
+      },
+      "Point": {
+        "properties": {
+          "x": {
+            "maximum": 900,
+            "minimum": 0,
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "maximum": 540,
+            "minimum": 0,
+            "title": "Y",
+            "type": "number"
+          },
+          "pressure": {
+            "default": 0.5,
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Pressure",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "Point",
+        "type": "object"
+      },
+      "Stroke": {
+        "properties": {
+          "id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "path",
+              "rect",
+              "arrow",
+              "text"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Points",
+            "type": "array"
+          },
+          "label": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "points"
+        ],
+        "title": "Stroke",
+        "type": "object"
       }
     }
   }

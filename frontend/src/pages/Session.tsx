@@ -5,17 +5,28 @@ import { useNavigate, useParams } from 'react-router';
 import { api, eventMessage, socketUrl, type Event, type Model } from '../api/client';
 import { useApp } from '../store';
 import { useVoiceConversation } from '../lib/useVoiceConversation';
+import type { LoadProgress } from '../lib/localSpeech';
 import { Shell } from '../components/Shell';
 import { Whiteboard } from '../components/Whiteboard';
 import { PiLab, labReady } from '../components/PiLab';
-import { Badge, Button, ErrorNotice, Icon } from '../components/ui';
+import { Badge, Button, ErrorNotice, Icon, Modal } from '../components/ui';
 
-const labels = {off:'Ready when you are',connecting:'Connecting your microphone',listening:'Listening to you',transcribing:'Transcribing your answer',thinking:'Dana is thinking',speaking:'Dana is speaking',muted:'Microphone muted'};
+const labels = {off:'Ready when you are',connecting:'Connecting your microphone',loading:'Loading local speech',listening:'Listening to you',transcribing:'Transcribing your answer',thinking:'Dana is thinking',speaking:'Dana is speaking',muted:'Microphone muted'};
+
+const size=(bytes:number)=>bytes>=1e9?`${(bytes/1e9).toFixed(2)} GB`:`${Math.round(bytes/1e6)} MB`;
+function ModelProgress({progress:{model,stage,loaded,total,cached}}:{progress:LoadProgress}) {
+  const percent=Math.min(99,Math.floor(100*loaded/total)),preparing=stage==='prepare';
+  return <div className={`model-progress ${preparing?'preparing':''}`}>
+    <div className="model-progress-head"><b>{preparing?`Starting ${model} on your GPU`:`${cached?'Loading':'Downloading'} ${model}`}</b><span>{preparing?'Almost ready':`${percent}%`}</span></div>
+    <div className="model-progress-track" role="progressbar" aria-label={`${model} model`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={preparing?undefined:percent} aria-valuetext={preparing?'Starting on your GPU':`${percent}%`}><span style={{width:preparing?'100%':`${percent}%`}}/></div>
+    <small>{preparing?'Model files are ready. First start can take a minute.':`${size(loaded)} of ${size(total)}${cached?' · saved on this device':''}`}</small>
+  </div>;
+}
 
 export function SessionPage() {
   const {id=''}=useParams(); const nav=useNavigate(); const qc=useQueryClient();
   const sound=useApp(s=>s.voice);
-  const [text,setText]=useState(''),[typing,setTyping]=useState(false),[error,setError]=useState<unknown>(null),[connected,setConnected]=useState(false);
+  const [text,setText]=useState(''),[hideLoading,setHideLoading]=useState(false),[error,setError]=useState<unknown>(null),[connected,setConnected]=useState(false);
   const transcript=useRef<HTMLDivElement>(null),follow=useRef(true),autoFinished=useRef(false);
   const query=useQuery({queryKey:['session',id],queryFn:()=>api.session(id),refetchInterval:connected?false:3000});
   const session=query.data,step=session?.step??0,events=session?.events??[],steps=session?.steps??[];
@@ -27,6 +38,7 @@ export function SessionPage() {
   const next=useMutation({mutationFn:()=>api.append(id,{kind:'step',step:step+1,payload:{to:step+1}}),onSuccess:refresh,onError:setError});
   const pause=useMutation({mutationFn:()=>api.pause(id,!session?.paused),onSuccess:s=>{voice.end();qc.setQueryData(['session',id],s);},onError:setError});
   const hint=useMutation({mutationFn:()=>api.hint(id),onSuccess:refresh,onError:setError});
+  useEffect(()=>{if(!voice.loadProgress)setHideLoading(false);},[voice.loadProgress]);
   const end=useMutation({mutationFn:()=>api.end(id),onSuccess:()=>nav(`/fleet/${id}`),onError:setError});
 
   useEffect(()=>{
@@ -82,7 +94,15 @@ export function SessionPage() {
         {session?.demo&&<p className="fine demo-note">Recorded demo replies. Your transcript and drawing are saved.</p>}
       </aside>
       <section className="card voice-stage">
-        <header className="voice-header"><span className="chat-avatar">D</span><div><b>Dana</b><span>Your engineering interviewer</span></div><Badge>{session?.demo?'Demo':voice.active?'Full duplex':'Interview'}</Badge></header>
+        <header className="voice-header">
+          <div className={`voice-presence ${voice.phase}`} title={voice.speechNote||undefined}><DanaOrb phase={voice.phase} level={voice.level} paused={!!session?.paused}/><div><b>Dana</b><span role="status">{session?.paused?'Interview paused · your work is saved':voice.active?labels[voice.phase]:session?.demo?'Recorded demo · press Start voice to talk':'Press Start voice to talk, or type below'}</span></div></div>
+          {!done&&<div className="voice-tools">
+            {voice.active?<><button className={`icon-button ${voice.muted?'on':''}`} onClick={voice.toggleMute} aria-pressed={voice.muted} aria-label={voice.muted?'Unmute microphone':'Mute microphone'} title={voice.muted?'Unmute':'Mute'}><Icon name={voice.muted?'micOff':'mic'}/></button>{voice.phase==='speaking'?<button className="icon-button" onClick={voice.interrupt} aria-label="Interrupt Dana" title="Interrupt Dana"><Icon name="stop"/></button>:<button className="icon-button" onClick={voice.sendNow} disabled={voice.phase!=='listening'} aria-label="Send now" title="Send now — don’t wait for the pause"><Icon name="send"/></button>}<button className="icon-button danger" onClick={voice.end} aria-label="End voice" title="End voice"><Icon name="hangup"/></button></>:<Button size="sm" className="voice-start" onClick={startVoice} disabled={!session||voice.busy||session?.paused}><Icon name="mic"/>Start voice</Button>}
+            <span className="voice-tools-divider"/>
+            {!!steps[step]?.hints?.length&&<button className="icon-button" disabled={hint.isPending||session?.paused} onClick={()=>hint.mutate()} aria-label="Ask for a hint" title="Ask for a hint"><Icon name="bulb"/></button>}
+            <button className="icon-button" disabled={pause.isPending} onClick={()=>pause.mutate()} aria-label={session?.paused?'Resume interview':'Pause interview'} title={session?.paused?'Resume interview':'Pause interview'}><Icon name={session?.paused?'play':'pause'}/></button>
+          </div>}
+        </header>
         <ErrorNotice error={error||query.error}/>
         <div className="session-surfaces">
           {isBoard&&!session?.paused&&<div className="drawing-panel"><Whiteboard key={`${id}:${step}`} lookMode={String(steps[step]?.config?.look||'on_done')} conversationBusy={voice.busy||voice.phase==='transcribing'||voice.level>0.12} partial={voice.partial} sid={id} step={step} continueLabel={`${steps[step+1]?.title||'Finish drawing'} →`} events={events} savedReview={session?.board_review} lookRequest={voice.lookRequest} onChange={refresh} onComplete={()=>next.mutate()} onSpeech={async mark=>{const current=await api.session(id);const event=current.events.find(e=>e.kind==='turn'&&e.payload.annotation_id===mark.id);return event?await voice.replay(event,false):false;}}/></div>}
@@ -90,12 +110,13 @@ export function SessionPage() {
           {conversation}
         </div>
         {!done&&<footer className="voice-dock">
-          <div className={`voice-presence ${voice.phase}`}><DanaOrb phase={voice.phase} level={voice.level} paused={!!session?.paused}/><div><b role="status">{labels[voice.phase]}</b><p>{voice.active?(voice.phase==='listening'?'Speak naturally. Pause when you’re done.':voice.phase==='muted'?'Unmute whenever you’re ready.':'Both sides of the conversation stay above.'):'Dana guides the interview. Just speak naturally.'}</p></div></div>
-          {session?.paused&&<p role="status" className="fine">Interview paused. Your work is saved.</p>}
-          <div className="voice-controls">{!done&&<Button variant="outline" disabled={pause.isPending} onClick={()=>pause.mutate()}>{session?.paused?'Resume interview':'Pause interview'}</Button>}{!!steps[step]?.hints?.length&&<Button variant="ghost" disabled={hint.isPending||session?.paused} onClick={()=>hint.mutate()}>Ask for a hint</Button>}{voice.active?<><Button variant={voice.muted?'default':'outline'} onClick={voice.toggleMute} aria-pressed={voice.muted} aria-label={voice.muted?'Unmute microphone':'Mute microphone'}><Icon name="mic"/>{voice.muted?'Unmute':'Mute'}</Button>{voice.phase==='speaking'?<Button variant="outline" onClick={voice.interrupt}>Interrupt Dana</Button>:<Button variant="outline" onClick={voice.sendNow} disabled={voice.phase!=='listening'}>Send now</Button>}<Button variant="ghost" onClick={voice.end}>End voice</Button></>:<Button onClick={startVoice} disabled={!session||voice.busy||session?.paused}><Icon name="mic"/>Start voice</Button>}<button className="text-button" onClick={()=>setTyping(!typing)} aria-expanded={typing}>{typing?'Hide keyboard':'Type instead'}</button></div>
-          {typing&&<form className="comp one voice-composer" onSubmit={e=>{e.preventDefault();submit();}}><textarea autoFocus aria-label="Your answer" rows={2} value={text} onChange={e=>setText(e.target.value)} placeholder={isBoard?'Explain your drawing, or ask Dana a question…':'Message Dana…'} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}}}/><Button disabled={session?.paused||next.isPending||!text.trim()||(!voice.active&&voice.busy)}>Send</Button></form>}
-          <p className="voice-footnote">Echo cancellation and background filtering are on. Controls are here whenever you need them.</p>
+          <form className="comp one voice-composer" onSubmit={e=>{e.preventDefault();submit();}}><textarea aria-label="Your answer" rows={1} value={text} onChange={e=>setText(e.target.value)} placeholder={voice.active?'Or type to Dana…':isBoard?'Explain your drawing, or ask Dana a question…':'Message Dana…'} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}}}/><Button size="sm" disabled={session?.paused||next.isPending||!text.trim()||(!voice.active&&voice.busy)}>Send</Button></form>
         </footer>}
+        <Modal open={!!voice.loadProgress&&!hideLoading} onClose={()=>setHideLoading(true)} title="Setting up Dana’s voice" description={voice.speechNote||'Speech models run on this device.'}>
+          {voice.loadProgress&&<ModelProgress progress={voice.loadProgress}/>}
+          <p className="fine model-modal-note">Files are saved on this device, so this only downloads once. You can keep typing while it loads.</p>
+          <div className="row model-modal-actions"><Button variant="ghost" size="sm" onClick={voice.end}>End voice</Button><Button size="sm" onClick={()=>setHideLoading(true)}>Keep typing</Button></div>
+        </Modal>
       </section>
     </main>
   </Shell>;

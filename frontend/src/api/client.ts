@@ -66,6 +66,12 @@ export const api = {
   append:(id:string,body:Model<'EventInput'>)=>request('Event',`/sessions/${id}/events`,body,'EventInput'),
   turn:(id:string,body:Model<'TurnInput'>)=>request('TurnResult',`/sessions/${id}/turns`,body,'TurnInput'),
   board:(id:string,body:Model<'BoardInput'>)=>request('BoardResult',`/sessions/${id}/board`,body,'BoardInput'),
+  boardElements:async(id:string,body:Model<'BoardElementsInput'>):Promise<Event[]>=>{
+    schemas.BoardElementsInput.parse(body);
+    const response=await apiFetch(`/sessions/${id}/board/elements`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!response.ok){const value:unknown=await apiJson(response).catch(()=>null);const error=z.object({detail:z.string()}).safeParse(value);throw new Error(error.success?error.data.detail:`The server returned ${response.status}. Your drawing is still on this device.`);}
+    return z.array(schemas.Event).parse(await apiJson(response)) as Event[];
+  },
   end:(id:string)=>request('Report',`/sessions/${id}/end`,{}),
   pause:(id:string,paused:boolean)=>request('Session',`/sessions/${id}/pause`,{paused},'PauseInput'),
   hint:(id:string)=>request('Event',`/sessions/${id}/hint`,{}),
@@ -87,7 +93,7 @@ export const eventMessage = z.object({type:z.literal('event'),event:schemas.Even
 export const pairMessage = z.union([eventMessage,
  z.object({type:z.literal('paired'),session_id:z.string(),device_id:z.string(),step:z.number().int()}),
  z.object({type:z.literal('state'),step:z.number().int(),drawable:z.boolean()}),
- z.object({type:z.literal('ack'),id:z.string(),seq:z.number().int()}),
+ z.object({type:z.literal('ack'),ids:z.array(z.string()),seq:z.number().int(),batch:z.string().optional()}),
  z.object({type:z.literal('review'),review:z.union([schemas.BoardResult,z.null()])}),
- z.object({type:z.literal('error'),message:z.string(),id:z.string().optional()})]);
+ z.object({type:z.literal('error'),message:z.string(),batch:z.string().optional()})]);
 export function socketUrl(path:string) { const url=new URL(API||location.origin); url.protocol=url.protocol==='https:'?'wss:':'ws:'; url.pathname=path.split('?')[0]; url.search=path.split('?')[1]||''; return url.toString(); }

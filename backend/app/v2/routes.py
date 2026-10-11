@@ -7,9 +7,20 @@ from app import config
 from . import db, service as s, auth
 from .models import *
 from .generation import DEMO
+from .local_speech import LocalSpeechStart, LocalSpeechFinish, LocalSpeechJob
 
 router = APIRouter(prefix='/api/v2', tags=['PrepCrew v2.3'])
 ws_router = APIRouter()
+
+@router.post('/sessions/{sid}/local-speech/jobs',response_model=LocalSpeechJob)
+async def local_speech_start(sid:str,body:LocalSpeechStart):
+    from .local_speech import start
+    return await start(sid,body)
+
+@router.post('/sessions/{sid}/local-speech/jobs/{jid}',response_model=LocalSpeechJob)
+async def local_speech_finish(sid:str,jid:str,body:LocalSpeechFinish):
+    from .local_speech import finish
+    return await finish(sid,jid,body)
 
 @router.get('/history',response_model=History)
 async def history(request:Request,before:str | None=Query(None,max_length=100)):
@@ -150,6 +161,10 @@ async def reply_complete(sid: str, body: ReplyAck):
 async def duplex(ws: WebSocket, sid: str):
     from .realtime import serve
     await serve(ws,sid)
+
+@router.post('/sessions/{sid}/board/elements', response_model=list[Event])
+async def board_elements(sid: str, body: BoardElementsInput):
+    return await s.append_elements(sid,body)
 
 @router.post('/sessions/{sid}/board', response_model=BoardResult)
 async def board(sid: str, body: BoardInput):

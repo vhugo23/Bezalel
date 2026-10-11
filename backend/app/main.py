@@ -40,6 +40,7 @@ if config.CORS_ORIGINS:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=['X-PrepCrew-Speech-Fallback'],
     )
 
 app.include_router(core_router)
@@ -49,6 +50,22 @@ from app.v2.routes import router as v2_router, ws_router as v2_ws_router
 app.include_router(v2_router)
 app.include_router(v2_ws_router)
 app.include_router(auth_router)
+
+_route_openapi = app.openapi
+
+
+def _openapi_with_legacy_strokes():
+    # Fixed-board strokes are no longer an endpoint body, but old sessions, the demo board and the
+    # circuit stamp library still use them; keep their schema in the generated client.
+    from app.v2.models import Stroke
+    schema = _route_openapi()
+    stroke = Stroke.model_json_schema(ref_template="#/components/schemas/{model}")
+    for name, definition in {**stroke.pop("$defs", {}), "Stroke": stroke}.items():
+        schema["components"]["schemas"].setdefault(name, definition)
+    return schema
+
+
+app.openapi = _openapi_with_legacy_strokes
 
 
 @app.get("/", include_in_schema=False)

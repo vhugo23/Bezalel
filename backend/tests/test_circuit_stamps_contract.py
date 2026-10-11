@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.v2.models import BoardInput, Stroke
+from app.v2.models import Stroke
 
 SAMPLE = Path(__file__).resolve().parents[2] / "contracts/examples/circuit_stamps.sample.json"
 
@@ -29,8 +29,10 @@ def test_every_sample_stroke_is_a_valid_server_stroke():
     assert {s["kind"] for s in raw} == {"path", "arrow", "text"}
 
 
-def test_the_sample_is_accepted_as_a_board_snapshot():
-    BoardInput.model_validate({"strokes": strokes(), "png": "x"})
+def test_the_sample_fits_one_legacy_board():
+    # Board snapshots now carry versioned Excalidraw elements. Stamp strokes reach the board through
+    # frontend/src/lib/boardElements.ts (legacyToSkeletons), whose test converts this same sample.
+    assert len(strokes()) <= 1000
 
 
 def test_the_sample_shows_what_a_model_reading_the_stroke_list_gets():

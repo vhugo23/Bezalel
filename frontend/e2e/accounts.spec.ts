@@ -12,6 +12,9 @@ test('accounts isolate plans, sessions, sources, jobs and sockets and restore cr
  await page.getByLabel('Email',{exact:true}).fill(`a-${stamp}@example.test`);
  await page.getByLabel('Password',{exact:true}).fill(password);
  await page.getByRole('button',{name:'Create account',exact:true}).click();
+ // A new account opens with the story intro; Skip continues to intake.
+ await expect(page.getByRole('region',{name:'PrepCrew story intro'})).toBeVisible();
+ await page.getByRole('button',{name:'Skip',exact:true}).click();
  await expect(page.getByRole('heading',{name:"Tell us where you're headed."})).toBeVisible();
  const a=(await (await page.request.get('/api/v2/auth/me')).json()).user;
  const cookies=await page.context().cookies();const sessionCookie=cookies.find(c=>c.name==='prepcrew_session')!;

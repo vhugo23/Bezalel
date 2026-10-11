@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Outlet } from 'react-router';
+import { Link, Outlet, useNavigate } from 'react-router';
 import { api, invalidateAccountRequests, type Model } from '../api/client';
 import { useApp } from '../store';
 import { Button, ErrorNotice, Icon } from './ui';
@@ -66,11 +66,11 @@ export function AccountWorkspace(){
 }
 
 export function SignIn(){
- const auth=useAuth()!;const [register,setRegister]=useState(false);const [name,setName]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState<unknown>();
- return <main className="account-page"><a href="/plan" className="logo"><img src="/prepcrew.svg" width="28" height="28" alt="" aria-hidden="true" style={{display:'block',flexShrink:0}}/>PrepCrew</a><section className="card account-card"><span className="account-eyebrow">A little practice. A clearer next step.</span><h1>{register?'Make room to grow.':'Welcome back.'}</h1><p className="sub">Keep your plan, conversations and progress together.</p><form onSubmit={async e=>{e.preventDefault();setBusy(true);setError(undefined);try{const next=register?await api.register(name,email,password):await api.login(email,password);setPassword('');await auth.accept(next);signal();}catch(e){setError(e);}finally{setBusy(false);}}}>
+ const auth=useAuth()!,nav=useNavigate();const [register,setRegister]=useState(false);const [name,setName]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState<unknown>();
+ return <main className="account-page"><a href="/plan" className="logo"><img src="/prepcrew.svg" width="28" height="28" alt="" aria-hidden="true" style={{display:'block',flexShrink:0}}/>PrepCrew</a><section className="card account-card"><span className="account-eyebrow">A little practice. A clearer next step.</span><h1>{register?'Make room to grow.':'Welcome back.'}</h1><p className="sub">Keep your plan, conversations and progress together.</p><form onSubmit={async e=>{e.preventDefault();setBusy(true);setError(undefined);try{const next=register?await api.register(name,email,password):await api.login(email,password);setPassword('');await auth.accept(next);signal();if(register)nav('/story?next=/intake');}catch(e){setError(e);}finally{setBusy(false);}}}>
  {register&&<label>Your name<input autoComplete="name" required maxLength={80} value={name} onChange={e=>setName(e.target.value)}/></label>}
  <label>Email<input type="email" autoComplete="email" required maxLength={254} value={email} onChange={e=>setEmail(e.target.value)}/></label>
  <label>Password<input type="password" autoComplete={register?'new-password':'current-password'} required minLength={12} maxLength={256} value={password} onChange={e=>setPassword(e.target.value)}/></label>
  {register&&<p className="fine">Use at least 12 characters.</p>}<ErrorNotice error={error}/><Button size="lg" disabled={busy}>{busy?'Opening…':register?'Create account':'Sign in'}<Icon/></Button>
- </form><Button variant="ghost" disabled={busy} onClick={()=>{setRegister(!register);setError(undefined);setPassword('');}}>{register?'Already have an account? Sign in':'New here? Create an account'}</Button></section></main>;
+ </form><Button variant="ghost" disabled={busy} onClick={()=>{setRegister(!register);setError(undefined);setPassword('');}}>{register?'Already have an account? Sign in':'New here? Create an account'}</Button></section><Link to="/story?next=/plan" className="story-link">▶ Watch the story</Link></main>;
 }

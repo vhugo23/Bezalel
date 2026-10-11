@@ -29,16 +29,19 @@ def test_quota_failure_before_or_after_handshake_is_actionable_and_audited(monke
         def __init__(self):self.messages=[];self.closed=False
         async def accept(self):pass
         async def send_json(self,value):self.messages.append(value)
-        async def receive(self):await asyncio.Future()
+        async def receive(self):
+            while not any(m['type']=='fallback' for m in self.messages):await asyncio.sleep(.001)
+            return {'type':'websocket.disconnect'}
         async def close(self):self.closed=True
     browser=Browser();asyncio.run(rt.serve(browser,'synthetic-session'))
-    error=next(m for m in browser.messages if m['type']=='error')
-    assert error['fatal'] and 'quota is exhausted' in error['message'] and 'typing' in error['message']
+    error=next(m for m in browser.messages if m['type']=='fallback')
+    assert error['provider']=='parakeet' and error['reason']=='quota'
+    assert not any(m['type']=='error' for m in browser.messages)
     assert 'PROVIDER_PRIVATE_CANARY' not in str(browser.messages)
     assert browser.closed and 'synthetic-session' not in rt.ACTIVE
     candidate.assert_not_awaited()
     saved=audit.call_args.args
-    assert saved[1:]==('synthetic-stt-job','failed',error['message'],'Realtime stream failed')
+    assert saved[1]=='synthetic-stt-job' and 'quota is exhausted' in saved[2]
     assert 'PROVIDER_PRIVATE_CANARY' not in str(saved)
 
 

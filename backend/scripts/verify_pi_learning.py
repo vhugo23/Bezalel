@@ -76,6 +76,12 @@ async def verify(source,schema):
         child=await learning.retest(parent.id)
         again=await service.start(Start(track_id=queue['track_id'],consent=True))
         assert again.id==child.id and child.engine_id=='linux_fault' and len(child.steps)==5
+        # The retest is the next run of the original track, not a separate plan card.
+        listed=await service.get_plan(plan.id)
+        assert queue['track_id'] not in {t.id for t in listed.tracks}
+        origin=next(t for t in listed.tracks if t.id==parent.track_id)
+        assert origin.next_focus and origin.next_focus.session_id==parent.id and origin.next_focus.evidence_seq==[event.seq]
+        assert (await service.start(Start(track_id=origin.id,consent=True))).id==child.id
         assert 'current or historical' in child.steps[4].task
         assert child.events[0].payload['evidence_seq']==[event.seq]
         assert child.events[0].payload['source_session_id']==parent.id

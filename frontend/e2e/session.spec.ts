@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import demoBoard from '../../contracts/demo-board.json' with {type:'json'};
 // Launch through backend/scripts/e2e.py. Never write into the real workspace.
 test.beforeAll(async({request})=>{
@@ -9,7 +9,26 @@ test.beforeAll(async({request})=>{
  expect(health.test_environment).toBe(true);
 });
 
-test('board-first pairing has a real QR, replays strokes and resumes only on its paired device',async({page,context,request})=>{
+type SavedEvent={kind:string;step:number;payload:{id:string;version:number;element?:{isDeleted:boolean}}};
+// The newest saved version of each element still on the board, as the server compares snapshots.
+const activeElements=(events:SavedEvent[],step:number)=>{
+ const latest=new Map<string,SavedEvent['payload']>();
+ for(const e of events)if(e.kind==='stroke'&&e.step===step&&e.payload.element&&(latest.get(e.payload.id)?.version??0)<=e.payload.version)latest.set(e.payload.id,e.payload);
+ return [...latest.values()].filter(p=>!p.element!.isDeleted);
+};
+const drawBox=async(page:Page,host:Locator)=>{
+ await host.locator('label:has([data-testid="toolbar-rectangle"])').click();
+ const box=(await host.boundingBox())!;
+ const x=box.x+box.width*.45,y=box.y+box.height*.4;
+ await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+140,y+80,{steps:6});await page.mouse.up();
+};
+const eraseAll=async(page:Page,host:Locator)=>{
+ const box=(await host.boundingBox())!;
+ await page.mouse.click(box.x+box.width-40,box.y+box.height-60);
+ await page.keyboard.press('Control+A');await page.keyboard.press('Delete');
+};
+
+test('board-first pairing has a real QR, replays elements and resumes only on its paired device',async({page,context,request})=>{
  const session=await (await request.post('/api/v2/sessions',{data:{track_id:'e2e-board-first-track',consent:true}})).json();
  await page.goto(`/session/${session.id}`);
  await page.getByRole('button',{name:'On my iPad'}).click();
@@ -19,45 +38,44 @@ test('board-first pairing has a real QR, replays strokes and resumes only on its
  await device.addInitScript(()=>Object.defineProperty(crypto,'randomUUID',{value:undefined,configurable:true}));
  await device.goto(href!);
  await expect(device.getByText('Connected · ready to draw',{exact:true})).toBeVisible();
- const board=device.getByLabel('Paired iPad whiteboard');const box=(await board.boundingBox())!;
- await device.mouse.move(box.x+80,box.y+80);await device.mouse.down();await device.mouse.move(box.x+150,box.y+110);await device.mouse.up();
- await expect(device.getByText(/All strokes saved/)).toBeVisible();
- await expect(page.getByText(/1 saved strokes/)).toBeVisible();
+ const board=device.getByLabel('Paired iPad whiteboard');
+ await drawBox(device,board);
+ await expect(board).toHaveAttribute('data-saved-elements','1');
+ await expect(board.locator('.save-pill')).toHaveAttribute('data-state','saved');
+ await expect(page.getByLabel('Candidate whiteboard')).toHaveAttribute('data-saved-elements','1');
  const beforeReload=await (await request.get(`/api/v2/sessions/${session.id}/events`)).json();
  const unacknowledged=beforeReload.find((e:{kind:string})=>e.kind==='stroke');
- // Simulate lost confirmation: the saved stroke remains in the device journal.
+ // Simulate lost confirmation: the saved element version remains in the device journal.
  await device.evaluate(({href,event})=>{
   const code=href.split('/').at(-1);
-  sessionStorage.setItem(`prepcrew-device:${code}:pending`,JSON.stringify([{stroke:event.payload,step:event.step}]));
+  sessionStorage.setItem(`prepcrew-device:${code}:pending`,JSON.stringify([{item:event.payload,step:event.step}]));
  },{href:href!,event:unacknowledged});
  await device.reload();
  await expect(device.getByText('Connected · ready to draw',{exact:true})).toBeVisible();
- await expect(device.getByText(/All strokes saved/)).toBeVisible();
+ await expect(device.getByLabel('Paired iPad whiteboard').locator('.save-pill')).toHaveAttribute('data-state','saved');
  const imposter=await context.newPage();await imposter.goto(href!);
  await expect(imposter.getByText('Pairing expired · request a new code',{exact:true})).toBeVisible();
  const events=await (await request.get(`/api/v2/sessions/${session.id}/events`)).json();
  expect(events.filter((e:{kind:string})=>e.kind==='stroke')).toHaveLength(1);
  expect(events.find((e:{kind:string})=>e.kind==='stroke').step).toBe(0);
- await device.getByRole('button',{name:'Undo',exact:true}).click();
- await expect(page.getByText(/0 saved strokes/)).toBeVisible();
+ await eraseAll(device,device.getByLabel('Paired iPad whiteboard'));
+ await expect(page.getByLabel('Candidate whiteboard')).toHaveAttribute('data-saved-elements','0');
  await page.getByRole('dialog').getByRole('button',{name:'Close'}).click();
  await page.getByRole('button',{name:'Load demo board + explanation'}).click();
  await page.getByRole('button',{name:'Done, take a look'}).click();
  await expect(page.getByRole('button',{name:'Edit drawing'})).toBeVisible();
- await expect.poll(()=>device.getByLabel('Dana annotations').evaluate(canvas=>{
-  const pixels=(canvas as HTMLCanvasElement).getContext('2d')!.getImageData(0,0,900,540).data;
-  return pixels.some((value,index)=>index%4===3&&value>0);
- })).toBe(true);
+ await expect(device.getByLabel('Paired iPad whiteboard')).toHaveAttribute('data-dana-marks',/^[1-9]/);
+ await expect(page.getByLabel('Candidate whiteboard')).toHaveAttribute('data-dana-marks',/^[1-9]/);
  await device.screenshot({path:'../.artifacts/e2e/paired-board.png',fullPage:true});
- await device.getByRole('button',{name:'Clear',exact:true}).click();
- await expect(page.getByText(/0 saved strokes/)).toBeVisible();
+ await eraseAll(device,device.getByLabel('Paired iPad whiteboard'));
+ await expect(page.getByLabel('Candidate whiteboard')).toHaveAttribute('data-saved-elements','0');
  await expect(page.getByRole('button',{name:'Edit drawing'})).toHaveCount(0);
  await imposter.goto('/pair/EXPIRED-CODE');
  await expect(imposter.getByText('Pairing expired · request a new code',{exact:true})).toBeVisible();
  await device.close();await imposter.close();
 });
 
-test('on-pause board review runs once, can be edited, and rejects removed snapshot strokes',async({page,request})=>{
+test('on-pause board review runs once, can be edited, and rejects removed snapshot elements',async({page,request})=>{
  const session=await (await request.post('/api/v2/sessions',{data:{track_id:'e2e-pause-board-track',consent:true}})).json();
  await page.goto(`/session/${session.id}`);
  await page.getByRole('button',{name:'Load demo board + explanation'}).click();
@@ -66,14 +84,18 @@ test('on-pause board review runs once, can be edited, and rejects removed snapsh
  await expect(page.getByRole('button',{name:'Edit drawing'})).toBeVisible();
  const events=await (await request.get(`/api/v2/sessions/${session.id}/events`)).json();
  expect(events.filter((e:{payload:Record<string,unknown>})=>e.payload.board_snapshot)).toHaveLength(1);
+ const reviewed=activeElements(events,0);
+ expect(reviewed.length).toBeGreaterThan(demoBoard.length);
  await page.getByRole('button',{name:'Edit drawing'}).click();
  await expect(page.getByRole('button',{name:'Done, take a look'})).toBeEnabled();
- await page.getByRole('button',{name:'Undo',exact:true}).click();
- const result=await request.post(`/api/v2/sessions/${session.id}/board`,{data:{strokes:demoBoard,png:'iVBORw0KGgo='}});
+ await eraseAll(page,page.getByLabel('Candidate whiteboard'));
+ await expect(page.getByLabel('Candidate whiteboard')).toHaveAttribute('data-saved-elements','0');
+ const result=await request.post(`/api/v2/sessions/${session.id}/board`,{data:{elements:reviewed,png:'iVBORw0KGgo='}});
  expect(result.status()).toBe(409);
  const current=await (await request.get(`/api/v2/sessions/${session.id}`)).json();
  expect(current.board_review).toBeNull();
 });
+
 test('intake → whiteboard → fleet with a rejected unsupported claim',async({page})=>{
  await page.goto('/intake');
  await page.getByLabel('What are you aiming for?').fill('Software engineer — synthetic E2E tester');
@@ -86,7 +108,6 @@ test('intake → whiteboard → fleet with a rejected unsupported claim',async({
  await page.reload();
  await expect(page.getByRole('heading',{name:/Your plan/})).toBeVisible();
  await page.getByRole('button',{name:'Start session'}).click();
- await page.getByRole('button',{name:'Type instead'}).click();
  await page.getByLabel('Your answer').fill('What scale are we designing for, and is per-key limiting enough?');
  await page.getByRole('button',{name:'Send',exact:true}).click();
  await expect(page.getByText('What scale are we designing for, and is per-key limiting enough?',{exact:true})).toBeVisible();
@@ -101,7 +122,6 @@ test('intake → whiteboard → fleet with a rejected unsupported claim',async({
  await expect(page.getByRole('button',{name:'Defend the trade-offs →'})).toBeVisible();
  await page.getByRole('button',{name:'Defend the trade-offs →'}).click();
  await expect(page.getByText('Step 3 of 3',{exact:true})).toBeVisible();
- await page.getByRole('button',{name:'Type instead'}).click();
  await page.getByLabel('Your answer').fill('I chose Redis for shared counters. Failing open preserves availability but weakens the limit.');
  await page.getByRole('button',{name:'Send',exact:true}).click();
  await expect(page.getByRole('button',{name:'Next step'})).toBeEnabled();
@@ -114,7 +134,7 @@ test('intake → whiteboard → fleet with a rejected unsupported claim',async({
  await expect(page.getByRole('dialog')).toContainText('candidate');
 });
 
-test('events replay in sequence, duplicate strokes are idempotent and stale steps fail',async({request})=>{
+test('events replay in sequence, duplicate element versions are idempotent and stale versions and steps fail',async({request})=>{
  const profile={user_id:crypto.randomUUID(),name:'Synthetic tester',role:'Software engineer',companies:[],struggles:['System design'],question:'Design an API.',link:''};
  const plan=await (await request.post('/api/v2/plans',{data:profile})).json();
  const track=plan.tracks.find((t:{title:string})=>t.title==='System design: whiteboard');
@@ -122,12 +142,21 @@ test('events replay in sequence, duplicate strokes are idempotent and stale step
  const url=`/api/v2/sessions/${session.id}/events`;
  expect((await request.post(url,{data:{kind:'step',step:2,payload:{to:2}}})).status()).toBe(409);
  expect((await request.post(url,{data:{kind:'step',step:1,payload:{to:1}}})).ok()).toBeTruthy();
- const stroke={kind:'stroke',step:1,payload:{id:'idempotent-stroke',kind:'path',points:[{x:10,y:20,pressure:.5}],label:''}};
+ const element=(id:string,version:number,x:number)=>({id,version,element:{id,type:'rectangle',version,versionNonce:version,isDeleted:false,x,y:20,width:80,height:40,angle:0}});
+ const stroke={kind:'stroke',step:1,payload:element('idempotent-element',1,10)};
  const first=await (await request.post(url,{data:stroke})).json();
  const duplicate=await (await request.post(url,{data:stroke})).json();
  expect(first.seq).toBe(duplicate.seq);
+ expect((await request.post(url,{data:{...stroke,payload:element('idempotent-element',1,99)}})).status()).toBe(409);
+ const moved=await request.post(`/api/v2/sessions/${session.id}/board/elements`,{data:{step:1,elements:[element('idempotent-element',2,40)]}});
+ expect(moved.ok()).toBeTruthy();
+ // A batch is atomic: one stale version refuses the whole batch.
+ const staleBatch=await request.post(`/api/v2/sessions/${session.id}/board/elements`,{data:{step:1,elements:[element('other',1,10),element('idempotent-element',2,77)]}});
+ expect(staleBatch.status()).toBe(409);
+ const saved=await (await request.get(url)).json();
+ expect(saved.filter((e:{kind:string})=>e.kind==='stroke').map((e:{payload:{id:string;version:number}})=>`${e.payload.id}:${e.payload.version}`)).toEqual(['idempotent-element:1','idempotent-element:2']);
  const replay=await (await request.get(`${url}?after=${first.seq-1}`)).json();
- expect(replay.map((e:{seq:number})=>e.seq)).toEqual([first.seq]);
+ expect(replay.map((e:{seq:number})=>e.seq)[0]).toBe(first.seq);
  const stale=await request.post(`/api/v2/sessions/${session.id}/turns`,{data:{text:'stale answer',step:0,board:false}});
  expect(stale.status()).toBe(409);
  const metrics=await (await request.get(`/api/v2/sessions/${session.id}/metrics`)).json();
@@ -153,7 +182,6 @@ test('a different engine uses its own steps and fleet, with persisted pause and 
  await page.getByRole('button',{name:'Ask for a hint'}).click();
  await expect(page.getByText('Start with the situation before describing your action.',{exact:true})).toBeVisible();
  expect((await request.post(`/api/v2/sessions/${session.id}/hint`)).status()).toBe(409);
- await page.getByRole('button',{name:'Type instead'}).click();
  await page.getByLabel('Your answer').fill('On a synthetic project the build was failing.');
  await page.getByRole('button',{name:'Send',exact:true}).click();
  await page.getByRole('button',{name:'Next step'}).click();

@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import { API, api, apiFetch, socketUrl, type Event, type Model } from '../api/client';
+import { api, apiFetch, socketUrl, type Event, type Model } from '../api/client';
 import { voiceMessage } from './voiceProtocol';
+import { acquireSpeech, releaseSpeech, type LocalSpeech, type LoadProgress } from './localSpeech';
+import { LocalUtterance } from './localUtterance';
 
-export type VoicePhase='off'|'connecting'|'listening'|'transcribing'|'thinking'|'speaking'|'muted';
+export type VoicePhase='off'|'connecting'|'loading'|'listening'|'transcribing'|'thinking'|'speaking'|'muted';
 type Options={id:string;step:number;endStep?:number;demo:boolean;sound:boolean;onEvents:()=>Promise<unknown>;onError:(e:unknown)=>void};
 
 export function useVoiceConversation(options:Options) {
   const opts=useRef(options);opts.current=options;
   const [phase,setPhase]=useState<VoicePhase>('off'),[active,setActive]=useState(false),[muted,setMuted]=useState(false),[level,setLevel]=useState(0);
   const [partial,setPartial]=useState(''),[lookRequest,setLookRequest]=useState(0);
+  const [speechNote,setSpeechNote]=useState(''),[loadProgress,setLoadProgress]=useState<LoadProgress|null>(null);
+  const local=useRef({mode:'cloud',ttsQuota:false,tag:0,busy:false,pending:null as null|Float32Array});
+  const stt=useRef<LocalSpeech|null>(null),tts=useRef<LocalSpeech|null>(null),gate=useRef<LocalUtterance|null>(null);
+  const clipEpoch=useRef(0),clipUrl=useRef<string|null>(null),clipRequest=useRef<AbortController|null>(null);
+  const note=(message:string)=>{if(state.current.alive)setSpeechNote(message);};
+  const track=(p:LoadProgress|null)=>{if(state.current.alive)setLoadProgress(p);};
   const state=useRef({alive:true,active:false,muted:false,epoch:0,revision:0,starting:false});
   const socket=useRef<WebSocket|null>(null),media=useRef<MediaStream|null>(null),context=useRef<AudioContext|null>(null),worklet=useRef<AudioWorkletNode|null>(null);
   const audio=useRef<HTMLAudioElement|null>(null),finish=useRef<((completed:boolean)=>void)|null>(null);
@@ -18,6 +26,8 @@ export function useVoiceConversation(options:Options) {
   const idle=()=>setStatus(state.current.active?(state.current.muted?'muted':'listening'):'off');
   const send=(message:Record<string,unknown>)=>{if(socket.current?.readyState===WebSocket.OPEN)socket.current.send(JSON.stringify(message));};
   const stopAudio=()=>{
+    clipEpoch.current++;clipRequest.current?.abort();clipRequest.current=null;
+    if(clipUrl.current){URL.revokeObjectURL(clipUrl.current);clipUrl.current=null;}
     const clip=audio.current;audio.current=null;
     if(clip){clip.onended=null;clip.onerror=null;clip.pause();clip.removeAttribute('src');clip.load();}
     window.speechSynthesis?.cancel();
@@ -30,24 +40,86 @@ export function useVoiceConversation(options:Options) {
     stopAudio();replayWaiter.current?.resolve(false);replayWaiter.current=null;worklet.current?.disconnect();worklet.current=null;
     media.current?.getTracks().forEach(t=>t.stop());media.current=null;
     void context.current?.close();context.current=null;
+    local.current.tag++;local.current.mode='cloud';local.current.pending=null;local.current.busy=false;
+    gate.current?.reset();gate.current=null;releaseSpeech(stt.current);stt.current=null;releaseSpeech(tts.current);tts.current=null;
     state.current.muted=false;
-    if(state.current.alive){setActive(false);setMuted(false);setLevel(0);setPartial('');setStatus('off');}
+    if(state.current.alive){setActive(false);setMuted(false);setLevel(0);setPartial('');setSpeechNote('');setLoadProgress(null);setStatus('off');}
   };
   const say=async(event:Event,force=false):Promise<boolean>=>{
     stopAudio();
     if(!opts.current.sound&&!force)return true;
     setStatus('speaking');
+    const stamp=clipEpoch.current;
     return new Promise<boolean>((resolve,reject)=>{
-      const complete=()=>{finish.current=null;audio.current=null;resolve(true);};
+      const complete=()=>{finish.current=null;audio.current=null;if(clipUrl.current){URL.revokeObjectURL(clipUrl.current);clipUrl.current=null;}resolve(true);};
       finish.current=resolve;
       if(opts.current.demo){
         const u=new SpeechSynthesisUtterance(String(event.payload.text));u.onend=complete;u.onerror=()=>{finish.current=null;resolve(false);};speechSynthesis.speak(u);
       }else{
-        const clip=new Audio(`${API}/api/v2/sessions/${opts.current.id}/speech/${event.seq}`);clip.crossOrigin='use-credentials';audio.current=clip;
-        const failed=()=>{if(audio.current!==clip)return;audio.current=null;finish.current=null;reject(new Error('Dana’s audio could not play. The transcript is saved; use Replay to try again.'));};
-        clip.onended=complete;clip.onerror=failed;void clip.play().catch(failed);
+        void (async()=>{
+          let blob:Blob|undefined;
+          if(!local.current.ttsQuota){
+            const controller=new AbortController();clipRequest.current=controller;
+            const response=await apiFetch(`/sessions/${opts.current.id}/speech/${event.seq}`,{signal:controller.signal});
+            if(response.headers.get('X-PrepCrew-Speech-Fallback')==='quota')local.current.ttsQuota=true;
+            else if(!response.ok)throw new Error('Dana’s voice is unavailable. The transcript is saved; use Replay to try again.');
+            else blob=await response.blob();
+          }
+          if(stamp!==clipEpoch.current)return;
+          if(!blob){
+            setStatus('loading');
+            note('ElevenLabs quota reached. Loading Kokoro on your GPU; first use downloads model files.');
+            if(!tts.current){tts.current=acquireSpeech('tts',track);try{await tts.current.load();}finally{track(null);}}
+            if(stamp!==clipEpoch.current)return;
+            const output=await tts.current.infer(opts.current.id,{seq:event.seq});
+            if(!output.wav)throw new Error('Kokoro returned no audio.');
+            blob=new Blob([output.wav],{type:'audio/wav'});note('Dana’s voice: Kokoro · local WebGPU');
+          }
+          if(stamp!==clipEpoch.current)return;
+          setStatus('speaking');
+          const url=URL.createObjectURL(blob);clipUrl.current=url;
+          const clip=new Audio(url);audio.current=clip;
+          const failed=()=>{if(stamp!==clipEpoch.current)return;finish.current=null;stopAudio();reject(new Error('Dana’s audio could not play. The transcript is saved; use Replay to try again.'));};
+          clip.onended=complete;clip.onerror=failed;await clip.play().catch(failed);
+        })().catch(e=>{if(stamp===clipEpoch.current){finish.current=null;reject(e);}});
       }
     });
+  };
+  const recognize=async(pcm:Float32Array,final:boolean,epoch:number)=>{
+    if(local.current.busy){
+      if(final){
+        if(local.current.pending){opts.current.onError(new Error('Local transcription cannot keep up. Your saved turns are safe; continue by typing.'));end();return;}
+        local.current.pending=pcm;
+      }
+      return;
+    }
+    const tag=local.current.tag;local.current.busy=true;
+    try{
+      const output=await stt.current!.infer(opts.current.id,{pcm});
+      if(epoch!==state.current.epoch||tag!==local.current.tag||state.current.muted)return;
+      send({type:final?'local_final':'local_partial',text:output.text||'',inference_id:output.inference_id});
+    }catch(e){if(epoch===state.current.epoch){opts.current.onError(e);end();}}
+    finally{
+      if(epoch===state.current.epoch){
+        local.current.busy=false;const pending=local.current.pending;local.current.pending=null;
+        if(pending)void recognize(pending,true,epoch);
+      }
+    }
+  };
+  const startLocal=async(epoch:number,opening?:Event)=>{
+    setPartial('');
+    clearTimeout(timer.current);local.current.mode='loading';
+    // Keep Stop/Mute available during downloads, including quota before handshake.
+    state.current.active=true;state.current.starting=false;setActive(true);setStatus('loading');
+    note('ElevenLabs quota reached. Loading Parakeet on your GPU. Large first download; speak after Listening appears.');
+    opts.current.onError(null);
+    try{
+      stt.current=acquireSpeech('stt',track);try{await stt.current.load();}finally{track(null);}
+      if(epoch!==state.current.epoch)return;
+      gate.current=new LocalUtterance((pcm,final)=>void recognize(pcm,final,epoch));local.current.mode='local';
+      note('Microphone: Parakeet · local WebGPU encoder / WASM decoder');idle();
+      if(opening)send({type:'replay',seq:opening.seq});
+    }catch(e){if(epoch===state.current.epoch){opts.current.onError(e);end();}}
   };
   const playReply=async(event:Event,revision:number,epoch:number)=>{
     if(revision<state.current.revision)return;
@@ -83,6 +155,10 @@ export function useVoiceConversation(options:Options) {
       capture.port.onmessage=({data}:{data:{pcm:ArrayBuffer;level:number}})=>{
         if(epoch!==state.current.epoch||!state.current.active)return;
         setLevel(state.current.muted?0:Math.min(1,data.level*12));
+        if(local.current.mode!=='cloud'){
+          if(local.current.mode==='local'&&!state.current.muted)gate.current?.push(data.pcm,data.level);
+          return;
+        }
         if(ws.readyState!==WebSocket.OPEN)return;
         if(ws.bufferedAmount>128000){opts.current.onError(new Error('Voice network is too slow. Restart voice when your connection recovers.'));end();return;}
         // Silence keeps the provider connection alive while mute disables the physical audio track.
@@ -93,7 +169,9 @@ export function useVoiceConversation(options:Options) {
         if(epoch!==state.current.epoch)return;
         try{
           const data=voiceMessage.parse(JSON.parse(message.data));
-          if(data.type==='ready'){
+          if(data.type==='fallback'){
+            const initial=!state.current.active;void startLocal(epoch,initial?opening:undefined);
+          }else if(data.type==='ready'){
             clearTimeout(timer.current);state.current.active=true;state.current.starting=false;setActive(true);idle();
             if(opening)send({type:'replay',seq:opening.seq});
           }else if(data.type==='interrupt'){
@@ -121,12 +199,13 @@ export function useVoiceConversation(options:Options) {
   };
   const toggleMute=()=>{
     state.current.muted=!state.current.muted;setMuted(state.current.muted);setPartial('');
+    local.current.tag++;local.current.pending=null;gate.current?.reset();
     media.current?.getAudioTracks().forEach(t=>{t.enabled=!state.current.muted;});
     send({type:'mute',muted:state.current.muted});if(!audio.current)idle();
   };
   const interrupt=()=>{stopAudio();send({type:'interrupt'});idle();};
-  const sendNow=()=>send({type:'commit'});
-  const sendText=(text:string)=>{stopAudio();send({type:'text',text});setPartial('');setStatus('thinking');};
+  const sendNow=()=>{if(local.current.mode==='local')gate.current?.commit();else send({type:'commit'});};
+  const sendText=(text:string)=>{stopAudio();local.current.tag++;local.current.pending=null;gate.current?.reset();send({type:'text',text});setPartial('');setStatus('thinking');};
   const acknowledge=async(event:Event)=>{
     const r=await apiFetch(`/sessions/${opts.current.id}/reply-complete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seq:event.seq})});
     if(!r.ok)throw new Error('Could not advance this step. Your conversation is saved.');
@@ -152,5 +231,6 @@ export function useVoiceConversation(options:Options) {
   useEffect(()=>{state.current.alive=true;return()=>{state.current.alive=false;end();};},[options.id]);
   useEffect(()=>{if(!options.sound){stopAudio();send({type:'interrupt'});idle();}},[options.sound]);
   useEffect(()=>{if(options.step>=(options.endStep??3))end();},[options.step,options.endStep]);
-  return {phase,active,muted,level,partial,lookRequest,start,end,toggleMute,interrupt,sendNow,sendText,runText,replay,noteTranscript:()=>{},busy:['connecting','thinking','speaking'].includes(phase)};
+  useEffect(()=>{local.current.tag++;local.current.pending=null;gate.current?.reset();setPartial('');},[options.step]);
+  return {phase,active,muted,level,partial,lookRequest,speechNote,loadProgress,start,end,toggleMute,interrupt,sendNow,sendText,runText,replay,noteTranscript:()=>{},busy:['connecting','loading','thinking','speaking'].includes(phase)};
 }

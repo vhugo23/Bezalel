@@ -81,8 +81,9 @@ def test_failed_vision_preserves_png_and_candidate_artifact(monkeypatch,tmp_path
     import base64
     from datetime import datetime,timezone
     from app.v2 import service
-    from app.v2.models import BoardInput,Stroke,Event
-    stroke=Stroke(id='shape',kind='path',points=[{'x':10,'y':20}])
+    from app.v2.models import BoardInput,BoardElement,Event
+    from tests.board_fixtures import element
+    stroke=BoardElement(**element('shape'))
     png=b'\x89PNG\r\n\x1a\nfixture'
     monkeypatch.setattr(service,'ROOT',tmp_path)
     monkeypatch.setattr(service,'DEMO',False)
@@ -100,7 +101,7 @@ def test_failed_vision_preserves_png_and_candidate_artifact(monkeypatch,tmp_path
         fetch=AsyncMock(return_value=[event.model_dump()]),transaction=lambda:Context(None))
     monkeypatch.setattr(service.db,'pool',AsyncMock(return_value=SimpleNamespace(acquire=lambda:Context(conn))))
     with pytest.raises(ValueError,match='provider unavailable'):
-        asyncio.run(service.board('s',BoardInput(strokes=[stroke],png=base64.b64encode(png).decode())))
+        asyncio.run(service.board('s',BoardInput(elements=[stroke],png=base64.b64encode(png).decode())))
     files=list((tmp_path/'.artifacts').glob('*.png'))
     assert len(files)==1 and files[0].read_bytes()==png
     assert any('INSERT INTO artifacts' in c.args[0] for c in conn.execute.call_args_list)

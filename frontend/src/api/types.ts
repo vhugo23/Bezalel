@@ -276,6 +276,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/sessions/{sid}/local-speech/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Local Speech Start */
+        post: operations["local_speech_start_api_v2_sessions__sid__local_speech_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/sessions/{sid}/local-speech/jobs/{jid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Local Speech Finish */
+        post: operations["local_speech_finish_api_v2_sessions__sid__local_speech_jobs__jid__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/history": {
         parameters: {
             query?: never;
@@ -611,6 +645,23 @@ export interface paths {
         put?: never;
         /** Reply Complete */
         post: operations["reply_complete_api_v2_sessions__sid__reply_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/sessions/{sid}/board/elements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Board Elements */
+        post: operations["board_elements_api_v2_sessions__sid__board_elements_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -977,10 +1028,32 @@ export interface components {
             enabled: boolean;
             user?: components["schemas"]["Account"] | null;
         };
+        /**
+         * BoardElement
+         * @description One saved version of an Excalidraw element. A later version of the same id
+         *     replaces it; `isDeleted` versions remove it from the board.
+         */
+        BoardElement: {
+            /** Id */
+            id: string;
+            /** Version */
+            version: number;
+            /** Element */
+            element: {
+                [key: string]: unknown;
+            };
+        };
+        /** BoardElementsInput */
+        BoardElementsInput: {
+            /** Step */
+            step: number;
+            /** Elements */
+            elements: components["schemas"]["BoardElement"][];
+        };
         /** BoardInput */
         BoardInput: {
-            /** Strokes */
-            strokes: components["schemas"]["Stroke"][];
+            /** Elements */
+            elements: components["schemas"]["BoardElement"][];
             /** Png */
             png: string;
         };
@@ -1353,6 +1426,44 @@ export interface components {
              */
             ai_generated: boolean;
         };
+        /** LocalSpeechFinish */
+        LocalSpeechFinish: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "succeeded" | "failed";
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /**
+             * Latency Ms
+             * @default 0
+             */
+            latency_ms: number;
+        };
+        /** LocalSpeechJob */
+        LocalSpeechJob: {
+            /** Id */
+            id: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+        };
+        /** LocalSpeechStart */
+        LocalSpeechStart: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "stt" | "tts";
+            /** Seq */
+            seq?: number | null;
+        };
         /** MasteryPoint */
         MasteryPoint: {
             /** Day */
@@ -1510,18 +1621,6 @@ export interface components {
              * @description What PrepCrew remembers about this user from earlier sessions (Backboard). Empty for a first session.
              */
             memories?: string[];
-        };
-        /** Point */
-        Point: {
-            /** X */
-            x: number;
-            /** Y */
-            y: number;
-            /**
-             * Pressure
-             * @default 0.5
-             */
-            pressure: number;
         };
         /** ProbeEvent */
         ProbeEvent: {
@@ -1931,23 +2030,6 @@ export interface components {
             /** Consent */
             consent: boolean;
         };
-        /** Stroke */
-        Stroke: {
-            /** Id */
-            id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "path" | "rect" | "arrow" | "text";
-            /** Points */
-            points: components["schemas"]["Point"][];
-            /**
-             * Label
-             * @default
-             */
-            label: string;
-        };
         /** Track */
         Track: {
             /** Id */
@@ -1964,10 +2046,6 @@ export interface components {
             ready: boolean;
             /** Reason */
             reason?: string | null;
-            /** Reason Session Id */
-            reason_session_id?: string | null;
-            /** Reason Evidence Seq */
-            reason_evidence_seq?: number[];
             /**
              * Recommended
              * @default false
@@ -1975,6 +2053,21 @@ export interface components {
             recommended: boolean;
             /** Priority Reason */
             priority_reason?: string | null;
+            next_focus?: components["schemas"]["TrackFocus"] | null;
+        };
+        /**
+         * TrackFocus
+         * @description A checked retest waiting on this track: its next run uses the changed scenario for this gap.
+         */
+        TrackFocus: {
+            /** Gap */
+            gap: string;
+            /** Lesson Title */
+            lesson_title?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            /** Evidence Seq */
+            evidence_seq?: number[];
         };
         /** TurnInput */
         TurnInput: {
@@ -2081,6 +2174,35 @@ export interface components {
             updated_at: string;
             /** Finished At */
             finished_at?: string | null;
+        };
+        /** Point */
+        Point: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /**
+             * Pressure
+             * @default 0.5
+             */
+            pressure: number;
+        };
+        /** Stroke */
+        Stroke: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "path" | "rect" | "arrow" | "text";
+            /** Points */
+            points: components["schemas"]["Point"][];
+            /**
+             * Label
+             * @default
+             */
+            label: string;
         };
     };
     responses: never;
@@ -2546,6 +2668,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetricsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    local_speech_start_api_v2_sessions__sid__local_speech_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalSpeechStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalSpeechJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    local_speech_finish_api_v2_sessions__sid__local_speech_jobs__jid__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalSpeechFinish"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalSpeechJob"];
                 };
             };
             /** @description Validation Error */
@@ -3224,6 +3417,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    board_elements_api_v2_sessions__sid__board_elements_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardElementsInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Event"][];
                 };
             };
             /** @description Validation Error */

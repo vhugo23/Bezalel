@@ -1,3 +1,5 @@
+import json
+import math
 from datetime import datetime
 from typing import Literal, Any
 from pydantic import BaseModel, Field, ConfigDict, model_validator
@@ -20,6 +22,13 @@ class Skill(BaseModel):
     target: int
     estimate: bool = False
 
+class TrackFocus(BaseModel):
+    """A checked retest waiting on this track: its next run uses the changed scenario for this gap."""
+    gap: str
+    lesson_title: str | None = None
+    session_id: str | None = None
+    evidence_seq: list[int] = Field(default_factory=list)
+
 class Track(BaseModel):
     id: str
     domain: str
@@ -28,10 +37,9 @@ class Track(BaseModel):
     layer: int
     ready: bool
     reason: str | None = None
-    reason_session_id: str | None = None
-    reason_evidence_seq: list[int] = Field(default_factory=list)
     recommended: bool = False
     priority_reason: str | None = None
+    next_focus: TrackFocus | None = None
 
 class Plan(BaseModel):
     id: str
@@ -143,6 +151,57 @@ class Stroke(BaseModel):
     points: list[Point] = Field(min_length=1, max_length=10000)
     label: str = Field(default='', max_length=200)
 
+# Excalidraw element types a candidate can draw. Images, frames and embeds are
+# disabled in the editor and refused here.
+BOARD_TYPES = {'rectangle','diamond','ellipse','arrow','line','freedraw','text'}
+LINEAR_TYPES = {'arrow','line','freedraw'}
+
+def _finite(value, limit=1e6):
+    return isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) and abs(value)<=limit
+
+class BoardElement(BaseModel):
+    """One saved version of an Excalidraw element. A later version of the same id
+    replaces it; `isDeleted` versions remove it from the board."""
+    model_config = ConfigDict(extra='forbid')
+    id: str = Field(pattern=r'^[A-Za-z0-9_-]{1,100}$')
+    version: int = Field(ge=1, le=2_000_000_000)
+    element: dict[str, Any]
+
+    @model_validator(mode='after')
+    def bounded_element(self):
+        e=self.element
+        if e.get('id')!=self.id or e.get('version')!=self.version:raise ValueError('Element id and version must match the element')
+        if e.get('type') not in BOARD_TYPES:raise ValueError('Unsupported board element')
+        if not isinstance(e.get('isDeleted'),bool):raise ValueError('Element deletion state is required')
+        if not all(_finite(e.get(k)) for k in ('x','y','width','height','angle')) or e['width']<0 or e['height']<0:raise ValueError('Invalid element geometry')
+        if e.get('customData') is not None:raise ValueError('Custom element data is not accepted')
+        if e.get('link') is not None and not (isinstance(e['link'],str) and len(e['link'])<=500 and e['link'].startswith(('https://','http://'))):raise ValueError('Invalid element link')
+        if e.get('containerId') is not None and not (isinstance(e['containerId'],str) and len(e['containerId'])<=100):raise ValueError('Invalid text container')
+        if e['type'] in LINEAR_TYPES:
+            points=e.get('points')
+            if not isinstance(points,list) or not 1<=len(points)<=10000 or not all(isinstance(p,list) and len(p)==2 and _finite(p[0]) and _finite(p[1]) for p in points):raise ValueError('Invalid element points')
+        if e['type']=='text' and not (isinstance(e.get('text'),str) and len(e['text'])<=2000 and len(str(e.get('originalText','')))<=2000):raise ValueError('Invalid element text')
+        if len(json.dumps(e,separators=(',',':')))>300_000:raise ValueError('Element is too large')
+        return self
+
+    @property
+    def deleted(self)->bool:return self.element['isDeleted']
+
+    def bounds(self):
+        e=self.element
+        if e['type'] in LINEAR_TYPES:
+            xs=[e['x']+p[0] for p in e['points']];ys=[e['y']+p[1] for p in e['points']]
+            return min(xs),min(ys),max(xs),max(ys)
+        x,y,w,h,a=e['x'],e['y'],e['width'],e['height'],e['angle']
+        if not a:return x,y,x+w,y+h
+        cx,cy=x+w/2,y+h/2
+        corners=[(cx+dx*math.cos(a)-dy*math.sin(a),cy+dx*math.sin(a)+dy*math.cos(a)) for dx in (-w/2,w/2) for dy in (-h/2,h/2)]
+        return min(c[0] for c in corners),min(c[1] for c in corners),max(c[0] for c in corners),max(c[1] for c in corners)
+
+class BoardElementsInput(BaseModel):
+    step: int = Field(ge=0, le=9)
+    elements: list[BoardElement] = Field(min_length=1, max_length=200)
+
 class Mark(BaseModel):
     model_config = ConfigDict(extra='forbid')
     kind: Literal['circle','arrow','underline','highlight','sticky','cross','check']
@@ -154,7 +213,7 @@ class Critique(BaseModel):
     marks: list[Mark] = Field(max_length=4)
 
 class BoardInput(BaseModel):
-    strokes: list[Stroke] = Field(min_length=1, max_length=1000)
+    elements: list[BoardElement] = Field(min_length=1, max_length=2000)
     png: str = Field(max_length=6000000)
 
 class Annotation(Mark):
