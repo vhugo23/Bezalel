@@ -186,6 +186,36 @@ async def hint(sid: str):
         if used>=len(current.hints):raise HTTPException(409,'No more hints for this step.')
         return await s.log(sid,'hint','interviewer',row['step'],{'text':current.hints[used],'hint_index':used,'source':'authored_step'},conn)
 
+@router.post('/sessions/{sid}/quit', response_model=QuitResult)
+async def quit_session(sid: str, body: QuitInput):
+    """The "I don't know" button: skip this step, or end the lesson with next steps."""
+    from . import engine, exit_plan
+    async with (await db.pool()).acquire() as conn,conn.transaction():
+        row=await conn.fetchrow('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',sid)
+        if not row:raise HTTPException(404,'Session not found')
+        # Asking again after the lesson ended returns the saved plan; the first reason stands.
+        saved=await conn.fetchrow("SELECT payload FROM session_events WHERE session_id=$1 AND kind='note' AND payload ? 'quit' ORDER BY seq LIMIT 1",sid)
+        if saved:return QuitResult(outcome='ended',message='This lesson has ended.',plan=QuitPlan(**saved['payload']['quit']))
+        if row['status']!='live':raise HTTPException(409,'Only a live interview can be skipped or quit.')
+        definition=await engine.context(sid,conn)
+        steps=definition['steps'];step=row['step'];titles=[x.title for x in steps]
+        skipped=await conn.fetchval("SELECT count(*) FROM session_events WHERE session_id=$1 AND kind='turn' AND payload->>'source'='skip_button'",sid)
+        why=exit_plan.decide(body.reason,step=step,total=len(steps),skipped=skipped,lab=definition['engine_id']=='linux_fault')
+        if why=='moved_on':
+            if row['engine_state'].get('paused'):raise HTTPException(409,'Resume the interview first.')
+            await s.log(sid,'turn','candidate',step,{'text':exit_plan.SKIP_TEXT[body.reason],'board':False,'q':False,'source':'skip_button','reason':body.reason,'note':body.note.strip()},conn)
+            await conn.execute('UPDATE sessions SET step=$2 WHERE id=$1',sid,step+1)
+            await s.log(sid,'step','system',step+1,{'to':step+1,'source':'skip_button'},conn)
+            return QuitResult(outcome='moved_on',message=f'Skipped "{titles[step]}". Next up: "{titles[step+1]}". Your answer is saved with the skipped step for the review.')
+        track=await conn.fetchrow('SELECT title FROM tracks WHERE id=$1',row['track_id'])
+        answered=await conn.fetch("SELECT DISTINCT step FROM session_events WHERE session_id=$1 AND kind='turn' AND actor='candidate' AND payload->>'source' IS DISTINCT FROM 'skip_button'",sid)
+        used=await conn.fetchval("SELECT count(*) FROM session_events WHERE session_id=$1 AND step=$2 AND kind='hint'",sid,step)
+        plan=exit_plan.build(body.reason,body.note,track=track['title'],titles=titles,step=step,why=why,
+            answered=[r['step'] for r in answered if r['step'] is not None],hints_used=used,hints_total=len(steps[step].hints) if step<len(steps) else 0)
+        await conn.execute("UPDATE sessions SET status='ended',ended_at=coalesce(ended_at,now()),engine_state=engine_state || $2::jsonb WHERE id=$1",sid,{'paused':False})
+        await s.log(sid,'note','system',step,{'quit':plan.model_dump()},conn)
+    return QuitResult(outcome='ended',message='This lesson has ended.',plan=plan)
+
 @router.get('/sessions/{sid}/events', response_model=list[Event])
 async def events(sid: str, after: int = Query(0,ge=0)): return await s.events(sid,after)
 

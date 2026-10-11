@@ -1834,6 +1834,59 @@
         }
       }
     },
+    "/api/v2/sessions/{sid}/quit": {
+      "post": {
+        "tags": [
+          "PrepCrew v2.3"
+        ],
+        "summary": "Quit Session",
+        "description": "The \"I don't know\" button: skip this step, or end the lesson with next steps.",
+        "operationId": "quit_session_api_v2_sessions__sid__quit_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuitInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuitResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/sessions/{sid}/events": {
       "get": {
         "tags": [
@@ -5020,6 +5073,156 @@
         "type": "object",
         "title": "ProbeRequest",
         "description": "Client sends the action only. seq, value and t are always set by the server."
+      },
+      "QuitInput": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "lost",
+              "unclear",
+              "time",
+              "technical",
+              "wrong_track",
+              "other"
+            ],
+            "title": "Reason"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "QuitInput"
+      },
+      "QuitPlan": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "lost",
+              "unclear",
+              "time",
+              "technical",
+              "wrong_track",
+              "other"
+            ],
+            "title": "Reason"
+          },
+          "reason_label": {
+            "type": "string",
+            "title": "Reason Label"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          },
+          "headline": {
+            "type": "string",
+            "title": "Headline"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "next_steps": {
+            "items": {
+              "$ref": "#/components/schemas/QuitStep"
+            },
+            "type": "array",
+            "title": "Next Steps"
+          },
+          "source": {
+            "type": "string",
+            "const": "authored",
+            "title": "Source",
+            "default": "authored"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason",
+          "reason_label",
+          "headline",
+          "summary",
+          "next_steps"
+        ],
+        "title": "QuitPlan"
+      },
+      "QuitResult": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "moved_on",
+              "ended"
+            ],
+            "title": "Outcome"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuitPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "message"
+        ],
+        "title": "QuitResult"
+      },
+      "QuitStep": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "grade",
+                  "restart",
+                  "plan",
+                  "intake",
+                  "history"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "detail"
+        ],
+        "title": "QuitStep"
       },
       "Registration": {
         "properties": {
