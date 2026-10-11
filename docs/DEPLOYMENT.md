@@ -44,11 +44,14 @@ before starting one uvicorn process. See [Docker on Render](https://render.com/d
 Free has no paid pre-deploy phase. The Blueprint's Docker Command is:
 
 ```sh
-sh -c "python -m alembic -c backend/alembic.ini upgrade head && exec python deploy/render_start.py"
+python deploy/render_start.py
 ```
 
-Every instance start checks/applies migrations against the external database
-before starting the API. A migration failure prevents serving traffic. Keep a
+Set `RENDER_MIGRATE_ON_START=true` (exact lowercase `true`, included in the
+Blueprint). The launcher invokes Alembic through the current Python executable
+with checked subprocess arguments before dropping privileges and starting the
+API. Every instance start therefore checks/applies migrations against the external
+database. A migration failure prevents serving traffic. Keep a
 single instance and one deployment pointed at this schema; do not run concurrent
 migration commands. Back up an existing database before deploying schema changes.
 `/api/v2/health` is the database-readiness endpoint. See

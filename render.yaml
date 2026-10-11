@@ -10,9 +10,11 @@ services:
     dockerContext: .
     autoDeployTrigger: off
     # Free has no pre-deploy phase. Migrate the external DB before serving.
-    dockerCommand: sh -c "python -m alembic -c backend/alembic.ini upgrade head && exec python deploy/render_start.py"
+    dockerCommand: python deploy/render_start.py
     healthCheckPath: /api/v2/health
     envVars:
+      - key: RENDER_MIGRATE_ON_START
+        value: "true"
       - key: DATABASE_URL
         sync: false
       - key: PUBLIC_BASE_URL
