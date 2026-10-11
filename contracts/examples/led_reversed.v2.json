@@ -1,0 +1,93 @@
+{
+  "synthetic": true,
+  "provenance": {
+    "converted_from": "contracts/examples/led_reversed.json",
+    "format": "A scenario spec as read by backend/app/v2/engine.py (steps) and backend/app/v2/rubrics.py (rubric), laid out like contracts/e2e-two-step.json. The whole file is meant to be stored as scenarios.spec, with the rubric key also stored as scenarios.rubric and each steps entry as a scenario_steps row.",
+    "reviewed_by_a_person": false,
+    "not_carried_over": ["layout", "per-criterion score anchors", "probe log evidence"],
+    "see": "contracts/examples/led_reversed.v2.md"
+  },
+  "prompt": "A 5 V supply feeds a 330 ohm resistor and an LED to ground. The LED is dark. Walk me through how you'd debug it.",
+  "steps": [
+    {
+      "idx": 0,
+      "title": "LED does not light",
+      "surface": "voice",
+      "task": "Walk through how you would debug the dark LED.",
+      "hints": [
+        "What do you expect the voltage to be across the resistor if the LED is on?",
+        "What does the reading at n2 tell you about whether current is flowing?"
+      ],
+      "success": {"min_turns": 2}
+    }
+  ],
+  "rubric": {
+    "version": "debug-process-draft-v0",
+    "status": "draft",
+    "reviewed_by": null,
+    "evaluators": {
+      "Debug process": [
+        {
+          "id": "checked_supply_first",
+          "skill_id": "hw.power_rails",
+          "description": "Verifies the supply rail before suspecting any other part.",
+          "rules": ["quoted_turn"],
+          "steps": [0]
+        },
+        {
+          "id": "verified_ground",
+          "skill_id": "hw.circuit_probing",
+          "description": "Confirms the ground reference is connected before trusting readings.",
+          "rules": ["quoted_turn"],
+          "steps": [0]
+        },
+        {
+          "id": "isolated_before_swapping",
+          "skill_id": "hw.circuit_probing",
+          "description": "Narrows the fault to a section or part before replacing anything.",
+          "rules": ["quoted_turn"],
+          "steps": [0]
+        },
+        {
+          "id": "stated_hypothesis",
+          "skill_id": "hw.circuit_probing",
+          "description": "States what they think is wrong and what reading would confirm it.",
+          "rules": ["quoted_turn"],
+          "steps": [0]
+        }
+      ]
+    }
+  },
+  "circuit": {
+    "source_scenario_id": "led_reversed",
+    "kind": "debug",
+    "ground_net": "gnd",
+    "parts": [
+      { "id": "V1", "type": "supply", "value": 5 },
+      { "id": "R1", "type": "resistor", "value": 330 },
+      { "id": "D1", "type": "led", "value": 2.0, "orientation": "reversed" }
+    ],
+    "nets": [
+      { "id": "n1", "pins": ["V1.plus", "R1.1"], "label": "VCC" },
+      { "id": "n2", "pins": ["R1.2", "D1.anode"] },
+      { "id": "gnd", "pins": ["V1.minus", "D1.cathode"], "label": "GND" }
+    ],
+    "fault": { "type": "led_reversed", "part": "D1" },
+    "expected_voltages": {
+      "healthy": { "n1": 5.0, "n2": 2.0, "gnd": 0.0 },
+      "faulted": { "n1": 5.0, "n2": 5.0, "gnd": 0.0 }
+    }
+  },
+  "assumptions": [
+    {
+      "id": "led_forward_drop",
+      "paths": ["/circuit/parts/2/value", "/circuit/expected_voltages/healthy/n2"],
+      "statement": "The LED forward drop is assumed to be 2.0 V. It is not a datasheet value and it was not measured. contracts/README.md already calls it an assumption. The healthy reading at n2 is that same number."
+    },
+    {
+      "id": "reversed_led_passes_no_current",
+      "paths": ["/circuit/expected_voltages/faulted/n2"],
+      "statement": "The faulted reading at n2 of 5.0 V assumes the reversed LED passes no current, so there is no drop across R1. Reverse leakage and breakdown were not modelled or measured. This is a modelling assumption added by the converter, not stated in the source file."
+    }
+  ]
+}
