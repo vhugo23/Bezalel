@@ -48,3 +48,7 @@ SERVE_HTML = os.getenv("SERVE_HTML", "false").strip().lower() in ("1", "true", "
 # Live interview turns need a short limit, the voice loop sits silent while it waits.
 # TASK_TIMEOUT_SECONDS is for background work.
 LIVE_TURN_TIMEOUT_SECONDS = float(os.getenv("LIVE_TURN_TIMEOUT_SECONDS", "5"))
+
+# Speech to text (ElevenLabs, upload endpoint). Input audio must be 16 kHz mono 16-bit PCM.
+ELEVENLABS_STT_MODEL = os.getenv("ELEVENLABS_STT_MODEL", "scribe_v2")
+STT_TIMEOUT_SECONDS = float(os.getenv("STT_TIMEOUT_SECONDS", "15"))

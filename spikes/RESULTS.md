@@ -52,3 +52,14 @@ speech to text about 0.8 to 1.6 s, a lite Gemini model about 1.0 s to first toke
 0.6 to 1.4 s on the flash model. Expect a visible pause per turn. The real figure comes from the on-screen
 `timing` readout once the loop exists. Ideas to hide it: speak a short filler acknowledgment while the model
 works, and start TTS on the first sentence.
+
+## Speech in, push-to-talk (`spikes/e2e_stt.py`)
+
+Sat Oct 10, 2026, one run. ElevenLabs spoke a sentence (4.74 s, flash model), the PCM went back through the
+real `/ws/voice` route as 100 ms frames plus `speech_end`, and the transcript was compared with the sentence.
+
+- Heard: the same words, ignoring the final period. Speech to text (`scribe_v2`, upload) took 935 ms.
+- The reply (real Gemini lite) came back as text and 156 audio frames. `speech_end` to the end of the reply audio
+  was 2872 ms. That includes the whole reply being spoken, so it is not the pause before the interviewer starts.
+- This is one synthetic voice. It says nothing about accuracy on real, accented or noisy speech.
+  A real browser microphone check by a person is still needed.

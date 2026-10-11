@@ -194,8 +194,9 @@ def test_voice_ws_text_fallback_and_resume():
         types = [ws.receive_json()["type"] for _ in range(4)]
         assert types == ["transcript_final", "interviewer_text", "timing", "tts_done"]
         ws.send_json({"type": "something_new"})  # unknown types are ignored, not fatal
-        ws.send_bytes(b"\x00\x00")
-        assert ws.receive_json()["code"] == "voice_not_implemented"
+        ws.send_bytes(b"\x00\x00")  # audio is buffered until speech_end, so nothing comes back
+        ws.send_json({"type": "speech_end"})
+        assert ws.receive_json()["code"] == "too_short"
     with client.websocket_connect(f"/ws/voice/{sid}") as ws:  # reconnect resumes
         assert ws.receive_json()["state"] == "interview"
         assert ws.receive_json()["type"] == "interviewer_text"

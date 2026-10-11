@@ -48,7 +48,9 @@
     <div class="row">
       <button id="send" class="primary" disabled>Send answer</button>
       <button id="barge" disabled>Barge in (stop audio)</button>
+      <button id="talk" disabled>Hold to talk</button>
     </div>
+    <p class="note" id="talkNote">Hold the button while you speak, release when you are done. Needs microphone permission.</p>
   </section>
 
   <section>
@@ -56,6 +58,8 @@
       <dt>Session</dt><dd id="sid">none</dd>
       <dt>Audio format</dt><dd>16-bit mono PCM, 16000 Hz</dd>
       <dt>Server: reply ready</dt><dd id="t_turn">not measured</dd>
+      <dt>Server: speech to text</dt><dd id="t_stt">not measured</dd>
+      <dt>Heard you say</dt><dd id="t_said">nothing yet</dd>
       <dt>Server: first audio from ElevenLabs</dt><dd id="t_tts">not measured</dd>
       <dt>Heard: answer sent to first sound</dt><dd id="t_heard">not measured</dd>
       <dt>Audio frames / seconds played</dt><dd id="t_frames">0 / 0.00</dd>
@@ -110,10 +114,12 @@ function playChunk(arrayBuffer) {
 function onMessage(ev) {
   if (ev.data instanceof ArrayBuffer) return playChunk(ev.data);
   const m = JSON.parse(ev.data);
+  if (m.type === "transcript_final") $("t_said").textContent = m.text;
   if (m.type === "interviewer_text") { $("said").hidden = false; $("said").textContent = m.text; }
   else if (m.type === "timing") {
     if (m.stage === "turn_total") $("t_turn").textContent = m.ms + " ms";
     if (m.stage === "tts_first_audio") $("t_tts").textContent = m.ms + " ms";
+    if (m.stage === "stt") $("t_stt").textContent = m.ms + " ms (upload to transcript)";
   } else if (m.type === "tts_done") {
     $("t_done").textContent = m.interrupted ? "interrupted (barge in or new answer)" : "finished normally";
   } else if (m.type === "error") { log("error " + m.code + ": " + m.message, "err"); }
@@ -138,8 +144,8 @@ $("begin").onclick = async () => {
     ws = new WebSocket("ws://" + $("base").value + "/ws/voice/" + s.session_id);
     ws.binaryType = "arraybuffer";
     ws.onmessage = onMessage;
-    ws.onclose = () => { log("socket closed"); ["open", "send", "barge"].forEach((b) => $(b).disabled = true); };
-    ws.onopen = () => { ["open", "send", "barge"].forEach((b) => $(b).disabled = false); log("socket open"); };
+    ws.onclose = () => { log("socket closed"); ["open", "send", "barge", "talk"].forEach((b) => $(b).disabled = true); };
+    ws.onopen = () => { ["open", "send", "barge", "talk"].forEach((b) => $(b).disabled = false); log("socket open"); };
   } catch (e) { log(String(e), "err"); }
 };
 
@@ -158,6 +164,56 @@ $("send").onclick = async () => {
 };
 
 $("barge").onclick = () => { stopAudio(); ws.send(JSON.stringify({ type: "barge_in", t_client: Date.now() })); };
+
+// ---- hold to talk: mic -> 16 kHz 16-bit mono PCM frames -> speech_end on release ----
+let mic = null, recording = false, micNode = null;
+
+function downsample(input, inRate) {
+  const ratio = inRate / RATE, outLen = Math.floor(input.length / ratio), out = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const a = Math.floor(i * ratio), b = Math.min(Math.floor((i + 1) * ratio), input.length);
+    let sum = 0; for (let j = a; j < b; j++) sum += input[j];
+    out[i] = Math.max(-1, Math.min(1, sum / Math.max(1, b - a))) * 0x7fff;
+  }
+  return out;
+}
+
+async function ensureMic() {
+  if (mic) return;
+  mic = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  const source = ctx.createMediaStreamSource(mic);
+  micNode = ctx.createScriptProcessor(4096, 1, 1);   // deprecated but simple, fine for a test page
+  micNode.onaudioprocess = (e) => {
+    if (!recording || !ws || ws.readyState !== 1) return;
+    const pcm = downsample(e.inputBuffer.getChannelData(0), ctx.sampleRate);
+    if (pcm.length) ws.send(pcm.buffer);
+  };
+  source.connect(micNode);
+  micNode.connect(ctx.destination);   // the processor must be connected to run; its output is silent
+}
+
+async function pressTalk(ev) {
+  ev.preventDefault();
+  if (recording) return;
+  try { await ctx.resume(); await ensureMic(); } catch (e) { log("microphone: " + e, "err"); return; }
+  stopAudio();
+  frames = 0; seconds = 0; heardLogged = false;
+  ws.send(JSON.stringify({ type: "barge_in", t_client: Date.now() }));   // stop the interviewer, start a clean recording
+  recording = true;
+  $("talk").textContent = "Listening... release to send";
+}
+
+function releaseTalk() {
+  if (!recording) return;
+  recording = false;
+  $("talk").textContent = "Hold to talk";
+  sentAt = performance.now(); $("t_heard").textContent = "waiting"; $("t_said").textContent = "transcribing...";
+  setTimeout(() => ws.send(JSON.stringify({ type: "speech_end", t_client: Date.now() })), 150);  // let the last frames go out first
+}
+
+const talk = $("talk");
+talk.addEventListener("pointerdown", pressTalk);
+["pointerup", "pointercancel", "pointerleave"].forEach((n) => talk.addEventListener(n, releaseTalk));
 </script>
 </body>
 </html>

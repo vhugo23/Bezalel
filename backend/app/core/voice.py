@@ -1,6 +1,7 @@
 """Neutral voice layer. Swap providers with VOICE_PROVIDER.
 Providers implement `async def stream(text, voice_id)`, an async generator of raw audio bytes,
-and `mint_token()`. `speak()` collects a whole clip."""
+`async def transcribe(pcm)` (16 kHz mono 16-bit PCM in, text out) and `mint_token()`.
+`speak()` collects a whole clip."""
 from typing import AsyncIterator
 
 from app import config
@@ -16,6 +17,10 @@ class FakeVoice:
     async def stream(self, text: str, voice_id: str | None = None) -> AsyncIterator[bytes]:
         return
         yield  # makes this an async generator that yields nothing: no audio, no error
+
+    async def transcribe(self, pcm: bytes) -> str:
+        # Never invent a transcript: a fake provider cannot hear anything.
+        raise VoiceError("speech to text needs VOICE_PROVIDER=elevenlabs")
 
     async def mint_token(self) -> str | None:
         return None
@@ -50,6 +55,22 @@ class ElevenLabsVoice:
                     if chunk:
                         yield chunk
 
+    async def transcribe(self, pcm: bytes) -> str:
+        """POST /v1/speech-to-text with a raw PCM upload (16 kHz mono 16-bit little-endian). Batch only,
+        so there are no partial transcripts. Shape verified by spikes/spike_stt.py."""
+        import httpx  # lazy import
+        if not config.ELEVENLABS_API_KEY:
+            raise VoiceError("ELEVENLABS_API_KEY is empty. Add it to .env and restart the server.")
+        async with httpx.AsyncClient(timeout=httpx.Timeout(config.STT_TIMEOUT_SECONDS, connect=10)) as client:
+            resp = await client.post(
+                f"{self.BASE}/speech-to-text", headers={"xi-api-key": config.ELEVENLABS_API_KEY},
+                data={"model_id": config.ELEVENLABS_STT_MODEL, "file_format": "pcm_s16le_16", "language_code": "en"},
+                files={"file": ("answer.pcm", pcm, "application/octet-stream")},
+            )
+        if resp.status_code != 200:
+            raise VoiceError(f"ElevenLabs speech to text error {resp.status_code}: {resp.text[:200]}")
+        return str(resp.json().get("text", "")).strip()
+
     async def mint_token(self) -> str | None:
         # The browser never talks to ElevenLabs directly: audio is relayed over our websocket,
         # so the API key never reaches the frontend.
@@ -67,6 +88,10 @@ def get_provider():
 
 def stream(text: str, voice_id: str | None = None) -> AsyncIterator[bytes]:
     return get_provider().stream(text, voice_id)
+
+
+async def transcribe(pcm: bytes) -> str:
+    return await get_provider().transcribe(pcm)
 
 
 async def speak(text: str, voice_id: str | None = None) -> bytes:
