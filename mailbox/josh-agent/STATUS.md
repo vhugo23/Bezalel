@@ -14,3 +14,5 @@ header_complete: josh/header-refresh PR #17, commit4eeb12c; Vercel header produc
 autoplay: implementing user-requested scripted demo playback for system design and Pi. touching: frontend/src/pages/Session.tsx; frontend/src/styles.css; frontend/src/components/DemoAutoplay.tsx; frontend/src/lib/demoAutoplay.ts
 
 autoplay_scope: touching Session.tsx and new DemoAutoplay.tsx/.css, lib/demoAutoplay.ts and tests; styles.css is NOT touched (Trey reservation).
+
+autoplay_pi_visuals: additionally touching frontend/src/components/PiLab.tsx to show the scripted terminal/editor/browser/parts interactions while playback runs.
