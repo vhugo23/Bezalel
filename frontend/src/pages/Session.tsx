@@ -46,7 +46,7 @@ export function SessionPage() {
   useEffect(()=>{if(step===3&&!autoFinished.current&&events.some(e=>e.kind==='step'&&e.payload.to===3&&e.payload.source==='interviewer')){autoFinished.current=true;end.mutate();}},[step,events]);
   useEffect(()=>{if(follow.current&&transcript.current)transcript.current.scrollTop=transcript.current.scrollHeight;},[turns.length,voice.phase,voice.partial]);
   const submit=()=>{
-    if(!text.trim()||(!voice.active&&voice.busy))return;
+    if(!text.trim()||next.isPending||(!voice.active&&voice.busy))return;
     const answer=text.trim();setText('');
     if(voice.active)voice.sendText(answer);else void voice.runText(()=>api.turn(id,{text:answer,step,board:step===1}));
   };

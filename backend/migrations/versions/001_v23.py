@@ -9,7 +9,8 @@ depends_on = None
 
 def upgrade():
     sql = (Path(__file__).parents[1] / 'sql' / '001_v23.sql').read_text(encoding='utf-8')
-    op.get_bind().connection.run_async(lambda driver: driver.execute('SET LOCAL search_path TO prepcrew, public;\n' + sql))
+    schema = op.get_context().config.attributes['schema']
+    op.get_bind().connection.run_async(lambda driver: driver.execute(f'SET LOCAL search_path TO "{schema}", public;\n' + sql))
 
 def downgrade():
     raise RuntimeError('Destructive downgrade disabled. Restore a reviewed backup instead.')

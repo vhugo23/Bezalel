@@ -15,7 +15,8 @@ ws_router = APIRouter()
 async def health():
     version = await db.one('SELECT version_num FROM alembic_version')
     return Health(status='ok',schema_version=version['version_num'],demo=DEMO,
-                  voice_ready=bool(config.ELEVENLABS_API_KEY and config.ELEVENLABS_VOICE_ID) and not DEMO)
+                  voice_ready=bool(config.ELEVENLABS_API_KEY and config.ELEVENLABS_VOICE_ID) and not DEMO,
+                  test_environment=config.V2_DATABASE_SCHEMA.startswith('prepcrew_e2e_'))
 
 @router.post('/plans', response_model=Plan)
 async def plan(body: Intake): return await s.create_plan(body)
@@ -75,8 +76,8 @@ async def report(sid: str): return await s.report(sid)
 async def metrics(sid: str):
     session=await s.require_session(sid)
     return Metrics(rows=[dict(r) for r in await db.fetch('SELECT name,n,p50,p95,max FROM v_session_latency WHERE session_id=$1',sid)],
-                   hypertables=[r['hypertable_name'] for r in await db.fetch("SELECT hypertable_name FROM timescaledb_information.hypertables WHERE hypertable_schema='prepcrew'")],
-                   aggregates=[r['view_name'] for r in await db.fetch("SELECT view_name FROM timescaledb_information.continuous_aggregates WHERE view_schema='prepcrew'")],
+                   hypertables=[r['hypertable_name'] for r in await db.fetch('SELECT hypertable_name FROM timescaledb_information.hypertables WHERE hypertable_schema=$1',config.V2_DATABASE_SCHEMA)],
+                   aggregates=[r['view_name'] for r in await db.fetch('SELECT view_name FROM timescaledb_information.continuous_aggregates WHERE view_schema=$1',config.V2_DATABASE_SCHEMA)],
                    mastery=[{**dict(r),'bucket':r['bucket'].isoformat()} for r in await db.fetch('SELECT skill_id,bucket,score,samples FROM mastery_hourly WHERE user_id=$1 ORDER BY bucket DESC LIMIT 48',session['user_id'])])
 
 @router.get('/sessions/{sid}/lesson', response_model=Lesson)

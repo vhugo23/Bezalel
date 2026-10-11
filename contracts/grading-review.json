@@ -1,0 +1,13 @@
+{
+  "rubric_version": "system-design-practice-v2",
+  "synthetic": true,
+  "human_calibrated": false,
+  "cases": [
+    {"id":"explicit-misconception","candidate":"Failing closed guarantees availability because every request gets through.","proposal":"You equated failing closed with allowing requests through.","criterion":"failure_policy","suggested_score":0,"suggested_supported":true,"human_score":null,"human_supported":null,"reviewer_notes":""},
+    {"id":"coherent-tradeoff","candidate":"If Redis is unreachable I would fail open to keep requests available, accepting that the API key limit can be exceeded during the outage.","proposal":"You explained the availability-versus-enforcement consequence of failing open.","criterion":"failure_policy","suggested_score":3,"suggested_supported":true,"human_score":null,"human_supported":null,"reviewer_notes":""},
+    {"id":"exaggerated-claim","candidate":"I would use Redis for shared counters.","proposal":"You explained Redis replication, failover and consistency in detail.","criterion":"failure_policy","suggested_score":4,"suggested_supported":false,"human_score":null,"human_supported":null,"reviewer_notes":""},
+    {"id":"missing-is-unassessed","candidate":"", "proposal":"You do not understand failure policies.","criterion":"failure_policy","suggested_score":null,"suggested_supported":false,"human_score":null,"human_supported":null,"reviewer_notes":""},
+    {"id":"question-not-answer","candidate":"What happens if the shared counter service goes down?","proposal":"You designed a correct failover strategy.","criterion":"failure_policy","suggested_score":4,"suggested_supported":false,"human_score":null,"human_supported":null,"reviewer_notes":""},
+    {"id":"drawing-is-activity","candidate":"A box labeled API and an arrow were drawn.","proposal":"You demonstrated a scalable and reliable architecture.","criterion":"drawing","suggested_score":null,"suggested_supported":false,"human_score":null,"human_supported":null,"reviewer_notes":""}
+  ]
+}

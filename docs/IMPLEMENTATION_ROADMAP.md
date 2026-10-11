@@ -1,6 +1,6 @@
 # PrepCrew: full product implementation roadmap
 
-Baseline: `origin/main` at `2064b79`, checked after pulling on 2026-10-10. Local React and v2.3 integration work is preserved and remains uncommitted. This roadmap covers the approved root `prototype.html`, `backend/sql/prepcrew.sql`, and the product brief. It is a plan, not a claim that the features below are shipped.
+Baseline: the React/v2.3 integration and first learning loop were pushed in `9399673`. This roadmap covers the approved root `prototype.html`, `backend/sql/prepcrew.sql`, and the product brief. Implemented behavior and remaining acceptance gates are listed separately below.
 
 ## Product completion
 
@@ -24,7 +24,7 @@ The visual contract remains the approved prototype: light cards, indigo accent, 
 | Hands-on engines | Seeded engine definitions; legacy circuit module reads stored voltages. | Actual Linux/network simulation, DC solver, C/code execution harnesses, web repo runner, behavioral engine. |
 | Deployment/accounts | Local development works. Browser-local user id; artifacts on local disk. | Account identity, authorization, durable storage/jobs, HTTPS, operations, export/deletion, CI, production deployment. |
 
-Latest integration verification: 321 backend tests and 15 frontend tests passed, production build passed, migration `003_learning_loop` ran on Tiger Data, and the database invariant verifier passed with fixture writes rolled back. A controlled live Gemini/Tiger session-to-lesson-to-changed-retest check validated 11 supported claim references, updated mastery and comparison evidence. Abrupt API restart during grading recovered jobs; duplicate finish requests did not duplicate assessments; partial failure resumed only failed evaluators. Browser inspection verified lesson generation and retest start. Synthetic utterances test plumbing, not human grading quality. The standalone browser E2E suite still needs a dedicated test database and has not been run.
+Latest integration verification: 321 backend tests and 15 frontend tests passed, production build passed, migration `003_learning_loop` ran on Tiger Data, and the database invariant verifier passed with fixture writes rolled back. A controlled live Gemini/Tiger session-to-lesson-to-changed-retest check validated 11 supported claim references, updated mastery and comparison evidence. Abrupt API restart during grading recovered jobs; duplicate finish requests did not duplicate assessments; partial failure resumed only failed evaluators. Browser inspection verified lesson generation and retest start. Synthetic utterances test plumbing, not human grading quality. Two standalone browser E2E journeys now pass against a freshly migrated disposable Tiger Data schema, including reload, critique persistence, grading/evidence, sequence replay, idempotent strokes and stale-step rejection. No normal workspace records are fixtures. Human grading calibration remains pending in docs/GRADING_REVIEW.md.
 
 ## Architecture to finish around
 
@@ -197,7 +197,7 @@ Run deterministic tests and browser E2E in isolation, then a small controlled li
 
 The first system-design learning-loop slice is implemented: criterion-to-skill assessment, rejection of unknown skills, independent evidence review, recoverable grading, and gap -> checked lesson -> changed retest -> updated circle. Practice rubrics are authored and model-reviewed, not human-calibrated. Full backend consolidation and generic durable generation remain open.
 
-1. Human-review the rubric and a labeled conversation set; run standalone browser E2E with a dedicated test database.
+1. Browser E2E isolation and two acceptance journeys are implemented and verified. Human rubric review remains pending; synthetic examples and a review procedure are in docs/GRADING_REVIEW.md.
 2. Generalize persisted engine/step interfaces and evaluator selection beyond the rate-limiter flow.
 3. Complete source ingestion, personalized plan/scenario generation and generation progress/validation UI.
 4. Connect Backboard to verified provenance, resolution and deletion; implement difficulty calibration.

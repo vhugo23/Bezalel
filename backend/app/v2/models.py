@@ -157,6 +157,7 @@ class Health(BaseModel):
     schema_version: str
     demo: bool
     voice_ready: bool
+    test_environment: bool = False
 
 class PairResult(BaseModel):
     code: str

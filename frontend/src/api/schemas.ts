@@ -16,7 +16,7 @@ export const schemas: Record<string,z.ZodType> = {
 "EventInput":z.object({"kind":z.union([z.literal("turn"),z.literal("stroke"),z.literal("step"),z.literal("note"),z.literal("interrupted")]),"step":z.number().int().min(0).max(10).optional(),"payload":z.record(z.string(),z.unknown()).optional()}).passthrough(),
 "GapSummary":z.object({"id":z.string(),"skill_id":z.string(),"text":z.string(),"evidence_seq":z.array(z.number().int())}).passthrough(),
 "HTTPValidationError":z.object({"detail":z.array(z.lazy(() => schemas["ValidationError"])).optional()}).passthrough(),
-"Health":z.object({"status":z.string(),"schema_version":z.string(),"demo":z.boolean(),"voice_ready":z.boolean()}).passthrough(),
+"Health":z.object({"status":z.string(),"schema_version":z.string(),"demo":z.boolean(),"voice_ready":z.boolean(),"test_environment":z.boolean().optional()}).passthrough(),
 "Intake":z.object({"user_id":z.string().min(1).max(100),"name":z.string().max(80).optional(),"role":z.string().min(1).max(200),"companies":z.array(z.string()).max(20),"struggles":z.array(z.string()).max(20),"question":z.string().max(10000),"link":z.string().max(2000).optional()}).passthrough(),
 "Lesson":z.object({"id":z.union([z.string(),z.null()]).optional(),"title":z.string().optional(),"body":z.string(),"reason":z.string(),"evidence_seq":z.array(z.number().int()),"skill_id":z.union([z.string(),z.null()]).optional(),"claim_id":z.union([z.string(),z.null()]).optional(),"ai_generated":z.boolean().optional(),"practice":z.string().optional(),"retest_ready":z.boolean().optional()}).passthrough(),
 "LessonResponse":z.object({"skill_id":z.string(),"body":z.string(),"ai_generated":z.boolean().optional()}).passthrough(),

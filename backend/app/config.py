@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -9,6 +10,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 # Postgres schema the app's tables live in (create it with `python init_db.py`). The app searches this schema first,
 # then public (where the timescaledb functions live). Blank = public, as before. Letters, digits and _ only.
 DATABASE_SCHEMA = os.getenv("DATABASE_SCHEMA", "").strip()
+V2_DATABASE_SCHEMA = os.getenv('V2_DATABASE_SCHEMA', 'prepcrew').strip()
+if not re.fullmatch(r'[a-z][a-z0-9_]{0,62}', V2_DATABASE_SCHEMA):
+    raise ValueError('V2_DATABASE_SCHEMA must be a lowercase PostgreSQL identifier')
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # Copy a current model name from Google AI Studio / ai.google.dev. No default on purpose.

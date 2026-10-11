@@ -856,6 +856,11 @@ export interface components {
             demo: boolean;
             /** Voice Ready */
             voice_ready: boolean;
+            /**
+             * Test Environment
+             * @default false
+             */
+            test_environment: boolean;
         };
         /** Intake */
         Intake: {

@@ -1,0 +1,110 @@
+"""Run browser acceptance against an empty disposable Timescale schema.
+
+Never migrates, seeds, or deletes records in DATABASE_URL. The admin connection
+only creates/drops this run's uniquely named schema. All app/provider settings
+are overridden in child processes; no paid providers are used.
+"""
+import asyncio
+import os
+from pathlib import Path
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from urllib.request import urlopen
+from uuid import uuid4
+
+import asyncpg
+from dotenv import dotenv_values
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def wait_ready(url, process):
+    deadline = time.monotonic() + 45
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError('Acceptance server exited; inspect .artifacts/e2e logs')
+        try:
+            with urlopen(url, timeout=2) as response:
+                if response.status == 200:
+                    return
+        except OSError:
+            time.sleep(.25)
+    raise RuntimeError('Acceptance server did not become ready')
+
+
+async def run():
+    settings = {**dotenv_values(ROOT / '.env'), **os.environ}
+    source = settings.get('E2E_ADMIN_DATABASE_URL') or settings.get('DATABASE_URL')
+    if not source:
+        raise RuntimeError('Set E2E_ADMIN_DATABASE_URL or DATABASE_URL with CREATE SCHEMA permission')
+    name = 'prepcrew_e2e_' + uuid4().hex
+    admin = await asyncpg.connect(source)
+    children, handles = [], []
+    created = False
+    output = ROOT / '.artifacts' / 'e2e'
+    output.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, 'DATABASE_URL': source, 'DATABASE_SCHEMA': name, 'V2_DATABASE_SCHEMA': name,
+           'DEMO_MODE': 'true', 'LLM_PROVIDER': 'fake', 'VOICE_PROVIDER': 'fake',
+           'MEMORY_BACKEND': '', 'GEMINI_API_KEY': '', 'ELEVENLABS_API_KEY': '',
+           'BACKBOARD_API_KEY': '', 'PYTHONPATH': str(ROOT / 'backend'),
+           'PREPCREW_API_ORIGIN': 'http://127.0.0.1:18000',
+           'PREPCREW_WEB_PORT': '15173', 'PREPCREW_E2E_ORIGIN': 'http://127.0.0.1:15173'}
+    flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+    try:
+        for port in (18000, 15173):
+            with socket.socket() as probe:
+                probe.bind(('127.0.0.1', port))
+        await admin.execute(f'CREATE SCHEMA "{name}"')
+        created = True
+        # stderr may include a DSN on migration errors; keep logs local/ignored.
+        with (output / 'migrate.log').open('w', encoding='utf-8') as log:
+            result = await asyncio.to_thread(subprocess.run,
+                [sys.executable, '-m', 'alembic', '-c', 'backend/alembic.ini', 'upgrade', 'head'],
+                cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
+        if result.returncode:
+            raise RuntimeError('Fresh migration failed; inspect .artifacts/e2e/migrate.log')
+        commands = [
+            ([sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '18000'], ROOT, 'api'),
+            ([shutil.which('node'), str(ROOT / 'frontend/node_modules/vite/bin/vite.js'), '--host', '127.0.0.1'], ROOT / 'frontend', 'web'),
+        ]
+        for command, cwd, label in commands:
+            handle = (output / (label + '.log')).open('w', encoding='utf-8')
+            handles.append(handle)
+            children.append(subprocess.Popen(command, cwd=cwd, env=env, stdout=handle,
+                stderr=subprocess.STDOUT, creationflags=flags))
+        await asyncio.to_thread(wait_ready, env['PREPCREW_API_ORIGIN'] + '/api/v2/health', children[0])
+        await asyncio.to_thread(wait_ready, env['PREPCREW_E2E_ORIGIN'], children[1])
+        command = [shutil.which('node'), str(ROOT / 'frontend/node_modules/@playwright/test/cli.js'), 'test']
+        with (output / 'browser.log').open('w', encoding='utf-8') as log:
+            result = await asyncio.to_thread(subprocess.run, command, cwd=ROOT / 'frontend', env=env,
+                stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
+        print((output / 'browser.log').read_text(encoding='utf-8', errors='replace'))
+        return result.returncode
+    finally:
+        for child in reversed(children):
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    await asyncio.to_thread(child.wait, timeout=10)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    await asyncio.to_thread(child.wait)
+        for handle in handles:
+            handle.close()
+        if created:
+            await admin.execute(f'DROP SCHEMA "{name}" CASCADE')
+        await admin.close()
+        print('Acceptance environment stopped; disposable schema removed.' if created else 'No test schema was created.')
+
+
+if __name__ == '__main__':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+    try:
+        raise SystemExit(asyncio.run(run()))
+    except Exception as error:
+        print(type(error).__name__ + ': acceptance setup failed; inspect local logs.', file=sys.stderr)
+        raise SystemExit(1)

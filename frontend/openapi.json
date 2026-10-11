@@ -2223,6 +2223,11 @@
           "voice_ready": {
             "type": "boolean",
             "title": "Voice Ready"
+          },
+          "test_environment": {
+            "type": "boolean",
+            "title": "Test Environment",
+            "default": false
           }
         },
         "type": "object",

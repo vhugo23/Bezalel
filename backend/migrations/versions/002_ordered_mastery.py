@@ -6,8 +6,9 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    op.execute('''CREATE OR REPLACE FUNCTION prepcrew.apply_assessment() RETURNS trigger LANGUAGE plpgsql
-    SET search_path = prepcrew, public AS $$
+    schema = op.get_context().config.attributes['schema']
+    op.execute(f'''CREATE OR REPLACE FUNCTION {schema}.apply_assessment() RETURNS trigger LANGUAGE plpgsql
+    SET search_path = {schema}, public AS $$
     BEGIN
       INSERT INTO user_skills(user_id,skill_id,score,is_estimate,last_assessed_at)
       VALUES(NEW.user_id,NEW.skill_id,NEW.score,NEW.is_estimate,NEW.ts)

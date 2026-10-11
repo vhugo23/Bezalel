@@ -14,3 +14,15 @@ Run from the repo root:
 ```
 
 No compression policy is installed. All event references from claims and annotations remain soft references. Destructive downgrades are deliberately unsupported.
+
+`V2_DATABASE_SCHEMA` defaults to `prepcrew`. A validated identifier can select an
+isolated schema for acceptance tests; migrations and the application use the
+same namespace, including trigger search paths and aggregate metadata queries.
+The frozen SQL and default production schema are unchanged.
+
+Run `python backend/scripts/e2e.py` through the repository virtual environment
+after installing Playwright Chromium (`cd frontend; npx playwright install chromium`).
+The runner creates a uniquely named `prepcrew_e2e_*` schema, migrates it from zero,
+starts its own demo API and frontend on ports 18000/15173, disables provider keys,
+runs browser tests, stops its child processes and drops only that schema. Logs
+and traces stay ignored. The normal `prepcrew` records are never test fixtures.

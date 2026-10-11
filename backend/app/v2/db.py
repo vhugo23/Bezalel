@@ -11,7 +11,7 @@ async def pool():
     global _pool
     if _pool is None:
         _pool = await asyncpg.create_pool(config.DATABASE_URL, min_size=1, max_size=6, init=init,
-                                         server_settings={'search_path': 'prepcrew,public'})
+                                         server_settings={'search_path': config.V2_DATABASE_SCHEMA + ',public'})
     return _pool
 
 async def fetch(sql, *args):

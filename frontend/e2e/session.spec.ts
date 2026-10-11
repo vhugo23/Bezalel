@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test';
-// Requires the API and Vite servers, a migrated test database, and DEMO_MODE=true.
-// Creates a synthetic profile/session. Do not run against a production database.
+// Launch through backend/scripts/e2e.py. Never write into the real workspace.
+test.beforeAll(async({request})=>{
+ const response=await request.get('/api/v2/health');
+ expect(response.ok()).toBeTruthy();
+ const health=await response.json();
+ expect(health.demo).toBe(true);
+ expect(health.test_environment).toBe(true);
+});
 test('intake → whiteboard → fleet with a rejected unsupported claim',async({page})=>{
  await page.goto('/intake');
  await page.getByLabel('What are you aiming for?').fill('Software engineer — synthetic E2E tester');
@@ -12,11 +18,18 @@ test('intake → whiteboard → fleet with a rejected unsupported claim',async({
  await page.getByLabel('Your answer').fill('What scale are we designing for, and is per-key limiting enough?');
  await page.getByRole('button',{name:'Send',exact:true}).click();
  await expect(page.getByText('What scale are we designing for, and is per-key limiting enough?',{exact:true})).toBeVisible();
+ await page.reload();
+ await expect(page.getByText('What scale are we designing for, and is per-key limiting enough?',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Next step'}).click();
  await page.getByRole('button',{name:'Load demo board + explanation'}).click();
  await expect(page.getByRole('button',{name:'Done, take a look'})).toBeEnabled();
  await page.getByRole('button',{name:'Done, take a look'}).click();
+ await expect(page.getByRole('button',{name:'Defend the trade-offs →'})).toBeVisible();
+ await page.reload();
+ await expect(page.getByRole('button',{name:'Defend the trade-offs →'})).toBeVisible();
  await page.getByRole('button',{name:'Defend the trade-offs →'}).click();
+ await expect(page.getByText('Step 3 of 3',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Type instead'}).click();
  await page.getByLabel('Your answer').fill('I chose Redis for shared counters. Failing open preserves availability but weakens the limit.');
  await page.getByRole('button',{name:'Send',exact:true}).click();
  await expect(page.getByRole('button',{name:'Next step'})).toBeEnabled();
@@ -27,4 +40,25 @@ test('intake → whiteboard → fleet with a rejected unsupported claim',async({
  await expect(page.getByText('Explained while drawing.',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:/Event #/}).first().click();
  await expect(page.getByRole('dialog')).toContainText('candidate');
+});
+
+test('events replay in sequence, duplicate strokes are idempotent and stale steps fail',async({request})=>{
+ const profile={user_id:crypto.randomUUID(),name:'Synthetic tester',role:'Software engineer',companies:[],struggles:['System design'],question:'Design an API.',link:''};
+ const plan=await (await request.post('/api/v2/plans',{data:profile})).json();
+ const track=plan.tracks.find((t:{ready:boolean})=>t.ready);
+ const session=await (await request.post('/api/v2/sessions',{data:{track_id:track.id,consent:true}})).json();
+ const url=`/api/v2/sessions/${session.id}/events`;
+ expect((await request.post(url,{data:{kind:'step',step:2,payload:{to:2}}})).status()).toBe(409);
+ expect((await request.post(url,{data:{kind:'step',step:1,payload:{to:1}}})).ok()).toBeTruthy();
+ const stroke={kind:'stroke',step:1,payload:{id:'idempotent-stroke',kind:'path',points:[{x:10,y:20,pressure:.5}],label:''}};
+ const first=await (await request.post(url,{data:stroke})).json();
+ const duplicate=await (await request.post(url,{data:stroke})).json();
+ expect(first.seq).toBe(duplicate.seq);
+ const replay=await (await request.get(`${url}?after=${first.seq-1}`)).json();
+ expect(replay.map((e:{seq:number})=>e.seq)).toEqual([first.seq]);
+ const stale=await request.post(`/api/v2/sessions/${session.id}/turns`,{data:{text:'stale answer',step:0,board:false}});
+ expect(stale.status()).toBe(409);
+ const metrics=await (await request.get(`/api/v2/sessions/${session.id}/metrics`)).json();
+ expect(metrics.hypertables.sort()).toEqual(['metrics','session_events','skill_assessments']);
+ expect(metrics.aggregates.sort()).toEqual(['latency_1m','mastery_hourly']);
 });
