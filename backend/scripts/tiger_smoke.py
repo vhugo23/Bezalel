@@ -44,9 +44,10 @@ def check(name: str, ok: bool, detail="") -> bool:
     return ok
 
 
-def with_search_path(dsn: str, schema: str) -> str:
+def with_search_path(dsn: str, path: str) -> str:
+    """path is a comma separated search_path, e.g. 'smoke_ab12cd,public'. New tables go to the first one."""
     u = urllib.parse.urlsplit(dsn)
-    q = urllib.parse.parse_qsl(u.query) + [("search_path", schema)]
+    q = urllib.parse.parse_qsl(u.query) + [("search_path", path)]
     return urllib.parse.urlunsplit(u._replace(query=urllib.parse.urlencode(q)))
 
 
@@ -57,16 +58,27 @@ def strip_timescale(sql: str) -> str:
     return re.sub(r"CREATE MATERIALIZED VIEW IF NOT EXISTS \w+\s+WITH \(timescaledb.*?WITH NO DATA;", "", sql, flags=re.S)
 
 
-async def setup_schema(dsn: str, schema: str, no_timescale: bool) -> bool:
+async def extension_schema(dsn: str) -> str | None:
+    conn = await asyncpg.connect(dsn)
+    try:
+        return await conn.fetchval("select n.nspname from pg_extension e join pg_namespace n on n.oid = e.extnamespace "
+                                   "where e.extname = 'timescaledb'")
+    finally:
+        await conn.close()
+
+
+async def setup_schema(dsn: str, schema: str, ext_schema: str | None, no_timescale: bool) -> bool:
     conn = await asyncpg.connect(dsn)
     try:
         if not no_timescale:
             ver = await conn.fetchval("select extversion from pg_extension where extname = 'timescaledb'")
             if not check("timescaledb extension is installed in this database", ver is not None, "not installed"):
                 return False  # never let CREATE EXTENSION land inside the throwaway schema
-            print(f"         timescaledb {ver}")
+            print(f"         timescaledb {ver} (functions in schema '{ext_schema}')")
         await conn.execute(f'CREATE SCHEMA "{schema}"')
-        await conn.execute(f'SET search_path TO "{schema}"')
+        # throwaway schema first: every new table goes there. The extension's schema second, only so that
+        # create_hypertable and friends resolve.
+        await conn.execute(f'SET search_path TO "{schema}", "{ext_schema or "public"}"')
         ok = True
         for f in ("sql/schema.sql", "sql/prepcrew.sql"):
             text = Path(f).read_text(encoding="utf-8")
@@ -94,7 +106,7 @@ async def setup_schema(dsn: str, schema: str, no_timescale: bool) -> bool:
         await conn.close()
 
 
-async def drive(dsn_schema: str, has_scenario: bool):
+async def drive(dsn_schema: str, schema: str, has_scenario: bool):
     base, ws_base = f"http://127.0.0.1:{PORT}", f"ws://127.0.0.1:{PORT}"
     db = await asyncpg.connect(dsn_schema)
     try:
@@ -142,12 +154,17 @@ async def drive(dsn_schema: str, has_scenario: bool):
             check("report", (await c.get(f"/api/sessions/{sid}/report")).json().get("status") == "graded")
             check("metrics", (await c.get(f"/api/metrics/{sid}")).json().get("turn_total_ms") is not None)
             check("mastery", (await c.get("/api/mastery", params={"user_id": "smoke_user"})).status_code == 200)
-            stored = await db.fetchval("select count(*) from events where subject_id=$1", sid)
-            check("rows really stored in the database", stored >= 3, stored)
+            stored = await db.fetchval(f'select count(*) from "{schema}".events where subject_id=$1', sid)
+            check(f"rows stored in {schema} (not in your real tables)", stored >= 3, stored)
+            leaked = await db.fetchval("select count(*) from information_schema.tables "
+                                       "where table_schema = 'public' and table_name = 'events'")
+            if leaked:
+                n = await db.fetchval("select count(*) from public.events where subject_id=$1", sid)
+                check("nothing written to public.events", n == 0, n)
             d = await c.delete(f"/api/sessions/{sid}")
             check("delete session", d.status_code == 200, d.text)
-            left = await db.fetchval("select count(*) from events where subject_id=$1", sid)
-            plan_left = await db.fetchval("select count(*) from records where id=$1", plan["plan_id"])
+            left = await db.fetchval(f'select count(*) from "{schema}".events where subject_id=$1', sid)
+            plan_left = await db.fetchval(f'select count(*) from "{schema}".records where id=$1', plan["plan_id"])
             check("deletion removed the session's events", left == 0, left)
             check("deletion removed the plan (resume text)", plan_left == 0, plan_left)
     finally:
@@ -200,21 +217,23 @@ def main():
     try:
         print("1. schema")
         created = True  # set before CREATE so a partial schema is still dropped
-        if not asyncio.run(setup_schema(dsn, schema, args.no_timescale)):
+        ext_schema = asyncio.run(extension_schema(dsn)) or "public"
+        path = f"{schema},{ext_schema}"
+        if not asyncio.run(setup_schema(dsn, schema, ext_schema, args.no_timescale)):
             print("\nschema setup failed, skipping the server checks")
             return
         if scenario_src.exists() and not scenario_dst.exists():
             shutil.copyfile(scenario_src, scenario_dst)
             added_scenario = True
         print("\n2. backend on the throwaway schema (fake AI and voice)")
-        env = {**os.environ, "DATABASE_URL": with_search_path(dsn, schema), "LLM_PROVIDER": "fake",
+        env = {**os.environ, "DATABASE_URL": with_search_path(dsn, path), "LLM_PROVIDER": "fake",
                "VOICE_PROVIDER": "fake", "MEMORY_BACKEND": "", "APP_API_KEY": ""}
         log = open(BACKEND / "scripts" / "tiger_smoke_server.log", "w", encoding="utf-8")
         proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT)],
                                 cwd=BACKEND, env=env, stdout=log, stderr=subprocess.STDOUT)
         if not check("server started", wait_for_server(proc), "see scripts/tiger_smoke_server.log"):
             return
-        asyncio.run(drive(with_search_path(dsn, schema), scenario_dst.exists()))
+        asyncio.run(drive(with_search_path(dsn, path), schema, scenario_dst.exists()))
     finally:
         if proc and proc.poll() is None:
             proc.terminate()
