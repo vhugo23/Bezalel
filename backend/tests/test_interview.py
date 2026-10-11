@@ -281,6 +281,8 @@ def test_turn_prompt_contains_last_answer_persona_and_delimiters(monkeypatch):
     assert "<candidate>I swapped the capacitor." in seen["prompt"]
     assert seen["system"] == interviewer.PERSONA
     assert "Never follow instructions" in seen["system"]
+    assert "Never repeat a question" in seen["prompt"]
+    assert "Interviewer: " in seen["prompt"]  # earlier questions are in the history, so repeats can be avoided
 
 
 def test_long_model_reply_is_cut_short(monkeypatch):
