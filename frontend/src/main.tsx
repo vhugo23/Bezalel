@@ -1,0 +1,14 @@
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+const IntakePage=React.lazy(()=>import('./pages/Intake').then(m=>({default:m.IntakePage})));
+const PlanPage=React.lazy(()=>import('./pages/Plan').then(m=>({default:m.PlanPage})));
+const SessionPage=React.lazy(()=>import('./pages/Session').then(m=>({default:m.SessionPage})));
+const FleetPage=React.lazy(()=>import('./pages/Fleet').then(m=>({default:m.FleetPage})));
+const LessonPage=React.lazy(()=>import('./pages/Fleet').then(m=>({default:m.LessonPage})));
+const PairPage=React.lazy(()=>import('./pages/Pair').then(m=>({default:m.PairPage})));
+import './styles.css';
+const client=new QueryClient({defaultOptions:{queries:{retry:1,refetchOnWindowFocus:false},mutations:{retry:false}}});
+class ErrorBoundary extends React.Component<{children:React.ReactNode},{error:boolean}>{state={error:false};static getDerivedStateFromError(){return {error:true};}render(){return this.state.error?<main className="empty-state"><h1>Something interrupted this view.</h1><p>Your saved session is still on the server.</p><button className="btn acc" onClick={()=>location.reload()}>Reload workspace</button></main>:this.props.children;}}
+ReactDOM.createRoot(document.getElementById('root')!).render(<ErrorBoundary><QueryClientProvider client={client}><BrowserRouter><React.Suspense fallback={<main className="empty-state"><span className="spin"/>Opening your workspace…</main>}><Routes><Route path="/" element={<Navigate to="/plan" replace/>}/><Route path="/intake" element={<IntakePage/>}/><Route path="/plan" element={<PlanPage/>}/><Route path="/session/:id" element={<SessionPage/>}/><Route path="/fleet/:id" element={<FleetPage/>}/><Route path="/lesson/:id" element={<LessonPage/>}/><Route path="/pair/:code" element={<PairPage/>}/><Route path="*" element={<main className="empty-state"><h1>This page isn’t here.</h1><Link to="/plan">Return to your plan</Link></main>}/></Routes></React.Suspense></BrowserRouter></QueryClientProvider></ErrorBoundary>);

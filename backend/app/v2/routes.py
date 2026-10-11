@@ -1,0 +1,167 @@
+import asyncio
+import secrets
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import FileResponse
+from pydantic import ValidationError
+from app import config
+from . import db, service as s
+from .models import *
+from .generation import DEMO
+
+router = APIRouter(prefix='/api/v2', tags=['PrepCrew v2.3'])
+ws_router = APIRouter()
+
+@router.get('/health', response_model=Health)
+async def health():
+    version = await db.one('SELECT version_num FROM alembic_version')
+    return Health(status='ok',schema_version=version['version_num'],demo=DEMO,
+                  voice_ready=bool(config.ELEVENLABS_API_KEY and config.ELEVENLABS_VOICE_ID) and not DEMO)
+
+@router.post('/plans', response_model=Plan)
+async def plan(body: Intake): return await s.create_plan(body)
+
+@router.get('/plans/{pid}', response_model=Plan)
+async def get_plan(pid: str): return await s.get_plan(pid)
+
+@router.post('/sessions', response_model=Session)
+async def start(body: Start): return await s.start(body)
+
+@router.get('/sessions/{sid}', response_model=Session)
+async def session(sid: str): return await s.get_session(sid)
+
+@router.get('/sessions/{sid}/events', response_model=list[Event])
+async def events(sid: str, after: int = Query(0,ge=0)): return await s.events(sid,after)
+
+@router.post('/sessions/{sid}/events', response_model=Event)
+async def append(sid: str, body: EventInput):
+    try: return await s.append(sid,body)
+    except ValidationError: raise HTTPException(422,'Invalid event payload')
+
+@router.post('/sessions/{sid}/turns', response_model=TurnResult)
+async def turn(sid: str, body: TurnInput):
+    try: return await s.turn(sid,body)
+    except ValueError as exc: raise HTTPException(503,str(exc))
+
+@router.post('/sessions/{sid}/reply-complete')
+async def reply_complete(sid: str, body: ReplyAck):
+    return {'action':await s.acknowledge_reply(sid,body.seq)}
+
+@ws_router.websocket('/ws/v2/voice/{sid}')
+async def duplex(ws: WebSocket, sid: str):
+    from .realtime import serve
+    await serve(ws,sid)
+
+@router.post('/sessions/{sid}/board', response_model=BoardResult)
+async def board(sid: str, body: BoardInput):
+    try: return await s.board(sid,body)
+    except ValueError as exc: raise HTTPException(422,str(exc))
+
+@router.post('/sessions/{sid}/end', response_model=Report)
+async def end(sid: str):
+    from .rubrics import VERSION
+    async with (await db.pool()).acquire() as conn,conn.transaction():
+        session=await conn.fetchrow('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',sid)
+        if not session:raise HTTPException(404,'Session not found')
+        saved=await conn.fetchrow('SELECT * FROM session_reports WHERE session_id=$1',sid)
+        complete=saved and saved['report'].get('rubric_version')==VERSION and not saved['stats'].get('partial',False)
+        if session['status']!='grading' and not (session['status']=='graded' and complete):
+            await conn.execute("UPDATE sessions SET status='grading',ended_at=coalesce(ended_at,now()) WHERE id=$1",sid)
+    return await s.report(sid)
+
+@router.get('/sessions/{sid}/report', response_model=Report)
+async def report(sid: str): return await s.report(sid)
+
+@router.get('/sessions/{sid}/metrics', response_model=Metrics)
+async def metrics(sid: str):
+    session=await s.require_session(sid)
+    return Metrics(rows=[dict(r) for r in await db.fetch('SELECT name,n,p50,p95,max FROM v_session_latency WHERE session_id=$1',sid)],
+                   hypertables=[r['hypertable_name'] for r in await db.fetch("SELECT hypertable_name FROM timescaledb_information.hypertables WHERE hypertable_schema='prepcrew'")],
+                   aggregates=[r['view_name'] for r in await db.fetch("SELECT view_name FROM timescaledb_information.continuous_aggregates WHERE view_schema='prepcrew'")],
+                   mastery=[{**dict(r),'bucket':r['bucket'].isoformat()} for r in await db.fetch('SELECT skill_id,bucket,score,samples FROM mastery_hourly WHERE user_id=$1 ORDER BY bucket DESC LIMIT 48',session['user_id'])])
+
+@router.get('/sessions/{sid}/lesson', response_model=Lesson)
+async def lesson(sid: str):
+    from .learning import read
+    return await read(sid)
+
+@router.post('/sessions/{sid}/lesson', response_model=Lesson)
+async def generate_lesson(sid: str):
+    from .learning import create
+    try:return await create(sid)
+    except ValueError as exc:raise HTTPException(503,str(exc))
+
+@router.post('/retests', response_model=Session)
+async def retest(body: RetestInput):
+    from .learning import retest
+    return await retest(body.session_id)
+
+@router.post('/sessions/{sid}/pair', response_model=PairResult)
+async def pair(sid: str):
+    await s.require_session(sid)
+    code=secrets.token_hex(4).upper()
+    r=await db.one("INSERT INTO session_devices(id,session_id,kind,pair_code,expires_at) VALUES($1,$2,'ipad_whiteboard',$3,now()+interval '10 minutes') RETURNING expires_at",s.uid(),sid,code)
+    return PairResult(code=code,session_id=sid,expires_at=r['expires_at'])
+
+@router.get('/artifacts/{aid}/png')
+async def artifact(aid: str):
+    r=await db.one('SELECT blob_key FROM artifacts WHERE id=$1',aid)
+    if not r: raise HTTPException(404,'Artifact not found')
+    return FileResponse(s.ROOT / '.artifacts' / r['blob_key'],media_type='image/png')
+
+@router.post('/sessions/{sid}/audio', response_model=TurnResult)
+async def audio(sid: str, request: Request, step: int = Query(0,ge=0,le=3), board: bool = False):
+    from .voice import transcribe
+    session = await s.require_session(sid)
+    if session['status'] != 'live' or session['step'] != step:
+        raise HTTPException(409,'The session moved on. Refresh before recording again.')
+    if DEMO: raise HTTPException(409,'Enable live mode for ElevenLabs voice input.')
+    data=bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data)>12_000_000: raise HTTPException(413,'Keep audio turns under 12 MB')
+    text = await transcribe(sid,bytes(data),request.headers.get('content-type','audio/webm'))
+    # A model failure must not mark a successful transcription as failed.
+    # The candidate turn is saved before generation starts, and replays over the event socket.
+    try:
+        return await s.turn(sid,TurnInput(text=text,step=step,board=board))
+    except ValueError as exc:
+        raise HTTPException(503,str(exc))
+
+@router.get('/sessions/{sid}/speech/{seq}')
+async def speech(sid: str, seq: int):
+    from .voice import speak
+    await s.require_session(sid)
+    r=await db.one("SELECT payload FROM session_events WHERE session_id=$1 AND seq=$2 AND kind='turn' AND actor='interviewer'",sid,seq)
+    if not r: raise HTTPException(404,'Interviewer turn not found')
+    if DEMO: raise HTTPException(409,'Recorded mode has no live voice.')
+    return await speak(sid,r['payload']['text'])
+
+@ws_router.websocket('/ws/v2/sessions/{sid}')
+async def live(ws: WebSocket, sid: str, after: int = 0):
+    await ws.accept()
+    try:
+        await s.require_session(sid)
+        # Polling the shared database also works across workers; replay always uses seq.
+        while True:
+            for e in await s.events(sid,after):
+                await ws.send_json({'type':'event','event':e.model_dump(mode='json')})
+                after=max(after,e.seq)
+            await asyncio.sleep(.4)
+    except (WebSocketDisconnect,RuntimeError,HTTPException): pass
+
+@ws_router.websocket('/ws/v2/pair/{code}')
+async def paired(ws: WebSocket, code: str):
+    await ws.accept()
+    row=await db.one("UPDATE session_devices SET status='connected',paired_at=now() WHERE pair_code=$1 AND status='pending' AND expires_at>now() RETURNING *",code)
+    if not row:
+        await ws.send_json({'type':'error','message':'Pairing code expired or already used'}); await ws.close(code=4404); return
+    await ws.send_json({'type':'paired','session_id':row['session_id']})
+    await s.log(row['session_id'],'note','system',1,{'paired':True,'device':'ipad'})
+    try:
+        while True:
+            raw=await ws.receive_json()
+            stroke=Stroke.model_validate(raw)
+            e=await s.append(row['session_id'],EventInput(kind='stroke',step=1,payload=stroke.model_dump()))
+            await ws.send_json({'type':'event','event':e.model_dump(mode='json')})
+    except (WebSocketDisconnect,ValidationError,HTTPException):
+        await db.execute("UPDATE session_devices SET status='disconnected' WHERE id=$1",row['id'])

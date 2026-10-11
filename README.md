@@ -1,5 +1,9 @@
 # PrepCrew
 
+The current React frontend is in [`frontend/`](frontend/README.md). Its `/api/v2` backend uses the migrated v2.3 schema in Tiger Data. See the frontend README for commands, verified behavior, and explicit demo/live limitations; the older architecture notes below describe the legacy prototype.
+
+The [full implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) covers all four domains, every approved catalog track, shared engine infrastructure, the learning loop, and release acceptance gates.
+
 A voice interview coach for hardware and embedded engineering students.
 
 Built for CodeRED: Orion at the University of Houston.

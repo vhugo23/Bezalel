@@ -29,3 +29,10 @@ Thumbs.db
 spikes/*.pcm
 spikes/*.wav
 spikes/_runs/
+
+# frontend
+node_modules/
+dist/
+*.tsbuildinfo
+frontend/test-results/
+.artifacts/

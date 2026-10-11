@@ -5,5 +5,9 @@ python-dotenv
 httpx
 asyncpg
 pytest
+alembic==1.20.0
+SQLAlchemy[asyncio]==2.1.4
+google-genai==2.29.0
+websockets==16.1.1
 # Gemini SDK: verify the current package name in Google's docs before installing
 # ElevenLabs / Backboard: use httpx against their REST APIs or their SDKs; check each one's docs

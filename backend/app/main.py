@@ -8,12 +8,27 @@ Everything else belongs to the frontend. The backend serves no pages and no stat
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from app import config
 from app.core.routes import router as core_router
 from app.modules import prepcrew
 
-app = FastAPI(title="PrepCrew backend")
+@asynccontextmanager
+async def lifespan(app):
+    from app.v2 import assessment, db
+    task=asyncio.create_task(assessment.worker()) if config.DATABASE_URL else None
+    try:yield
+    finally:
+        if task:
+            task.cancel()
+            with suppress(asyncio.CancelledError):await task
+        if db._pool:
+            await db._pool.close()
+            db._pool=None
+
+app = FastAPI(title="PrepCrew backend",lifespan=lifespan)
 
 if config.CORS_ORIGINS:
     app.add_middleware(
@@ -26,6 +41,10 @@ if config.CORS_ORIGINS:
 
 app.include_router(core_router)
 prepcrew.register(app)
+
+from app.v2.routes import router as v2_router, ws_router as v2_ws_router
+app.include_router(v2_router)
+app.include_router(v2_ws_router)
 
 
 @app.get("/", include_in_schema=False)

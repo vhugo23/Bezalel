@@ -1,0 +1,172 @@
+[
+  {
+    "id": "clients",
+    "kind": "rect",
+    "points": [
+      {
+        "x": 40,
+        "y": 200,
+        "pressure": 0.5
+      },
+      {
+        "x": 170,
+        "y": 264,
+        "pressure": 0.5
+      }
+    ],
+    "label": "Clients"
+  },
+  {
+    "id": "a1",
+    "kind": "arrow",
+    "points": [
+      {
+        "x": 170,
+        "y": 232,
+        "pressure": 0.5
+      },
+      {
+        "x": 240,
+        "y": 232,
+        "pressure": 0.5
+      }
+    ],
+    "label": ""
+  },
+  {
+    "id": "gateway",
+    "kind": "rect",
+    "points": [
+      {
+        "x": 240,
+        "y": 200,
+        "pressure": 0.5
+      },
+      {
+        "x": 390,
+        "y": 264,
+        "pressure": 0.5
+      }
+    ],
+    "label": "API gateway"
+  },
+  {
+    "id": "a2",
+    "kind": "arrow",
+    "points": [
+      {
+        "x": 390,
+        "y": 232,
+        "pressure": 0.5
+      },
+      {
+        "x": 460,
+        "y": 232,
+        "pressure": 0.5
+      }
+    ],
+    "label": ""
+  },
+  {
+    "id": "limiter",
+    "kind": "rect",
+    "points": [
+      {
+        "x": 460,
+        "y": 200,
+        "pressure": 0.5
+      },
+      {
+        "x": 630,
+        "y": 264,
+        "pressure": 0.5
+      }
+    ],
+    "label": "Rate limiter"
+  },
+  {
+    "id": "bucket",
+    "kind": "text",
+    "points": [
+      {
+        "x": 450,
+        "y": 182,
+        "pressure": 0.5
+      },
+      {
+        "x": 635,
+        "y": 182,
+        "pressure": 0.5
+      }
+    ],
+    "label": "token bucket per API key"
+  },
+  {
+    "id": "a3",
+    "kind": "arrow",
+    "points": [
+      {
+        "x": 630,
+        "y": 232,
+        "pressure": 0.5
+      },
+      {
+        "x": 700,
+        "y": 232,
+        "pressure": 0.5
+      }
+    ],
+    "label": ""
+  },
+  {
+    "id": "service",
+    "kind": "rect",
+    "points": [
+      {
+        "x": 700,
+        "y": 200,
+        "pressure": 0.5
+      },
+      {
+        "x": 850,
+        "y": 264,
+        "pressure": 0.5
+      }
+    ],
+    "label": "API service"
+  },
+  {
+    "id": "a4",
+    "kind": "arrow",
+    "points": [
+      {
+        "x": 545,
+        "y": 264,
+        "pressure": 0.5
+      },
+      {
+        "x": 545,
+        "y": 340,
+        "pressure": 0.5
+      }
+    ],
+    "label": ""
+  },
+  {
+    "id": "redis",
+    "kind": "rect",
+    "points": [
+      {
+        "x": 460,
+        "y": 340,
+        "pressure": 0.5
+      },
+      {
+        "x": 630,
+        "y": 404,
+        "pressure": 0.5
+      }
+    ],
+    "label": "Redis counters"
+  }
+]

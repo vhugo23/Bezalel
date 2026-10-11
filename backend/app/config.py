@@ -1,7 +1,9 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Resolve from the repository, independent of where uvicorn was started.
+load_dotenv(Path(__file__).resolve().parents[2] / '.env')
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 # Postgres schema the app's tables live in (create it with `python init_db.py`). The app searches this schema first,
@@ -23,6 +25,7 @@ MEMORY_BACKEND = os.getenv("MEMORY_BACKEND", "")
 TASK_TIMEOUT_SECONDS = float(os.getenv("TASK_TIMEOUT_SECONDS", "20"))
 # ---- Live interviewer and evaluators (contracts/env.additions.md)
 INTERVIEWER_MODEL = os.getenv("INTERVIEWER_MODEL", "")
+WHITEBOARD_MODEL = os.getenv("WHITEBOARD_MODEL", "")
 # Blank = same provider as LLM_PROVIDER. EVALUATOR_MODEL blank = GEMINI_MODEL.
 EVALUATOR_PROVIDER = os.getenv("EVALUATOR_PROVIDER", "")
 EVALUATOR_MODEL = os.getenv("EVALUATOR_MODEL", "")

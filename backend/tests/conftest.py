@@ -12,6 +12,7 @@ def isolated(monkeypatch):
     monkeypatch.setattr(config, "MEMORY_BACKEND", "")
     monkeypatch.setattr(config, "BACKBOARD_API_KEY", "")  # never call the real Backboard from tests
     monkeypatch.setattr(config, "LLM_PROVIDER", "fake")
+    monkeypatch.setattr(config, "VOICE_PROVIDER", "fake")
     store._records.clear()
     store._events.clear()
     bus._history.clear()

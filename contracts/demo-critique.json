@@ -1,0 +1,1 @@
+{"marks":[{"kind":"circle","severity":"good","speech":"The limiter sits in front of the service. Requests are rejected early.","target":"limiter"},{"kind":"circle","severity":"probe","speech":"If Redis goes down, should the limiter fail open or fail closed? Walk me through the cost of that choice.","target":"redis"}]}
