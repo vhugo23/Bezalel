@@ -78,3 +78,17 @@ test('an executable retest displays its actual validation label',async()=>{
  await screen.findByText('Reference-tested simulator with recorded coaching review; human calibration pending');
  expect(screen.queryByText('The retest is a model-reviewed conceptual exercise. Its correctness is not deterministically proven.')).toBeNull();
 });
+
+test.each([
+ [false,'Authored coaching','AI generated · independently reviewed'],
+ [true,'AI generated · independently reviewed','Authored coaching'],
+] as const)('saved lesson origin ai_generated=%s is labelled honestly and opens its runnable retest',async(ai_generated,label,otherLabel)=>{
+ vi.spyOn(api,'lesson').mockResolvedValue({id:'saved-lesson',body:'Use scoped permissions and verify access.',title:'Scoped read access',reason:'A verified permissions gap',evidence_seq:[17],ai_generated,practice:'Repair access under a changed constraint.',retest_ready:true,validation_label:'Reference-tested simulator'});
+ const retest=vi.spyOn(api,'retest').mockResolvedValue({id:'changed-session',track_id:'t',title:'Retest: scoped access',domain:'infra',engine_id:'linux_fault',paused:false,step:0,status:'live',opening:'Inspect permissions.',demo:false,events:[]});
+ mount(true);
+ await screen.findByText(label);
+ expect(screen.queryByText(otherLabel)).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Start retest'}));
+ await screen.findByText('Retest opened');
+ expect(retest).toHaveBeenCalledExactlyOnceWith('s');
+});

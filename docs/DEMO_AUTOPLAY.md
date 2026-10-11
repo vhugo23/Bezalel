@@ -14,6 +14,12 @@ and verified gaps from saved evidence; autoplay never injects grades or lessons.
 Use the review screen's lesson action and then its changed retest to demonstrate
 how the next visit addresses a verified weakness.
 
+Pi follow-ups use skill-specific authored coaching and the engine's reference-tested
+changed simulator, selected only after a complete grade identifies a verified gap.
+They are labelled **Authored coaching**. System design follow-ups retain AI lesson
+generation and independent content review. This keeps Pi practice runnable without
+asking a model to redefine the simulator's fixed tasks.
+
 **Stop & take over** cancels speech and prevents subsequent scripted actions after
 any already submitted request finishes. The saved session remains available for
 manual use. Replay continues from the current step; interrupted tool sequences can
