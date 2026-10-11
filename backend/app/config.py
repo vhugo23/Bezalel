@@ -64,3 +64,15 @@ ELEVENLABS_STABILITY = _optional_float("ELEVENLABS_STABILITY")
 ELEVENLABS_SIMILARITY = _optional_float("ELEVENLABS_SIMILARITY")
 ELEVENLABS_STYLE = _optional_float("ELEVENLABS_STYLE")
 ELEVENLABS_SPEED = _optional_float("ELEVENLABS_SPEED")
+
+# Fail threshold ("patience meter", see meter.py). Starting values chosen by hand, not validated.
+# One missed REQUIRED skill (0.6) already starts the wrap-up; two end the interview. A missed PREFERRED skill is small.
+FAIL_THRESHOLD = float(os.getenv("FAIL_THRESHOLD", "1.0"))
+WRAP_UP_AT = float(os.getenv("WRAP_UP_AT", "0.5"))
+PENALTY_REQUIRED_UNKNOWN = float(os.getenv("PENALTY_REQUIRED_UNKNOWN", "0.6"))
+PENALTY_REQUIRED_PARTIAL = float(os.getenv("PENALTY_REQUIRED_PARTIAL", "0.25"))
+PENALTY_PREFERRED_UNKNOWN = float(os.getenv("PENALTY_PREFERRED_UNKNOWN", "0.15"))
+PENALTY_PREFERRED_PARTIAL = float(os.getenv("PENALTY_PREFERRED_PARTIAL", "0.05"))
+ASSESSOR_TIMEOUT_SECONDS = float(os.getenv("ASSESSOR_TIMEOUT_SECONDS", "4"))
+# One answer can add at most this much to the meter, so no single sentence (or one speech-to-text slip) ends an interview.
+MAX_PENALTY_PER_ANSWER = float(os.getenv("MAX_PENALTY_PER_ANSWER", "0.6"))

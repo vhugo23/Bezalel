@@ -27,20 +27,22 @@ def _session_response(rec: dict, voice_token: str | None = None) -> SessionStart
     d = rec["data"]
     opening = d.get("last_interviewer_text") if d["kind"] == "interview" else None
     return SessionStartResponse(session_id=rec["id"], kind=d["kind"], pair_code=d["pair_code"],
-                                voice_token=voice_token, state=d["state"], opening=opening)
+                                voice_token=voice_token, strict=d.get("strict", True), state=d["state"],
+                                opening=opening)
 
 
 @router.post("/plans", response_model=PlanResponse)
 async def create_plan(body: PlanRequest):
     p = await service.create_plan(body.job_posting, body.resume, body.user_id)
     return PlanResponse(plan_id=p["plan_id"], topics=p["topics"], questions=p["questions"],
-                        scenario_ids=p["scenario_ids"], project=p["project"], degraded=p["degraded"])
+                        scenario_ids=p["scenario_ids"], project=p["project"], requirements=p["requirements"],
+                        degraded=p["degraded"])
 
 
 @router.post("/sessions", response_model=SessionStartResponse)
 async def start_session(body: SessionStartRequest):
     try:
-        rec = await service.create_session(body.plan_id, body.user_id, body.consent)
+        rec = await service.create_session(body.plan_id, body.user_id, body.consent, strict=body.strict)
     except (service.NotFound, service.BadRequest) as e:
         raise _http(e)
     return _session_response(rec, await voice.mint_token())
@@ -54,7 +56,7 @@ async def take_turn(session_id: str, body: TurnRequest):
     except (service.NotFound, service.BadRequest) as e:
         raise _http(e)
     return TurnResponse(answer_id=r["answer_id"], next_question=r["next_question"], done=r["done"],
-                        degraded=r["degraded"], source=r["source"])
+                        degraded=r["degraded"], source=r["source"], ended_early=r["ended_early"], meter=r["meter"])
 
 
 @router.post("/sessions/{session_id}/probe", response_model=ProbeEvent)

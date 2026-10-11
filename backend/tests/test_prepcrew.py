@@ -51,7 +51,7 @@ def test_cors_allows_vite_dev_server_only():
 # ---- sessions ----
 def test_plan_and_session_shapes():
     plan = client.post("/api/plans", json={"job_posting": "p", "resume": "r"}).json()
-    assert set(plan) == {"plan_id", "topics", "questions", "scenario_ids", "project", "degraded"}
+    assert set(plan) == {"plan_id", "topics", "questions", "scenario_ids", "project", "requirements", "degraded"}
     s = client.post("/api/sessions", json={"plan_id": plan["plan_id"], "user_id": "u", "consent": True}).json()
     assert s["kind"] == "interview" and len(s["pair_code"]) == 6
 

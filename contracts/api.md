@@ -43,3 +43,13 @@ Routes keep the existing `/api` prefix. The brief's sketch had no prefix, so `/a
 - Per-session locking is in process memory. Run a single uvicorn worker until turns are stored with a row lock or a version check.
 - `/api/plans` and the turns route are not behind `x-api-key`. The browser calls them, so a key would ship in the page. Add a rate limit at deploy.
 - `DELETE /api/sessions/{id}` removes the session, its events and its interview transcript. The plan record (resume and posting text) is only removed if `delete_linked` is extended to it. Check before the first tester session.
+
+## Patience meter (fail threshold)
+
+- `POST /api/plans` returns `requirements: [{id, text, level}]`, `level` is `required` or `preferred`, read from the posting's wording. An unclear level counts as `preferred`. Empty means the meter is off and the interview never ends early.
+- `POST /api/sessions` takes `strict` (default `true`). With `strict: false` the meter still wraps the interview up but never ends it, for demos and testers.
+- `POST /api/sessions/{id}/turns` returns `meter: {score, threshold, level}` (`ok`, `wrapping_up`, `ended`; null when off) and `ended_early`. When the meter ends the interview, `next_question` is a fixed closing line (`source: "scripted"`), `done` and `ended_early` are true, and the session moves to `debrief`. Further answers get 400 ("the interview has ended"). Grading and the report still work.
+- How it works: a separate model call checks each answer against the posting's skills, in parallel with the reply, so it adds cost and no waiting time. A gap only counts if the quoted words appear in the answer word for word. Failures of any kind mean no penalty. Each skill counts once at its worst result. One answer adds at most 0.6, so ending takes at least two answers. The "wrap up" push reaches the interviewer one turn after the meter crosses it.
+- Starting values, chosen by hand and not validated (`config.py`): threshold 1.0, wrap up at 0.5, required unknown 0.6 / partial 0.25, preferred unknown 0.15 / partial 0.05.
+- The session stores `meter_state`, `meter_findings` (every finding with its quote and turn), and after an early end `ended_early`, `end_reason: "requirement_gaps"` and `end_gaps` (skill, level, result, the candidate's own words) for the debrief.
+- Only the project interview is covered. Failing the circuit walkthrough is graded, not ended.

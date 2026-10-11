@@ -108,3 +108,43 @@ so it used the generic fallback questions. That makes the sides only roughly com
   guesses and the model may ignore settings it does not support. No result is claimed until a person has judged.
 - The plan call takes about 5 s (5 runs: 4.5 to 5.8 s), unlike a live turn at about 1 s. One run in six hit a 503;
   the plan call now retries once after a pause. Live turns still do not retry.
+
+## Patience meter, real model (`spikes/e2e_threshold.py`, gemini-3.5-flash-lite)
+
+Sat Oct 10, 2026. Made-up posting and resume, scripted answers, several runs. The weights are hand-picked starting
+values. Nothing here validates them, and the labels below are mine, not an independent check.
+
+**Requirements read from the posting.** 12 skills, 7 required and 5 preferred, matching the posting's wording
+("Requirements" versus "Nice to have"). After the prompt asked for one skill per item, "I2C, SPI and UART" came
+back as three items. "KiCad or Altium" stayed one item.
+
+**Assessor against my 15 hand-written answers (one run).** 17 of 20 checks agreed with my labels. Differences:
+EMI "only read about it" came back `unknown` where I labeled `partial`; one label of mine was out of date once the
+"A or B" rule existed. In the one earlier run, a "buck converters are new to me" answer got no finding, in the next
+run it came back `partial`. The differences went both ways: gentler once (buck converters, no finding) and harsher
+once (EMI, `unknown` where I labeled `partial`). A harsher call costs 0.15 instead of 0.05 on a preferred skill.
+No answer without a gap was flagged as a gap. "Never used Altium, only know KiCad" correctly counted as met for
+"KiCad or Altium" after the prompt said either one meets it. Before that fix it was marked `unknown`, an unfair penalty.
+
+**Meter movement, live interviews.**
+
+| Scenario | Meter after each answer | Outcome |
+|---|---|---|
+| One missed required skill (SPI) | 0.0, 0.6, 0.6 | `wrapping_up` from 0.6, not ended |
+| Three missed preferred skills (gate drivers, buck converters, EMI partial) | 0.0, 0.15, 0.30, 0.35 | stayed `ok`, never ended |
+| Two missed required skills (SPI, I2C), one clean run | 0.0, 0.6, 1.2 | ended with a closing line, session in `debrief` |
+
+The two-required-skills ending reproduced only once. In the latest runs about half the Gemini calls returned "busy"
+errors even after the one retry, so the reply fell back to a planned question and the gap check returned nothing
+(by design no penalty, so the meter stayed at 0.0). Non-strict mode was not exercised against the real model, only in tests.
+
+**Timing, one clean run.** A turn took about 1.3 to 1.4 s with the gap check running next to the reply, against
+about 1.3 s for the reply alone, so the check adds cost but no visible wait. The plan call took 1.7 s (earlier runs
+4.5 to 5.8 s).
+
+**Reliability caveat.** Gemini lite was busy or erroring in bursts: right after about 25 calls in under a minute, and
+once for several minutes. This may be rate limiting on the free key or general demand, not confirmed. The gap check
+doubles the model calls per turn. Check the key's rate limits before a demo with several people at once.
+
+**Not yet done.** The false-end rate on about 10 scripted answers is only a smoke test here (my labels). Before the
+first tester session, hand-check it with a second person's labels.

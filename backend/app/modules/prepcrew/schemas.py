@@ -5,6 +5,18 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class Requirement(BaseModel):
+    id: str
+    text: str
+    level: Literal["required", "preferred"]
+
+
+class MeterState(BaseModel):
+    score: float
+    threshold: float
+    level: Literal["ok", "wrapping_up", "ended"]
+
+
 # ---- plans ----
 class PlanRequest(BaseModel):
     job_posting: str = Field(min_length=1, max_length=20000)
@@ -18,6 +30,7 @@ class PlanResponse(BaseModel):
     questions: list[str]
     scenario_ids: list[str]
     project: str = ""
+    requirements: list[Requirement] = Field(default_factory=list, description="Skills from the posting. Empty means the patience meter is off.")
     degraded: bool = Field(default=False, description="True when the model plan failed and generic questions were used.")
 
 
@@ -30,6 +43,7 @@ class SessionStartRequest(BaseModel):
     plan_id: str
     user_id: str
     consent: bool = Field(description="Must be true. Sessions without consent are rejected.")
+    strict: bool = Field(default=True, description="False: the patience meter wraps the interview up but never ends it. For demos and testers.")
 
 
 class SessionStartResponse(BaseModel):
@@ -37,6 +51,7 @@ class SessionStartResponse(BaseModel):
     kind: SessionKind
     pair_code: str = Field(description="Short code the iPad enters to join /ws/board/{session_id}.")
     voice_token: str | None = None
+    strict: bool = True
     state: SessionState = "intake"
     opening: str | None = Field(default=None, description="First interviewer question, interview sessions only.")
 
@@ -51,6 +66,8 @@ class TurnResponse(BaseModel):
     done: bool = Field(default=False, description="True on the turn that ends the interview part; the walkthrough follows.")
     degraded: bool = Field(default=False, description="True when the model failed and a planned question was used.")
     source: str = Field(default="model", description="model | fallback | fake | scripted. Only 'model' was written by the live model.")
+    ended_early: bool = Field(default=False, description="True when the patience meter ended the interview. The session is then in debrief.")
+    meter: MeterState | None = Field(default=None, description="Null when the plan has no requirements (meter off).")
 
 
 # ---- probe events (contracts/probe_event.schema.json) ----
