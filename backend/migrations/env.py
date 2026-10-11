@@ -1,12 +1,11 @@
 import asyncio
 import os
 import re
-from pathlib import Path
 from alembic import context
-from dotenv import load_dotenv
+from app.environment import load_environment
 from sqlalchemy.ext.asyncio import create_async_engine
 
-load_dotenv(Path(__file__).resolve().parents[2] / '.env')
+load_environment()
 schema = os.getenv('V2_DATABASE_SCHEMA', 'prepcrew')
 if not re.fullmatch(r'[a-z][a-z0-9_]{0,62}', schema):
     raise ValueError('Invalid V2_DATABASE_SCHEMA')

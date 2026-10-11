@@ -1,10 +1,9 @@
 import os
 import re
-from pathlib import Path
-from dotenv import load_dotenv
+from app.environment import load_environment
 
 # Resolve from the repository, independent of where uvicorn was started.
-load_dotenv(Path(__file__).resolve().parents[2] / '.env')
+load_environment()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 # Postgres schema the app's tables live in (create it with `python init_db.py`). The app searches this schema first,

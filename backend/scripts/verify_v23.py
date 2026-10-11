@@ -4,11 +4,11 @@ import json
 from pathlib import Path
 from uuid import uuid4
 import asyncpg
-from dotenv import dotenv_values
+from app.environment import settings
 
 async def main():
     root=Path(__file__).resolve().parents[2]
-    conn=await asyncpg.connect(dotenv_values(root/'.env')['DATABASE_URL'],server_settings={'search_path':'prepcrew,public'})
+    conn=await asyncpg.connect(settings()['DATABASE_URL'],server_settings={'search_path':'prepcrew,public'})
     try:
         tables={r[0] for r in await conn.fetch("SELECT hypertable_name FROM timescaledb_information.hypertables WHERE hypertable_schema='prepcrew'")}
         assert tables=={'session_events','skill_assessments','metrics'}

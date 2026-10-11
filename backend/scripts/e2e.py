@@ -17,7 +17,7 @@ from urllib.request import urlopen
 from uuid import uuid4
 
 import asyncpg
-from dotenv import dotenv_values
+from app.environment import settings as environment_settings
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -52,7 +52,7 @@ async def seed_fixture(source, schema):
 
 
 async def run():
-    settings = {**dotenv_values(ROOT / '.env'), **os.environ}
+    settings = environment_settings()
     source = settings.get('E2E_ADMIN_DATABASE_URL') or settings.get('DATABASE_URL')
     if not source:
         raise RuntimeError('Set E2E_ADMIN_DATABASE_URL or DATABASE_URL with CREATE SCHEMA permission')
