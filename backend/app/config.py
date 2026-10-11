@@ -11,6 +11,7 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "")
 GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 BACKBOARD_API_KEY = os.getenv("BACKBOARD_API_KEY", "")
+BACKBOARD_BASE_URL = os.getenv("BACKBOARD_BASE_URL", "https://app.backboard.io/api")
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "fake")
 VOICE_PROVIDER = os.getenv("VOICE_PROVIDER", "fake")

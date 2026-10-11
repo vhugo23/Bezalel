@@ -28,7 +28,7 @@ def _session_response(rec: dict, voice_token: str | None = None) -> SessionStart
     opening = d.get("last_interviewer_text") if d["kind"] == "interview" else None
     return SessionStartResponse(session_id=rec["id"], kind=d["kind"], pair_code=d["pair_code"],
                                 voice_token=voice_token, strict=d.get("strict", True), state=d["state"],
-                                opening=opening)
+                                opening=opening, recalled=d.get("recalled") or [])
 
 
 @router.post("/plans", response_model=PlanResponse)
@@ -36,7 +36,7 @@ async def create_plan(body: PlanRequest):
     p = await service.create_plan(body.job_posting, body.resume, body.user_id)
     return PlanResponse(plan_id=p["plan_id"], topics=p["topics"], questions=p["questions"],
                         scenario_ids=p["scenario_ids"], project=p["project"], requirements=p["requirements"],
-                        degraded=p["degraded"])
+                        degraded=p["degraded"], memories=p.get("memories") or [])
 
 
 @router.post("/sessions", response_model=SessionStartResponse)

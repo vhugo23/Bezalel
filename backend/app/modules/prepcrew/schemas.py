@@ -34,6 +34,7 @@ class PlanResponse(BaseModel):
     project: str = ""
     requirements: list[Requirement] = Field(default_factory=list, description="Skills from the posting. Empty means the patience meter is off.")
     degraded: bool = Field(default=False, description="True when the model plan failed and generic questions were used.")
+    memories: list[str] = Field(default_factory=list, description="What PrepCrew remembers about this user from earlier sessions (Backboard). Empty for a first session.")
 
 
 # ---- sessions ----
@@ -56,6 +57,7 @@ class SessionStartResponse(BaseModel):
     strict: bool = True
     state: SessionState = "intake"
     opening: str | None = Field(default=None, description="First interviewer question, interview sessions only.")
+    recalled: list[str] = Field(default_factory=list, description="Memories from earlier sessions used for this one. Show as 'Picking up from last time'.")
 
 
 class TurnRequest(BaseModel):

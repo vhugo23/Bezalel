@@ -42,5 +42,13 @@ No HTML pages or static files (React owns the UI). No open `/api/records`, `/api
 they let anyone read a session's answers or spend the AI key. The store they wrapped is still used internally.
 
 ## Not built yet
-See `../CONTEXT.md`. In this lane: the evaluator model call (Anthropic provider in core/ai.py), writing scores and
-probes to the Timescale hypertables, and second-session memory (core/memory.py is ready, nothing calls it yet).
+See `../CONTEXT.md`. In this lane: the evaluator model call (Anthropic provider in core/ai.py) and writing scores
+and probes to the Timescale hypertables.
+
+## Memory across sessions (Backboard)
+Set `MEMORY_BACKEND=backboard` and `BACKBOARD_API_KEY` in `.env`. When grading finishes, the debrief's gaps (with the
+candidate's own quoted words) and strengths are saved, one Backboard assistant per user. The next `POST /api/plans`
+for that user returns them as `memories` (most relevant to the new posting first), and the session response repeats
+them as `recalled`. `DELETE /api/sessions/{id}` deletes that session's memories in Backboard too. Any Backboard error
+falls back to the Postgres `memories` table, so memory never breaks a session.
+Check the real API: `python scripts/backboard_check.py` (uses throwaway assistants and deletes them).

@@ -22,7 +22,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from app import config
-from app.core import bus, store
+from app.core import bus, memory, store
 from app.modules.prepcrew import assessor, debrief, evaluators, interviewer, meter, simulator, topic_graph
 
 PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
@@ -56,10 +56,13 @@ def channel(session_id: str) -> str:
 async def create_plan(job_posting: str, resume: str, user_id: str | None) -> dict:
     # interviewer.build_plan picks a resume project and questions, with generic questions if the model fails.
     # TODO: map topics onto topic_graph skill ids and pick scenario ids from simulator.list_scenarios().
+    # Memories from this user's earlier sessions (Backboard), most relevant to this posting first.
+    memories = await recall_memories(user_id, job_posting) if user_id else []
+    # TODO(interviewer): pass `memories` into build_plan so the opening question can follow up on last time.
     plan = await interviewer.build_plan(job_posting, resume)
     data = {"user_id": user_id, "job_posting": job_posting, "resume": resume, "project": plan["project"],
             "topics": plan["topics"], "questions": plan["questions"], "scenario_ids": [],
-            "requirements": plan["requirements"], "degraded": plan["degraded"]}
+            "requirements": plan["requirements"], "degraded": plan["degraded"], "memories": memories}
     rec = await store.create_record("plan", data, owner_id=user_id)
     return {"plan_id": rec["id"], **data}
 
@@ -92,6 +95,7 @@ async def create_session(plan_id: str, user_id: str, consent: bool, kind: str = 
         "parent_session_id": parent_session_id, "skill_ids": skill_ids or [],
         "last_interviewer_text": opening, "degraded_turns": 0,
         "strict": strict, "meter_state": meter.new_state(), "meter_findings": [], "ended_early": False,
+        "recalled": list(plan["data"].get("memories") or []),
     }
     rec = await store.create_record("session", data, owner_id=user_id)
     if opening:
@@ -296,6 +300,11 @@ async def run_grading(session_id: str) -> None:
     await store.update_record(session_id, {"status": "graded", "results": out["results"],
                                            "skill_flags": sorted(flags), "total_ms": out["total_ms"]})
     await publish("grading_complete", {"session_id": session_id, "total_ms": out["total_ms"]})
+    try:
+        await save_session_memories(session_id)
+    except Exception as e:  # memory must never break grading
+        import logging
+        logging.getLogger("prepcrew.service").warning("saving memories failed: %s", e)
 
 
 # ---- curriculum ----
@@ -362,7 +371,9 @@ async def delete_session(session_id: str) -> int:
     retest, still uses it."""
     session = await get_session(session_id)
     plan_id = session["data"].get("plan_id")
-    removed = await store.delete_linked(session_id)
+    refs = [r["data"]["ref"] for r in await store.find_records("memory_ref", "session_id", session_id, limit=10000)]
+    removed = await memory.forget(refs)
+    removed += await store.delete_linked(session_id)  # also removes the memory_ref records (data.session_id)
     if plan_id and not await store.find_records("session", "plan_id", plan_id, limit=1):
         removed += await store.delete_record(plan_id)
     bus.clear(channel(session_id))
@@ -370,3 +381,54 @@ async def delete_session(session_id: str) -> int:
     _seq_locks.pop(session_id, None)
     _turn_locks.pop(session_id, None)
     return removed
+
+
+# ---- memory across sessions (core.memory: Backboard, or Postgres as fallback) ----
+MAX_MEMORIES_PER_SESSION = 8
+
+
+def memories_from_debrief(d: dict) -> list[str]:
+    """Short, factual notes from the debrief. Quotes are the candidate's own words (already verified)."""
+    notes = []
+    for g in d.get("gaps", []):
+        if g["kind"] == "skill":
+            what = "said they haven't used" if g["result"] == "unknown" else "showed only limited experience with"
+            note = f"Gap ({g['level']} skill): {what} {g['title']}."
+        else:
+            note = f"Left a question unanswered: {g['title'].removeprefix('Didn' + chr(39) + 't answer: ')}"
+        if g.get("evidence_quote"):
+            note += f' They said: "{g["evidence_quote"][:200]}"'
+        notes.append(note)
+    for st in d.get("strengths", []):
+        notes.append(f"Strength: showed they know {st['title']}.")
+    return notes[:MAX_MEMORIES_PER_SESSION]
+
+
+async def save_session_memories(session_id: str) -> int:
+    """Store what this session taught us about the candidate. Each memory gets a memory_ref record tied to the
+    session, so DELETE /api/sessions/{id} can remove it. Returns how many were saved."""
+    try:
+        session = await get_session(session_id)
+    except NotFound:
+        return 0
+    user_id = session["data"].get("user_id")
+    if not user_id or await store.find_records("memory_ref", "session_id", session_id, limit=1):
+        return 0  # no user to remember, or already saved for this session
+    notes = memories_from_debrief(await build_debrief(session_id))
+    saved = 0
+    for text in notes:
+        ref = await memory.remember(user_id, text, {"session_id": session_id, "source": "debrief"})
+        if await store.get_record(session_id) is None:  # deleted while we were saving: undo, keep nothing
+            await memory.forget([ref])
+            break
+        await store.create_record("memory_ref", {"session_id": session_id, "ref": ref}, owner_id=user_id)
+        saved += 1
+    return saved
+
+
+async def recall_memories(user_id: str, query: str = "", limit: int = 5) -> list[str]:
+    """What we remember about this user. Never raises: memory is a bonus, not a dependency."""
+    try:
+        return await memory.recall(user_id, query, limit)
+    except Exception:
+        return []

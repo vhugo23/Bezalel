@@ -57,6 +57,11 @@ Calling the backend directly also works: CORS allows localhost:5173 and localhos
 - **Errors on the voice socket never close it:** `bad_answer`, `no_audio`, `too_short`, `no_speech`, `stt_failed`, `audio_too_long`, `tts_failed`. Offer the typed fallback after `stt_failed`.
 - Full message list: `contracts/ws_messages.md`. Routes and fields: `contracts/api.md`.
 
+## Memory from earlier sessions
+`POST /api/plans` returns `memories` and `POST /api/sessions` returns `recalled`: short notes about this user's earlier
+sessions (gaps with their own words, strengths). Empty on a first session. Good spot for a "Picking up from last
+time" panel. Both fields are lists of strings and always present.
+
 ## What is real vs stubbed today
 Real: plans (Gemini, with generic fallback questions if the model fails), sessions, consent, pair codes, the spoken interview
 (Gemini replies, ElevenLabs voice out, push-to-talk speech in), the patience meter, the debrief with resources, answers stored,

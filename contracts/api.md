@@ -73,3 +73,10 @@ right after `state: debrief` when the patience meter ends an interview, so the f
 - Matching is by whole words in the skill text or the unanswered question, so "SPI" does not match "spice".
 - Not yet linked to the skill graph (`topics.json` is empty), so there is no lesson link or retest yet.
 - Keep the links alive: `spikes/check_resource_links.py` re-checks every URL.
+
+## Memory across sessions (Backboard)
+
+- `POST /api/plans` response adds `memories: [str]` and `POST /api/sessions` adds `recalled: [str]`. Empty on a user's first session.
+- Saved after grading from the debrief (skill gaps with the candidate's verified quote, strengths), at most 8 per session.
+- `DELETE /api/sessions/{id}` also deletes that session's memories from Backboard.
+- Not yet used by the interviewer: `interviewer.build_plan` should take the memories so the opening can follow up on last time.
