@@ -29,7 +29,6 @@ _seq_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 _seq_next: dict[str, int] = {}
 _turn_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # one answer at a time per session
 MAX_ANSWER_CHARS = 5000
-SCRIPTED_REPLY = "Okay. What would you check next?"  # placeholder until the walkthrough interviewer exists
 
 
 class NotFound(LookupError):
@@ -102,7 +101,8 @@ async def _interview_turns(session_id: str) -> list[dict]:
     turns = []
     for kind, role in (("answer", "candidate"), ("interviewer", "interviewer")):
         for e in await store.list_events(session_id, kind=kind, limit=100000):
-            turns.append({"role": role, "text": e["data"]["text"], "turn": e["data"]["turn"]})
+            turns.append({"role": role, "text": e["data"]["text"], "turn": e["data"]["turn"],
+                          "shape": e["data"].get("shape")})
     return sorted(turns, key=lambda t: (t["turn"], t["role"] == "interviewer"))
 
 
@@ -124,25 +124,27 @@ async def handle_answer(session_id: str, text: str) -> dict:
         await store.add_event(session_id, "answer", data={"answer_id": answer_id, "text": text, "turn": turn})
 
         update = {"turn": turn}
-        done, source = False, "scripted"
+        done, source, shape, violations = False, "scripted", None, []
         if d.get("state") in ("intake", "interview"):
             plan = await store.get_record(d["plan_id"])
             if plan is None:
                 raise NotFound("plan for this session is missing")
-            question, source = await interviewer.next_question(plan["data"], await _interview_turns(session_id))
+            reply = await interviewer.next_question(plan["data"], await _interview_turns(session_id))
+            question, source, shape, violations = reply.text, reply.source, reply.shape, reply.violations
             if question is None:
                 done = True
-                question, source = interviewer.HANDOFF, "scripted"
+                question, source = interviewer.handoff(), "scripted"
                 update["state"] = "walkthrough"
             else:
                 update["state"] = "interview"
-        else:
-            question = SCRIPTED_REPLY  # TODO: walkthrough interviewer that reacts to probe events
+        else:  # TODO: walkthrough interviewer that reacts to probe events
+            question = interviewer.walkthrough_placeholder(d.get("last_interviewer_text"))
         degraded = source == interviewer.FALLBACK
         update.update(last_interviewer_text=question,
                       degraded_turns=int(d.get("degraded_turns", 0)) + (1 if degraded else 0))
         await store.update_record(session_id, update)
-        await store.add_event(session_id, "interviewer", data={"text": question, "turn": turn, "source": source})
+        await store.add_event(session_id, "interviewer", data={"text": question, "turn": turn, "source": source,
+                                                               "shape": shape, "violations": violations})
     ms = (time.perf_counter() - start) * 1000
     await store.add_event(session_id, "timing", value=ms, data={"stage": "turn_total", "turn": turn})
     return {"answer_id": answer_id, "next_question": question, "turn": turn, "turn_total_ms": ms,

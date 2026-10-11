@@ -84,3 +84,27 @@ test follow-up behavior, not interview quality. One plan model call plus 5 live 
   Fixed with one prompt line ("never repeat a question in the same words"). Run 2 rephrased each time.
   Still unsolved: it keeps steering back to the one unanswered question instead of moving on sooner.
 - Retest on venue wifi, with a real person talking, before quoting any number.
+
+## Humanlike interviewer, old versus new persona (`spikes/compare_interviews.py`)
+
+Sat Oct 10, 2026. The same 5 scripted candidate answers, real Gemini lite (`gemini-3.5-flash-lite`), two runs per
+side, 10 replies per side. In each side one of the two runs failed to get a model plan (Gemini 503 "high demand"),
+so it used the generic fallback questions. That makes the sides only roughly comparable. Tiny sample, not a benchmark.
+
+| Measure (10 replies per side) | Old persona | New persona |
+|---|---|---|
+| Average words per reply | 18.5 | 11.7 |
+| Replies over 25 words | 2 | 0 |
+| Replies repeating an earlier opening word | 1 | 0 |
+| First sentence mostly repeats the candidate's answer | 2 | 0 |
+| Verbatim repeated questions | 0 | 0 |
+| Live checker violations (`humanness.check`) | 0 | 0 |
+
+- The live checker found nothing on either side, so it is a guard rail and not evidence of improvement. It did not
+  catch the old "restate what you said, then ask" pattern at its 60 percent threshold, so the comparison uses a looser
+  first-sentence measure.
+- What a person hears is not measured. `spikes/_runs/blind_read.md` has the 10 reply pairs in random order for a
+  blind read, and `spikes/ab_voice.py` writes 12 WAV files (4 lines, 3 voice settings) to listen to. The presets are
+  guesses and the model may ignore settings it does not support. No result is claimed until a person has judged.
+- The plan call takes about 5 s (5 runs: 4.5 to 5.8 s), unlike a live turn at about 1 s. One run in six hit a 503;
+  the plan call now retries once after a pause. Live turns still do not retry.

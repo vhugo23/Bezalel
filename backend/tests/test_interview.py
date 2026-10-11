@@ -12,6 +12,7 @@ from app.main import app
 from app.modules.prepcrew import interviewer, service
 
 client = TestClient(app)
+ALL_FALLBACKS = [q for slot in interviewer.FALLBACK_SLOTS for q in slot]
 
 
 def new_session(user="u1") -> dict:
@@ -63,7 +64,7 @@ def test_session_starts_in_interview_with_an_opening_question():
     s = new_session()
     plan_questions = client.post("/api/plans", json={"job_posting": "j", "resume": "r"}).json()["questions"]
     assert s["state"] == "interview"
-    assert s["opening"] and s["opening"] in plan_questions + interviewer.FALLBACK_QUESTIONS
+    assert s["opening"] and s["opening"] in plan_questions + ALL_FALLBACKS
 
 
 def test_fake_provider_turns_are_labelled_fake_not_model():
@@ -178,7 +179,7 @@ def test_plan_falls_back_on_bad_model_json(monkeypatch):
     patch_model(monkeypatch, junk)
     plan = client.post("/api/plans", json={"job_posting": "j", "resume": "r"}).json()
     assert plan["degraded"] is True
-    assert plan["questions"] == interviewer.FALLBACK_QUESTIONS
+    assert [q in slot for q, slot in zip(plan["questions"], interviewer.FALLBACK_SLOTS)] == [True] * 5
 
 
 def test_plan_falls_back_on_wrong_json_shape(monkeypatch):

@@ -52,3 +52,15 @@ LIVE_TURN_TIMEOUT_SECONDS = float(os.getenv("LIVE_TURN_TIMEOUT_SECONDS", "5"))
 # Speech to text (ElevenLabs, upload endpoint). Input audio must be 16 kHz mono 16-bit PCM.
 ELEVENLABS_STT_MODEL = os.getenv("ELEVENLABS_STT_MODEL", "scribe_v2")
 STT_TIMEOUT_SECONDS = float(os.getenv("STT_TIMEOUT_SECONDS", "15"))
+
+# ElevenLabs voice settings. Blank means "send nothing, use the voice's own settings". Tune by ear with
+# spikes/ab_voice.py. Not every model honors every setting (checked per model, not assumed).
+def _optional_float(name: str):
+    raw = os.getenv(name, "").strip()
+    return float(raw) if raw else None
+
+
+ELEVENLABS_STABILITY = _optional_float("ELEVENLABS_STABILITY")
+ELEVENLABS_SIMILARITY = _optional_float("ELEVENLABS_SIMILARITY")
+ELEVENLABS_STYLE = _optional_float("ELEVENLABS_STYLE")
+ELEVENLABS_SPEED = _optional_float("ELEVENLABS_SPEED")

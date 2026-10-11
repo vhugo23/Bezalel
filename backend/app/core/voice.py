@@ -42,6 +42,12 @@ class ElevenLabsVoice:
         body: dict = {"text": text}
         if config.ELEVENLABS_MODEL:
             body["model_id"] = config.ELEVENLABS_MODEL
+        settings = {k: v for k, v in (("stability", config.ELEVENLABS_STABILITY),
+                                      ("similarity_boost", config.ELEVENLABS_SIMILARITY),
+                                      ("style", config.ELEVENLABS_STYLE),
+                                      ("speed", config.ELEVENLABS_SPEED)) if v is not None}
+        if settings:
+            body["voice_settings"] = settings
         async with httpx.AsyncClient(timeout=httpx.Timeout(30, connect=10)) as client:
             async with client.stream(
                 "POST", f"{self.BASE}/text-to-speech/{voice_id}/stream",
