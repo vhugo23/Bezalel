@@ -5,3 +5,4 @@ next: live HTTPS/account/socket acceptance; real-device and grading review remai
 blocked_on: STAR remains teammate-owned; recovery/deletion not implemented
 touching: render.yaml; docs/DEPLOYMENT.md; frontend/vercel.json
 completed: runnable catalog, voice cancellation/retry, account export/privacy, scoped socket tickets. Validation: 670 backend tests, 126 frontend tests, production build and isolated session/Pi/account browser acceptance passed. Code is only on feature branch, not main.
+additional_touching: frontend/src/components/SkillCircle.tsx; frontend/src/styles.css (existing dependency required by Plan); vercel.json; .vercelignore
