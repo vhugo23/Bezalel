@@ -3,6 +3,7 @@ import { api, apiFetch, type Event, type Session } from '../api/client';
 import { randomId } from '../lib/ids';
 import { demoStep, demoBoardItems, demoBoardPng, supportsDemo } from '../lib/demoAutoplay';
 import { activeItems, boardFromEvents } from '../lib/boardElements';
+import { Icon } from './ui';
 import './DemoAutoplay.css';
 
 type Props={session:Session;onRefresh:()=>Promise<unknown>;onStart:()=>void;onStop:()=>void;onRunning:(running:boolean)=>void;onCandidate:(text:string)=>void;onLabAction:(action:{kind:string;text:string}|undefined)=>void;onFinish:()=>void;speakDana:(event:Event)=>Promise<boolean>};
@@ -119,9 +120,8 @@ export function DemoAutoplay(props:Props){
  };
  if(!supportsDemo(props.session)||!demoStep(props.session.engine_id,props.session.step)||props.session.status!=='live')return null;
  return <aside className="demo-autoplay" aria-label="Demo playback">
-  <div><b>Watch a practice session</b><small>Scripted candidate · real grading · saved to your history</small></div>
-  {running?<button onClick={stop}>■ Stop & take over</button>:<button onClick={()=>void start()}>▶ Autoplay demo</button>}
-  {running&&<p role="status">{status}</p>}
-  {voiceNote&&<p>{voiceNote}</p>}{error&&<p role="alert">{error}</p>}
+  <button className={running?'playing':''} onClick={running?stop:()=>void start()} aria-label={running?'Stop & take over':'Autoplay demo'} aria-pressed={running} title={running?'Stop demo and take over':'Autoplay scripted demo · saves practice activity'}><span aria-hidden="true">D</span><Icon name={running?'stop':'play'}/></button>
+  <span className="demo-autoplay-status" role="status">{running?status:''}{voiceNote&&` ${voiceNote}`}</span>
+  {error&&<p role="alert">{error}</p>}
  </aside>;
 }
