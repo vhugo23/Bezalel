@@ -24,6 +24,7 @@
   dt { color:var(--muted); } dd { margin:0; }
   #log { max-height:200px; overflow:auto; font:12px/1.4 ui-monospace, monospace; color:var(--muted); white-space:pre-wrap; }
   .err { color:var(--bad); }
+  .you { border-left-color:var(--muted); background:transparent; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -43,6 +44,7 @@
   </section>
 
   <section>
+    <div id="you" class="said you" hidden></div>
     <div id="said" class="said" hidden></div>
     <label>Your answer <textarea id="answer" placeholder="Type what you would say"></textarea></label>
     <div class="row">
@@ -114,7 +116,10 @@ function playChunk(arrayBuffer) {
 function onMessage(ev) {
   if (ev.data instanceof ArrayBuffer) return playChunk(ev.data);
   const m = JSON.parse(ev.data);
-  if (m.type === "transcript_final") $("t_said").textContent = m.text;
+  if (m.type === "transcript_final") {
+    $("t_said").textContent = m.text;
+    $("you").hidden = false; $("you").textContent = "You: " + m.text;
+  }
   if (m.type === "interviewer_text") { $("said").hidden = false; $("said").textContent = m.text; }
   else if (m.type === "timing") {
     if (m.stage === "turn_total") $("t_turn").textContent = m.ms + " ms";
@@ -207,7 +212,7 @@ function releaseTalk() {
   if (!recording) return;
   recording = false;
   $("talk").textContent = "Hold to talk";
-  sentAt = performance.now(); $("t_heard").textContent = "waiting"; $("t_said").textContent = "transcribing...";
+  sentAt = performance.now(); $("t_heard").textContent = "waiting"; $("t_said").textContent = "transcribing..."; $("you").hidden = false; $("you").textContent = "You: (transcribing...)";
   setTimeout(() => ws.send(JSON.stringify({ type: "speech_end", t_client: Date.now() })), 150);  // let the last frames go out first
 }
 
