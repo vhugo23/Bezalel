@@ -107,6 +107,10 @@ async def run():
     try:
         for port in (18000, 15173):
             with socket.socket() as probe:
+                # Linux retains closed server connections in TIME_WAIT. Match
+                # uvicorn/Node's listener reuse without permitting live servers.
+                if os.name != 'nt':
+                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 probe.bind(('127.0.0.1', port))
         await admin.execute(f'CREATE SCHEMA "{name}"')
         created = True

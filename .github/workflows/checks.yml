@@ -45,3 +45,11 @@ jobs:
       - run: python backend/scripts/e2e.py
       - run: python backend/scripts/e2e.py --auth accounts.spec.ts connections.spec.ts
       - run: npm run check:app
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: acceptance-diagnostics
+          path: |
+            .artifacts/e2e/setup-error.log
+            .artifacts/e2e/browser.log
+            frontend/test-results/
