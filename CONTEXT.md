@@ -1,3 +1,5 @@
+> Historical hackathon handoff. Some implementation and setup details below are obsolete. Use the root README and docs/PORTFOLIO.md for the current supported setup; use current v2 code and tests for behavior.
+
 # PrepCrew: context for whoever picks this up next
 
 Written Sat Oct 10, 2026, late evening, from the working session. Read this first, then `contracts/api.md`,

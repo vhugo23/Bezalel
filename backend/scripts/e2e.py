@@ -1,4 +1,4 @@
-"""Run browser acceptance against an empty disposable Timescale schema.
+"""Run browser acceptance against an empty disposable PostgreSQL schema.
 
 Never migrates, seeds, or deletes records in DATABASE_URL. The admin connection
 only creates/drops this run's uniquely named schema. All app/provider settings
@@ -17,9 +17,10 @@ from urllib.request import urlopen
 from uuid import uuid4
 
 import asyncpg
-from app.environment import settings as environment_settings
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'backend'))
+from app.environment import settings as environment_settings
 
 
 def wait_ready(url, process):
@@ -34,6 +35,27 @@ def wait_ready(url, process):
         except OSError:
             time.sleep(.25)
     raise RuntimeError('Acceptance server did not become ready')
+
+
+async def verify_analytics(source, schema):
+    conn = await asyncpg.connect(source, server_settings={'search_path': schema + ',public'})
+    transaction = conn.transaction()
+    await transaction.start()
+    try:
+        await conn.execute("INSERT INTO users(id) VALUES('portable-analytics-fixture')")
+        await conn.execute("""INSERT INTO skill_assessments(user_id,skill_id,ts,score,source,is_estimate)
+            VALUES ('portable-analytics-fixture','infra.permissions','2026-01-01 12:05Z',80,'self_report',false),
+                   ('portable-analytics-fixture','infra.permissions','2026-01-01 12:20Z',60,'self_report',false),
+                   ('portable-analytics-fixture','infra.permissions','2026-01-01 12:30Z',99,'intake_estimate',true)""")
+        row = await conn.fetchrow("SELECT score,best,samples FROM mastery_hourly WHERE user_id='portable-analytics-fixture'")
+        assert dict(row) == {'score': 60, 'best': 80, 'samples': 2}
+        await conn.execute("INSERT INTO metrics(name,value) VALUES('portable_fixture_ms',10),('portable_fixture_ms',30)")
+        row = await conn.fetchrow("SELECT n,avg,min,max FROM latency_1m WHERE name='portable_fixture_ms'")
+        assert row['n'] == 2 and row['avg'] == 20 and row['min'] == 10 and row['max'] == 30
+        print('Database analytics: latest non-estimated score, best score and immediate timing views passed.')
+    finally:
+        await transaction.rollback()
+        await conn.close()
 
 
 async def seed_fixture(source, schema):
@@ -95,6 +117,7 @@ async def run():
                 cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
         if result.returncode:
             raise RuntimeError('Fresh migration failed; inspect .artifacts/e2e/migrate.log')
+        await verify_analytics(source, name)
         from verify_jobs import verify
         await verify(source, name)
         from verify_memory import verify as verify_implicit_memory

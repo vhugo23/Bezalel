@@ -3,9 +3,11 @@ import { api, apiFetch, openSessionSocket, type Event, type Model } from '../api
 import { voiceMessage } from './voiceProtocol';
 import { acquireSpeech, releaseSpeech, type LocalSpeech, type LoadProgress } from './localSpeech';
 import { LocalUtterance } from './localUtterance';
+import { z } from 'zod';
+import { wavPcm, connectionRequest, type SpeechOptions } from './connections';
 
 export type VoicePhase='off'|'connecting'|'loading'|'listening'|'transcribing'|'thinking'|'speaking'|'muted';
-type Options={id:string;step:number;endStep?:number;demo:boolean;sound:boolean;onEvents:()=>Promise<unknown>;onError:(e:unknown)=>void};
+type Options={id:string;step:number;endStep?:number;demo:boolean;sound:boolean;speech?:SpeechOptions;onEvents:()=>Promise<unknown>;onError:(e:unknown)=>void};
 
 export function useVoiceConversation(options:Options) {
   const opts=useRef(options);opts.current=options;
@@ -53,7 +55,7 @@ export function useVoiceConversation(options:Options) {
     return new Promise<boolean>((resolve,reject)=>{
       const complete=()=>{finish.current=null;audio.current=null;if(clipUrl.current){URL.revokeObjectURL(clipUrl.current);clipUrl.current=null;}resolve(true);};
       finish.current=resolve;
-      if(opts.current.demo){
+      if(opts.current.demo||opts.current.speech?.tts==='browser'){
         const u=new SpeechSynthesisUtterance(String(event.payload.text));u.onend=complete;u.onerror=()=>{finish.current=null;resolve(false);};speechSynthesis.speak(u);
       }else{
         void (async()=>{
@@ -61,14 +63,25 @@ export function useVoiceConversation(options:Options) {
           if(!local.current.ttsQuota){
             const controller=new AbortController();clipRequest.current=controller;
             const response=await apiFetch(`/sessions/${opts.current.id}/speech/${event.seq}`,{signal:controller.signal});
-            if(response.headers.get('X-PrepCrew-Speech-Fallback')==='quota')local.current.ttsQuota=true;
+            if(response.headers.get('X-PrepCrew-Speech-Fallback')==='browser'){
+              if(stamp!==clipEpoch.current)return;
+              note('Using your browser’s voice. Live microphone conversations need optional ElevenLabs settings.');
+              if(!window.speechSynthesis){complete();return;}
+              const utterance=new SpeechSynthesisUtterance(String(event.payload.text));
+              utterance.onend=complete;
+              // Playback is optional: a missing system voice must not prevent
+              // a saved typed answer from advancing to the next step.
+              utterance.onerror=complete;
+              window.speechSynthesis.speak(utterance);return;
+            }
+            if(['quota','local'].includes(response.headers.get('X-PrepCrew-Speech-Fallback')||''))local.current.ttsQuota=true;
             else if(!response.ok)throw new Error('Dana’s voice is unavailable. The transcript is saved; use Replay to try again.');
             else blob=await response.blob();
           }
           if(stamp!==clipEpoch.current)return;
           if(!blob){
             setStatus('loading');
-            note('ElevenLabs quota reached. Loading Kokoro on your GPU; first use downloads model files.');
+            note('Starting Dana’s Kokoro voice on your GPU; first use downloads model files.');
             if(!tts.current){
               const speech=acquireSpeech('tts',track);tts.current=speech;
               try{await speech.load();}
@@ -76,7 +89,7 @@ export function useVoiceConversation(options:Options) {
               finally{if(stamp===clipEpoch.current)track(null);}
             }
             if(stamp!==clipEpoch.current)return;
-            const output=await tts.current.infer(opts.current.id,{seq:event.seq});
+            const output=await tts.current.infer(opts.current.id,{seq:event.seq,voice:opts.current.speech?.kokoro_voice||'af_heart'});
             if(!output.wav)throw new Error('Kokoro returned no audio.');
             blob=new Blob([output.wav],{type:'audio/wav'});note('Dana’s voice: Kokoro · local WebGPU');
           }
@@ -91,6 +104,7 @@ export function useVoiceConversation(options:Options) {
     });
   };
   const recognize=async(pcm:Float32Array,final:boolean,epoch:number)=>{
+    if(local.current.mode==='segment'&&!final){stopAudio();send({type:'interrupt'});idle();return;}
     if(local.current.busy){
       if(final){
         if(local.current.pending){opts.current.onError(new Error('Local transcription cannot keep up. Your saved turns are safe; continue by typing.'));end();return;}
@@ -100,7 +114,9 @@ export function useVoiceConversation(options:Options) {
     }
     const tag=local.current.tag;local.current.busy=true;
     try{
-      const output=await stt.current!.infer(opts.current.id,{pcm});
+      const output=local.current.mode==='segment'
+        ?z.object({text:z.string(),inference_id:z.string()}).parse(await connectionRequest(`/sessions/${opts.current.id}/transcriptions`,{method:'POST',headers:{'Content-Type':'audio/wav'},body:wavPcm(pcm)}))
+        :await stt.current!.infer(opts.current.id,{pcm});
       if(epoch!==state.current.epoch||tag!==local.current.tag||state.current.muted)return;
       send({type:final?'local_final':'local_partial',text:output.text||'',inference_id:output.inference_id});
     }catch(e){if(epoch===state.current.epoch){opts.current.onError(e);end();}}
@@ -111,19 +127,22 @@ export function useVoiceConversation(options:Options) {
       }
     }
   };
-  const startLocal=async(epoch:number,opening?:Event)=>{
+  const startLocal=async(epoch:number,opening?:Event,provider='parakeet')=>{
     if(local.current.mode!=='cloud')return;
     setPartial('');
     clearTimeout(timer.current);local.current.mode='loading';
     // Keep Stop/Mute available during downloads, including quota before handshake.
     state.current.active=true;state.current.starting=false;setActive(true);setStatus('loading');
-    note('ElevenLabs quota reached. Loading Parakeet on your GPU. Large first download; speak after Listening appears.');
+    note(provider==='openai'?'Microphone: OpenAI speech · continuous capture with utterance transcription.':'Starting Parakeet on your GPU. First use downloads model files; speak after Listening appears.');
     opts.current.onError(null);
     try{
-      stt.current=acquireSpeech('stt',track);try{await stt.current.load();}finally{if(epoch===state.current.epoch)track(null);}
+      if(provider==='parakeet'){
+        const mode=opts.current.speech?.parakeet||'balanced';
+        stt.current=acquireSpeech('stt',track,mode);try{await stt.current.load({parakeet:mode});}finally{if(epoch===state.current.epoch)track(null);}
+      }
       if(epoch!==state.current.epoch)return;
-      gate.current=new LocalUtterance((pcm,final)=>void recognize(pcm,final,epoch));local.current.mode='local';
-      note('Microphone: Parakeet · local WebGPU encoder / WASM decoder');idle();
+      gate.current=new LocalUtterance((pcm,final)=>void recognize(pcm,final,epoch));local.current.mode=provider==='openai'?'segment':'local';
+      note(provider==='openai'?'Microphone: OpenAI speech · live capture':'Microphone: Parakeet · local WebGPU encoder / INT8 WASM decoder');idle();
       if(opening)send({type:'replay',seq:opening.seq});
     }catch(e){if(epoch===state.current.epoch){opts.current.onError(e);end();}}
   };
@@ -164,7 +183,7 @@ export function useVoiceConversation(options:Options) {
         if(epoch!==state.current.epoch||!state.current.active)return;
         setLevel(state.current.muted?0:Math.min(1,data.level*12));
         if(local.current.mode!=='cloud'){
-          if(local.current.mode==='local'&&!state.current.muted)gate.current?.push(data.pcm,data.level);
+          if(['local','segment'].includes(local.current.mode)&&!state.current.muted)gate.current?.push(data.pcm,data.level);
           return;
         }
         if(ws.readyState!==WebSocket.OPEN)return;
@@ -178,7 +197,7 @@ export function useVoiceConversation(options:Options) {
         try{
           const data=voiceMessage.parse(JSON.parse(message.data));
           if(data.type==='fallback'){
-            const initial=!state.current.active;void startLocal(epoch,initial?opening:undefined);
+            const initial=!state.current.active;void startLocal(epoch,initial?opening:undefined,data.provider);
           }else if(data.type==='ready'){
             clearTimeout(timer.current);state.current.active=true;state.current.starting=false;setActive(true);idle();
             if(opening)send({type:'replay',seq:opening.seq});
@@ -212,7 +231,7 @@ export function useVoiceConversation(options:Options) {
     send({type:'mute',muted:state.current.muted});if(!audio.current)idle();
   };
   const interrupt=()=>{stopAudio();send({type:'interrupt'});idle();};
-  const sendNow=()=>{if(local.current.mode==='local')gate.current?.commit();else send({type:'commit'});};
+  const sendNow=()=>{if(['local','segment'].includes(local.current.mode))gate.current?.commit();else send({type:'commit'});};
   const sendText=(text:string)=>{stopAudio();local.current.tag++;local.current.pending=null;gate.current?.reset();send({type:'text',text});setPartial('');setStatus('thinking');};
   const acknowledge=async(event:Event)=>{
     const r=await apiFetch(`/sessions/${opts.current.id}/reply-complete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seq:event.seq})});

@@ -33,7 +33,7 @@ JOINS = '''FROM memories m JOIN claims c ON c.id=m.source_claim_id
 
 
 def enabled():
-    return bool(config.BACKBOARD_API_KEY) and not DEMO and config.MEMORY_BACKEND not in ('postgres','memory')
+    return bool(config.BACKBOARD_API_KEY) and not DEMO and config.MEMORY_BACKEND == 'backboard'
 
 
 class ProviderError(Exception):

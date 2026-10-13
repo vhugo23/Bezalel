@@ -51,6 +51,7 @@ const asScene=(els:readonly El[])=>els as unknown as ExcalidrawElement[];
 const interacting=(s:AppState)=>!!(s.newElement||s.resizingElement||s.selectedElementsAreBeingDragged||s.editingTextElement||s.multiElement||s.isRotating||s.selectionElement);
 
 export default function BoardCanvas({saved,extra,overlay,readOnly,label,onEdit,onInteracting,onUnsupported,saveState,saveError,onRetry,onDemo,ref}:Props){
+  const adopting=useRef(true);
   const api=useRef<ExcalidrawImperativeAPI|null>(null),known=useRef(new Map<string,number>()),busy=useRef(false),stale=useRef(false);
   const timer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined),framing=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const props=useRef({saved,readOnly,onEdit,onInteracting,onUnsupported});props.current={saved,readOnly,onEdit,onInteracting,onUnsupported};
@@ -88,6 +89,7 @@ export default function BoardCanvas({saved,extra,overlay,readOnly,label,onEdit,o
     const shownDana=local.filter(isDana).map(e=>e.id).join(),wantDana=scene.current.dana.map(e=>e.id).join();
     if(merged===candidate&&!missing.length&&shownDana===wantDana)return;
     const wasEmpty=!candidate.some(e=>!e.isDeleted);
+    adopting.current=true;
     a.updateScene({elements:asScene([...merged,...missing,...scene.current.dana]),captureUpdate:CaptureUpdateAction.NEVER});
     // A board that fills in from elsewhere (the demo, the iPad, a reload) is framed so all of it shows.
     // Saved elements can stream in over several updates; frame once they settle.
@@ -125,11 +127,18 @@ export default function BoardCanvas({saved,extra,overlay,readOnly,label,onEdit,o
 
   const initial=useMemo(()=>{remember();const items=reconcile<El>([],saved)??[];return asScene([...items.filter(e=>!e.isDeleted),...legacy.filter(e=>!saved.has(e.id)),...dana]);},[]);
   const count=useMemo(()=>[...saved.values()].filter(i=>!i.element.isDeleted).length,[saved]);
-  return <div ref={host} className="excalidraw-host" aria-label={label} data-dana-marks={dana.length} data-saved-elements={count} data-readonly={readOnly||undefined}>
+  const userEdit=()=>{adopting.current=false;};
+  return <div ref={host} onPointerDownCapture={userEdit} onKeyDownCapture={userEdit} className="excalidraw-host" aria-label={label} data-dana-marks={dana.length} data-saved-elements={count} data-readonly={readOnly||undefined}>
     <Excalidraw
       excalidrawAPI={a=>{api.current=a;setTimeout(()=>{a.refresh();sync();frame();});}}
       initialData={{elements:initial,appState:{viewBackgroundColor:'#ffffff'}}}
-      onChange={(_,state)=>{
+      onChange={(elements,state)=>{
+        // Excalidraw normalizes bound text after a remote scene update. Those
+        // version bumps are not a candidate edit and must not invalidate the
+        // other device's saved critique. Real pointer/keyboard input ends adoption.
+        if(adopting.current&&!interacting(state))for(const element of elements){
+          if(!isDana(element))known.current.set(element.id,Math.max(known.current.get(element.id)??0,element.version));
+        }
         const now=interacting(state);
         if(now!==busy.current){busy.current=now;props.current.onInteracting?.(now);}
         clearTimeout(timer.current);timer.current=setTimeout(idle,now?600:350);

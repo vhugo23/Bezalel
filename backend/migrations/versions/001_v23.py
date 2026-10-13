@@ -9,6 +9,9 @@ depends_on = None
 
 def upgrade():
     sql = (Path(__file__).parents[1] / 'sql' / '001_v23.sql').read_text(encoding='utf-8')
+    if not op.get_context().config.attributes.get('timescale', False):
+        from app.postgres_schema import portable_schema
+        sql = portable_schema(sql)
     schema = op.get_context().config.attributes['schema']
     op.get_bind().connection.run_async(lambda driver: driver.execute(f'SET LOCAL search_path TO "{schema}", public;\n' + sql))
 

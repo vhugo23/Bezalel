@@ -56,6 +56,11 @@ async def enqueue_lesson(sid):
 async def enqueue(kind, user_id, subject_id, payload):
     if kind not in {'lesson', 'extract_source', 'plan', 'job_scan', 'ats_review'}:
         raise HTTPException(422, 'Unsupported generation workflow')
+    from app import config
+    if config.DATABASE_URL:
+        from .providers import configuration_fingerprint
+        connection=await configuration_fingerprint(user_id)
+        if connection:payload={**payload,'connection':connection}
     row = await db.one('''INSERT INTO work_items(id,user_id,kind,subject_id,cache_key,payload)
         VALUES($1,$2,$3,$4,$5,$6)
         ON CONFLICT(user_id,kind,cache_key) DO UPDATE SET cache_key=excluded.cache_key RETURNING *''',

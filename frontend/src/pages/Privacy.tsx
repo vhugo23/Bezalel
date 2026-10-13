@@ -8,7 +8,7 @@ export function PrivacyPage() {
   <h2>What is saved</h2>
   <p>Your account name and email, preparation goals, imported source text, conversations, whiteboard snapshots, simulator actions, feedback, lessons and practice progress are stored on the server. Passwords are stored as hashes. Signing out ends your account session; it does not delete your saved practice.</p>
   <h2>AI and voice processing</h2>
-  <p>In live mode, relevant preparation text, conversation and whiteboard images are sent to Gemini for coaching and review. Cloud voice uses ElevenLabs for speech recognition and playback. When local speech is available, speech models run on your device and recognized text is sent to the server for coaching. Verified learning gaps may be synchronized with Backboard to personalize later practice.</p>
+  <p>In live mode, relevant preparation text, conversation and whiteboard images are sent to Gemini for coaching and review. Cloud voice uses ElevenLabs for speech recognition and playback. When local speech is available, speech models run on your device and recognized text is sent to the server for coaching. Verified learning gaps stay in the application database by default. Backboard synchronization is an optional integration that must be explicitly enabled.</p>
   <h2>Your device</h2>
   <p>Microphone access starts when you start voice. Stop voice to release the microphone. You can type instead. Local speech downloads and caches models in your browser; clearing this site's browser data removes those local caches, but does not erase server records. A paired drawing device has limited access until the interview ends or its access expires.</p>
   <h2>Current account controls</h2>

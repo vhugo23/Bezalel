@@ -1,4 +1,4 @@
-"""Pi learning acceptance: synthetic verified gap, recorded jobs, real Tiger SQL.
+"""Pi learning acceptance: synthetic verified gap, authored coaching, real PostgreSQL.
 
 Only called with the e2e harness's disposable schema. No live providers.
 """
@@ -15,19 +15,9 @@ async def verify(source,schema):
     prior=(config.DATABASE_URL,config.V2_DATABASE_SCHEMA,config.BACKBOARD_API_KEY,service.DEMO,generation.DEMO,learning.generate)
     config.DATABASE_URL,config.V2_DATABASE_SCHEMA=source,schema
     config.BACKBOARD_API_KEY='';service.DEMO=False;generation.DEMO=True
-    accepted=False
-    async def recorded(kind,subject,prompt,response_schema,*args,**kwargs):
-        assert 'PRIVATE_CANARY' not in prompt
-        if kind=='lesson':
-            fixture={'title':'Read access without world-write',
-                'explanation':'This synthetic practice lesson contrasts read access with world-write access. For a root-owned stylesheet, allow the web worker to read the file while keeping its parent directories traversable; granting writes to everyone is unnecessary.',
-                'practice':'Inspect the owner and mode, make a scoped permission repair, and verify the stylesheet response in the simulator.',
-                'retest_prompt':'Investigate a second simulated Pi deployment with a different listening endpoint. Diagnose the gateway error, restore safe stylesheet access, recover log space and verify power using the existing lab tools.',
-                'expectations':['Explain least privilege and verify the scoped permission change.']}
-        elif kind=='lesson_check':fixture={'supported':accepted,'reason':'Synthetic recorded review fixture; no live teaching-quality claim.'}
-        else:raise AssertionError('Unexpected provider job')
-        return await generation.generate(kind,subject,prompt,response_schema,cached=fixture,**kwargs)
-    learning.generate=recorded
+    async def no_model_calls(*args, **kwargs):
+        raise AssertionError('Authored Pi coaching must not call a provider')
+    learning.generate=no_model_calls
     try:
         owner=str(uuid4())
         plan=await service.create_plan(Intake(user_id=owner,name='Synthetic learning fixture',role='Infra',companies=[],struggles=['Permissions'],question='Investigate a Pi site.'))
@@ -55,15 +45,11 @@ async def verify(source,schema):
             await conn.execute('INSERT INTO retest_queue(id,user_id,skill_id,session_id,claim_id,reason) VALUES($1,$2,$3,$4,$5,$6)',str(uuid4()),owner,claim.skill_id,parent.id,cid,claim.text)
         work=await jobs.enqueue_lesson(parent.id)
         await jobs.execute(work.id)
-        assert (await jobs.read(work.id)).status=='failed'
-        assert not await db.one('SELECT id FROM lessons WHERE claim_id=$1',cid)
-        assert (await db.one('SELECT status FROM retest_queue WHERE claim_id=$1',cid))['status']=='queued'
-        accepted=True
-        await jobs.retry(work.id);await jobs.execute(work.id)
         result=await jobs.read(work.id)
-        assert result.status=='succeeded' and 'Reference-tested simulator' in result.result['validation_label']
+        assert result.status=='succeeded' and 'reference-tested simulator' in result.result['validation_label'].lower()
         lesson=await learning.read(parent.id)
-        assert lesson.retest_ready and lesson.evidence_seq==[event.seq] and 'recorded' in lesson.validation_label
+        assert lesson.retest_ready and lesson.evidence_seq==[event.seq]
+        assert not (await db.one('SELECT ai_generated FROM lessons WHERE claim_id=$1',cid))['ai_generated']
         queue=await db.one('SELECT * FROM retest_queue WHERE claim_id=$1',cid)
         scenario=await db.one('SELECT * FROM scenarios WHERE track_id=$1',queue['track_id'])
         assert scenario['engine_id']=='linux_fault' and scenario['params']=={'variant':1}
@@ -71,8 +57,7 @@ async def verify(source,schema):
         assert rubrics.load(scenario['rubric'],'linux_fault').version==policy.version
         assert 'five_reference_goals_pass' in scenario['validity_report']['checks']
         attempts=await db.fetch('SELECT * FROM generation_jobs WHERE work_item_id=$1 ORDER BY created_at',work.id)
-        assert len(attempts)==4 and all(r['status']=='cached' and r['is_seed'] for r in attempts)
-        assert attempts[-1]['parent_job_id']==attempts[-2]['id']
+        assert not attempts, 'Authored simulator coaching must not call a model.'
         child=await learning.retest(parent.id)
         again=await service.start(Start(track_id=queue['track_id'],consent=True))
         assert again.id==child.id and child.engine_id=='linux_fault' and len(child.steps)==5
@@ -90,7 +75,7 @@ async def verify(source,schema):
         assert ':4000' in output.events[0].payload['output']
         parent_state=await service.require_session(parent.id)
         assert parent_state['engine_state']['_lab']['app_port']==3000
-        print('Pi learning acceptance: rejected review publishes nothing; audited retry, changed reference-tested engine, same rubric, source citations and idempotent retest passed (synthetic/recorded fixtures).')
+        print('Pi learning acceptance: authored coaching without provider calls, changed reference-tested engine, same rubric, source citations and idempotent retest passed (synthetic fixtures).')
     finally:
         if db._pool:await db._pool.close();db._pool=None
         config.DATABASE_URL,config.V2_DATABASE_SCHEMA,config.BACKBOARD_API_KEY,service.DEMO,generation.DEMO,learning.generate=prior

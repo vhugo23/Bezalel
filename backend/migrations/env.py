@@ -10,6 +10,7 @@ schema = os.getenv('V2_DATABASE_SCHEMA', 'prepcrew')
 if not re.fullmatch(r'[a-z][a-z0-9_]{0,62}', schema):
     raise ValueError('Invalid V2_DATABASE_SCHEMA')
 context.config.attributes['schema'] = schema
+context.config.attributes['timescale'] = os.getenv('DATABASE_TIMESCALE', 'false').lower() == 'true'
 
 def run(connection):
     connection.exec_driver_sql(f'SET search_path TO "{schema}", public')
@@ -35,5 +36,5 @@ async def main():
     await engine.dispose()
 
 if context.is_offline_mode():
-    raise RuntimeError('Timescale migrations require an online database connection.')
+    raise RuntimeError('Migrations require an online PostgreSQL connection.')
 asyncio.run(main())

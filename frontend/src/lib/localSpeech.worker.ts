@@ -1,15 +1,18 @@
 /// <reference lib="webworker" />
 /// <reference types="@webgpu/types" />
 import { KokoroTTS, env as kokoroEnv } from 'kokoro-js';
-import { StyleTextToSpeech2Model, AutoTokenizer, type PretrainedModelOptions } from '@huggingface/transformers';
+import { StyleTextToSpeech2Model, AutoTokenizer, Tensor, env as transformersEnv, type PretrainedModelOptions } from '@huggingface/transformers';
 import { fromUrls, type ParakeetModel } from 'parakeet.js';
 import { prepareSpeechAudio } from './localAudio';
 
 // Transformers 3's bundled WASM assets predate ORT 1.30's asyncify module.
 // Keep JavaScript and WASM on the same pinned runtime version.
-kokoroEnv.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/';
+const runtimePath=new URL('/speech-runtime/1.30.0/',self.location.origin).href;
+kokoroEnv.wasmPaths=runtimePath;
+transformersEnv.backends.onnx.wasm!.wasmPaths=runtimePath;
 
 let tts:Promise<KokoroTTS>|undefined,stt:Promise<ParakeetModel>|undefined;
+let sttMode:'balanced'|'quantized'='balanced';
 // Files download in parallel, so report one byte total per model instead of
 // alternating per-file percentages. Floors keep early small files from reading as 100%.
 type Model='Kokoro'|'Parakeet';
@@ -63,7 +66,8 @@ async function gpu(){
   const device=await adapter.requestDevice();device.destroy();
   return adapter;
 }
-async function load(kind:'stt'|'tts'){
+async function load(kind:'stt'|'tts',mode?:'balanced'|'quantized'){
+  if(mode)sttMode=mode;
   if(kind==='tts'&&tts)return tts;
   if(kind==='stt'&&stt)return stt;
   const adapter=await gpu();
@@ -81,15 +85,28 @@ async function load(kind:'stt'|'tts'){
     return tts??=Promise.all([
       StyleTextToSpeech2Model.from_pretrained(id,{revision,device:'webgpu',dtype:'fp32',progress_callback}),
       AutoTokenizer.from_pretrained(id,{revision,progress_callback}),
-    ]).then(([model,tokenizer])=>new KokoroTTS(model,tokenizer)).catch(e=>{tts=undefined;throw e;});
+    ]).then(([model,tokenizer])=>{
+      // Dev dependency optimization can give Kokoro its own Tensor constructor.
+      // Normalize inputs at the boundary; ONNX validates constructor identity.
+      const compatible=new Proxy(model,{apply(target,thisArg,args){
+        const inputs=Object.fromEntries(Object.entries(args[0] as Record<string,Pick<Tensor,'type'|'data'|'dims'>>).map(([key,value])=>
+          [key,value instanceof Tensor?value:new Tensor(value.type,value.data,value.dims)]));
+        return Reflect.apply(target,thisArg,[inputs]);
+      }});
+      return new KokoroTTS(compatible,tokenizer);
+    }).catch(e=>{tts=undefined;throw e;});
   }
   const fp16=adapter.features.has('shader-f16');
+  const compact=sttMode==='quantized';
+  if(compact&&!fp16)throw new Error('The compact Parakeet encoder requires shader-f16. Choose compatibility mode or cloud speech.');
   downloads.Parakeet.floor=fp16?689995744:2495495162;
   trackParakeetDownloads();report('Parakeet');
   // Use explicit URLs: the hub helper materializes the large encoder as a Blob
   // URL, which failed to fetch in Chromium acceptance. Hybrid also explicitly
   // selects GPU encoder + WASM decoder and serializes ORT initialization.
   return stt??=fromUrls({
+    // The publisher's “encoder-model.int8.onnx” is byte-identical to its FP16
+    // file. Use the honestly named FP16 encoder plus genuinely INT8 decoder.
     encoderUrl:fp16?quantizedBase+'encoder-model.fp16.onnx':parakeetBase+'encoder-model.onnx',
     decoderUrl:parakeetBase+'decoder_joint-model.int8.onnx',tokenizerUrl:parakeetBase+'vocab.txt',
     ...(!fp16?{encoderDataUrl:parakeetBase+'encoder-model.onnx.data',filenames:{encoder:'encoder-model.onnx',decoder:'decoder_joint-model.int8.onnx'}}:{}),
@@ -98,13 +115,13 @@ async function load(kind:'stt'|'tts'){
 }
 // Serial execution within each dedicated worker prevents overlapping model calls.
 let queue=Promise.resolve();
-self.onmessage=({data}:{data:{id:number;kind:'stt'|'tts';load?:boolean;text?:string;pcm?:Float32Array}})=>{
+self.onmessage=({data}:{data:{id:number;kind:'stt'|'tts';load?:boolean;text?:string;pcm?:Float32Array;parakeet?:'balanced'|'quantized';voice?:'af_heart'|'af_bella'|'af_nicole'|'af_sarah'}})=>{
   queue=queue.then(async()=>{
     try{
-      const model=await load(data.kind);
+      const model=await load(data.kind,data.parakeet);
       if(data.load){self.postMessage({id:data.id,ready:true});return;}
       if(data.kind==='tts'){
-        const audio=await (model as KokoroTTS).generate(data.text!,{voice:'af_heart'});
+        const audio=await (model as KokoroTTS).generate(data.text!,{voice:data.voice||'af_heart'});
         prepareSpeechAudio(audio.audio,audio.sampling_rate);
         const wav=audio.toWav();self.postMessage({id:data.id,wav},[wav]);
       }else{

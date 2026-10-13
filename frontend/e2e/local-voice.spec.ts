@@ -23,6 +23,7 @@ test('quota fallback remains usable with model downloads, local audio and Stop c
    } as unknown as typeof Worker;
   });
   await page.route(`**/api/v2/sessions/${session.id}`,async route=>{const response=await route.fetch();await route.fulfill({response,json:{...await response.json(),demo:false}});});
+  await page.route(`**/api/v2/sessions/${session.id}/voice-options`,route=>route.fulfill({json:{stt:'local',tts:'local',kokoro_voice:'af_heart',parakeet:'quantized',ready:true}}));
   await page.route(`**/api/v2/sessions/${session.id}/speech/*`,route=>route.fulfill({status:503,headers:{'X-PrepCrew-Speech-Fallback':'quota'},json:{detail:'Synthetic quota'}}));
   await page.routeWebSocket(`**/ws/v2/voice/${session.id}`,ws=>{
    ws.onMessage(raw=>{if(typeof raw!=='string')return;const m=JSON.parse(raw);if(m.type==='replay')ws.send(JSON.stringify({type:'reply',event:opening,revision:1}));});

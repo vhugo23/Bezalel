@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router';
 import { api, eventMessage, openSessionSocket, type Event, type Model } from '../api/client';
 import { useApp } from '../store';
 import { useVoiceConversation } from '../lib/useVoiceConversation';
+import { connectionRequest, speechOptions } from '../lib/connections';
 import type { LoadProgress } from '../lib/localSpeech';
 import { Shell } from '../components/Shell';
 import { Whiteboard } from '../components/Whiteboard';
@@ -38,7 +39,8 @@ export function SessionPage() {
   const isLab=session?.engine_id==='linux_fault'&&step<steps.length;
   const turns=events.filter(e=>e.kind==='turn'||e.kind==='hint');
   const refresh=()=>qc.invalidateQueries({queryKey:['session',id]});
-  const voice=useVoiceConversation({id,step,endStep:steps.length||10,demo:session?.demo??false,sound,onEvents:refresh,onError:setError});
+  const speech=useQuery({queryKey:['voice-options',id],queryFn:async()=>speechOptions.parse(await connectionRequest(`/sessions/${id}/voice-options`)),enabled:!!session&&!session.demo,retry:false});
+  const voice=useVoiceConversation({id,step,endStep:steps.length||10,demo:session?.demo??false,sound,speech:speech.data,onEvents:refresh,onError:setError});
   const next=useMutation({mutationFn:()=>api.append(id,{kind:'step',step:step+1,payload:{to:step+1}}),onSuccess:refresh,onError:setError});
   const pause=useMutation({mutationFn:()=>api.pause(id,!session?.paused),onSuccess:s=>{voice.end();qc.setQueryData(['session',id],s);},onError:setError});
   const hint=useMutation({mutationFn:()=>api.hint(id),onSuccess:refresh,onError:setError});
@@ -93,7 +95,6 @@ export function SessionPage() {
       </div>
     </article>)}
     {voice.partial&&<article className="chat-turn candidate-turn live-partial"><div className="chat-message"><div className="chat-author">You <span>live transcript</span></div><p>{voice.partial}<span className="transcript-caret"/></p></div></article>}
-    {demoCandidate&&<article className="chat-turn candidate-turn live-partial"><div className="chat-message"><div className="chat-author">Demo candidate <span>speaking</span></div><p>{demoCandidate}</p></div></article>}
     {(voice.phase==='thinking'||voice.phase==='transcribing')&&<div className="conversation-pending" role="status"><span className="thinking-dots"><i/><i/><i/></span>{labels[voice.phase]}</div>}
   </div>;
 
@@ -132,6 +133,6 @@ export function SessionPage() {
         {session&&<QuitLesson key={id} sid={id} trackId={session.track_id} open={quitOpen} saved={savedQuitPlan(events)} onClose={()=>setQuitUi({id,open:false})} onResult={result=>{if(result.outcome==='ended')voice.end();void refresh();}}/>}
       </section>
     </main>
-    {session&&<DemoAutoplay session={session} onRefresh={refresh} onStart={()=>{voice.end();useApp.setState({voice:true});}} onStop={voice.end} onRunning={setDemoRunning} onCandidate={setDemoCandidate} onLabAction={setDemoLabAction} speakDana={event=>voice.replay(event,true)} onFinish={()=>nav(`/fleet/${id}`)}/>}
+    {session&&<DemoAutoplay session={session} onRefresh={refresh} onStart={()=>{voice.end();useApp.setState({voice:true});}} onStop={voice.end} onRunning={setDemoRunning} onCandidate={setDemoCandidate} onLabAction={setDemoLabAction}/>}
   </Shell>;
 }

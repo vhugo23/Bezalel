@@ -33,7 +33,13 @@ async def start(sid,body):
         event=await db.one("SELECT payload FROM session_events WHERE session_id=$1 AND seq=$2 AND kind IN ('turn','hint') AND actor='interviewer'",sid,body.seq)
         if not event:raise HTTPException(404,'Interviewer turn not found.')
         text=event['payload']['text']
-    jid=await voice.job(sid,body.kind,MODELS[body.kind])
+    model=MODELS[body.kind]
+    if body.kind=='tts':
+        from app import config
+        from . import providers
+        selected=await providers.session_profile(sid) if config.DATABASE_URL else None
+        if selected:model=model.rsplit('/',1)[0]+'/'+selected[0].kokoro_voice
+    jid=await voice.job(sid,body.kind,model)
     await db.execute("UPDATE generation_jobs SET request=$2,stage='Browser inference' WHERE id=$1",jid,
         {'execution':'browser','client_reported':True,'seq':body.seq,'step':session['step']})
     return LocalSpeechJob(id=jid,text=text)
@@ -55,7 +61,7 @@ async def consume_transcript(sid,jid,text,final):
     session=await s.require_session(sid)
     row=await db.one("""UPDATE generation_jobs SET stage='Browser transcript consumed'
         WHERE id=$1 AND subject_id=$2 AND subject_type='session' AND kind='stt'
-        AND status='succeeded' AND request->>'execution'='browser'
+        AND status='succeeded' AND request->>'execution' IN ('browser','cloud_segment')
         AND (request->>'step')::int=$4 AND response->>'text'=$3
         AND stage='Browser inference completed' RETURNING id""",jid,sid,text,session['step'])
     if not row:raise HTTPException(409,'Local transcript is stale, already used or unaudited.')

@@ -1,5 +1,13 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import demoBoard from '../../contracts/demo-board.json' with {type:'json'};
+// Browser/system voices vary by machine. These journeys test persisted review
+// and pairing; speech lifecycle has its own unit and browser coverage.
+test.beforeEach(async({page})=>{
+ await page.addInitScript(()=>Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
+  cancel:()=>{},getVoices:()=>[],speak:(utterance:SpeechSynthesisUtterance)=>
+   setTimeout(()=>utterance.onend?.(new Event('end') as SpeechSynthesisEvent),0),
+ }}));
+});
 // Launch through backend/scripts/e2e.py. Never write into the real workspace.
 test.beforeAll(async({request})=>{
  const response=await request.get('/api/v2/health');
@@ -160,7 +168,7 @@ test('events replay in sequence, duplicate element versions are idempotent and s
  const stale=await request.post(`/api/v2/sessions/${session.id}/turns`,{data:{text:'stale answer',step:0,board:false}});
  expect(stale.status()).toBe(409);
  const metrics=await (await request.get(`/api/v2/sessions/${session.id}/metrics`)).json();
- expect(metrics.hypertables.sort()).toEqual(['metrics','session_events','skill_assessments']);
+ expect(metrics.hypertables.sort()).toEqual(process.env.DATABASE_TIMESCALE==='true'?['metrics','session_events','skill_assessments']:[]);
  expect(metrics.aggregates.sort()).toEqual(['latency_1m','mastery_hourly']);
 });
 

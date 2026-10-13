@@ -240,7 +240,7 @@ async def serve(ws: WebSocket,sid: str):
     async def send(value):
         async with lock:await ws.send_json(value)
     conversation=Conversation(sid,send)
-    reader=None;jid=None;outcome='succeeded';registered=False;failure=None
+    reader=None;observer=None;jid=None;outcome='succeeded';registered=False;failure=None
     try:
         if sid in ACTIVE:raise HTTPException(409,'Voice is already open for this session. End it in the other tab first.')
         ACTIVE.add(sid);registered=True
@@ -248,11 +248,20 @@ async def serve(ws: WebSocket,sid: str):
         definition=await s.engine.context(sid)
         if session['status']!='live' or session['step']>=len(definition['steps']):raise HTTPException(409,'This interview is complete.')
         if session['engine_state'].get('paused'):raise HTTPException(409,'Resume this interview before starting voice.')
-        if not config.ELEVENLABS_API_KEY:raise HTTPException(503,'ElevenLabs is not configured.')
+        from .observation import watch
+        observer=asyncio.create_task(watch(conversation))
+        from . import providers
+        selected=await providers.session_profile(sid) if config.DATABASE_URL else None
+        if selected and selected[0].stt in ('local','openai'):
+            await send({'type':'fallback','provider':'parakeet' if selected[0].stt=='local' else 'openai','reason':'selected'})
+            await receive_browser(ws,conversation,send)
+            return
+        api_key=selected[1].get('elevenlabs_key','') if selected else config.ELEVENLABS_API_KEY
+        if not api_key:raise HTTPException(503,'Open Connections and choose local speech or connect a speech provider.')
         jid=await voice.job(sid,'stt','scribe_v2_realtime')
         conversation.source_job=jid
         async with connect('wss://api.elevenlabs.io/v1/speech-to-text/realtime?'+urlencode(PARAMS),
-                           additional_headers={'xi-api-key':config.ELEVENLABS_API_KEY},open_timeout=10,max_size=1_000_000) as upstream:
+                           additional_headers={'xi-api-key':api_key},open_timeout=10,max_size=1_000_000) as upstream:
             initial=json.loads(await asyncio.wait_for(upstream.recv(),10))
             check_provider_message(initial)
             if initial.get('message_type')!='session_started':
@@ -300,6 +309,9 @@ async def serve(ws: WebSocket,sid: str):
         else:
             with suppress(Exception):await send({'type':'error','message':failure,'fatal':True})
     finally:
+        if observer:
+            observer.cancel()
+            await asyncio.gather(observer,return_exceptions=True)
         if registered:ACTIVE.discard(sid)
         await conversation.close()
         if jid:

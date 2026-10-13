@@ -1,6 +1,7 @@
 """Single-use pairing with a private, bounded reconnect capability."""
 import asyncio
 import hashlib
+import json
 import re
 import secrets
 from datetime import datetime,timezone
@@ -9,6 +10,12 @@ from fastapi import HTTPException, WebSocketDisconnect
 from pydantic import ValidationError
 from . import db, engine, service
 from .models import BoardElementsInput
+
+
+def review_key(review):
+    # Scripted snapshots can become visible before their annotation transaction
+    # commits. The same artifact must be resent when its marks arrive.
+    return json.dumps(review.model_dump(mode='json'), sort_keys=True) if review else None
 
 
 def batch(raw):
@@ -45,7 +52,7 @@ async def paired(ws,code):
         if active:await ws.close(code=4409);return
         await ws.send_json({'type':'error','message':'Pairing code expired, already used, or session ended.'})
         await ws.close(code=4404);return
-    after=0;history=[];review_id=None
+    after=0;history=[];sent_review=None
     try:
         session=await service.require_session(row['session_id'])
         await ws.send_json({'type':'paired','session_id':row['session_id'],'device_id':row['id'],'step':session['step']})
@@ -66,8 +73,9 @@ async def paired(ws,code):
                 if event.kind=='stroke' or (event.kind=='note' and 'remove_strokes' in event.payload):
                     await ws.send_json({'type':'event','event':event.model_dump(mode='json')})
             review=await service.current_board_review(session['id'],session['step'],history)
-            if (review.artifact_id if review else None)!=review_id:
-                review_id=review.artifact_id if review else None
+            current_review=review_key(review)
+            if current_review!=sent_review:
+                sent_review=current_review
                 await ws.send_json({'type':'review','review':review.model_dump(mode='json') if review else None})
             try:raw=await asyncio.wait_for(ws.receive_json(),1)
             except asyncio.TimeoutError:continue

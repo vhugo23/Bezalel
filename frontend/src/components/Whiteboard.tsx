@@ -34,7 +34,7 @@ export function Whiteboard({sid,events,onChange,onComplete,onSpeech,lookRequest=
   try{
    const checked=validateMarks(savedReview.annotations,items);
    setMarks(checked);setShown(checked.length);setReviewComplete(true);
-   setCaption(`Dana’s notes · ${savedReview.source==='recorded'?'recorded critique':'Gemini vision'}`);
+   setCaption(`Dana’s notes · ${savedReview.source==='scripted_demo'?'scripted demo notes':savedReview.source==='recorded'?'recorded critique':'Gemini vision'}`);
   }catch{/* A changed drawing cannot reuse a critique of missing targets. */}
  },[savedReview?.artifact_id,busy,fingerprint]);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
@@ -46,7 +46,15 @@ export function Whiteboard({sid,events,onChange,onComplete,onSpeech,lookRequest=
  const prune=(saved:ReadonlyMap<string,BoardItem>)=>setPending(old=>old.filter(p=>(saved.get(p.id)?.version??0)<p.version));
  const flushPending=():Promise<void>=>saving.current=saving.current.then(async()=>{
   for(let attempt=0;attempt<2&&pendingRef.current.length;attempt++){
-   try{await send(pendingRef.current);setSaveError('');await onChange();return;}
+   try{
+    await send(pendingRef.current);
+    // React query invalidation can resolve before the new events render. Settle
+    // the recovery journal from a server read before a review checks it, and
+    // preserve any edits made while this batch was in flight.
+    prune(boardFromEvents((await api.session(sid)).events,step).latest);
+    setSaveError('');await onChange();
+    if(!pendingRef.current.length)return;
+   }
    catch(e){
     // A stale version (the iPad saved first) is settled by the server's copy; anything else stays queued.
     try{prune(boardFromEvents((await api.session(sid)).events,step).latest);}catch{/* keep everything queued */}

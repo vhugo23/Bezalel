@@ -35,7 +35,10 @@ test('Pi lab runs five checked stages with persisted tools, private state and id
  await expect(page.getByText('Lab check complete. Explain the result to Dana, then continue.')).toBeVisible();
  await explainAndNext(0,'The app responds directly on 3000, but the proxy error points to 3001. The failure is the upstream route.');
  await page.getByRole('tab',{name:'Editor',exact:true}).click();
- const config=page.getByRole('textbox',{name:'nginx configuration'});await config.fill((await config.inputValue()).replace('3001','3000'));
+ await page.getByRole('textbox',{name:'Upstream port'}).fill('3000');
+ await page.getByRole('button',{name:'Edit full file',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'nginx configuration'})).toHaveValue(/3000/);
+ await page.getByRole('button',{name:'Guided editor',exact:true}).click();
  await page.getByRole('button',{name:'Save config',exact:true}).click();await expect(page.getByRole('button',{name:'Save config',exact:true})).toBeDisabled();
  await page.getByRole('tab',{name:'Terminal',exact:true}).click();
  await run('sudo nginx -t');await run('sudo systemctl reload nginx');await run('curl -I localhost');

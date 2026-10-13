@@ -1,28 +1,16 @@
-# v2.3 migration boundary
+# Database migrations
 
-The configured Tiger Data database contained legacy `public.users`, `public.sessions`, `public.memories`, and generic `records`/`events`. Migration 001 installs the approved v2.3 SQL in the separate `prepcrew` schema. Existing rows and legacy endpoints are preserved. The React application calls `/api/v2/*` and uses only the new schema.
+The current app uses the isolated `prepcrew` PostgreSQL schema. The legacy public-schema application is disabled by default. Do not use `init_db.py` for the current app.
 
-`sql/001_v23.sql` is a frozen copy of the approved `backend/sql/prepcrew.sql`. Future changes must be new revisions. Do not run `init_db.py` to migrate v2.3: it mixes the older public-schema tables with the new model.
+New installs use ordinary PostgreSQL tables and views. Migration 001 renders the frozen hackathon schema through `app/postgres_schema.py`, replacing only Timescale extension installation, hypertable conversion and continuous aggregates. All subsequent revisions apply unchanged. The two analytical views show fresh data immediately.
 
-Migration 002 pins the assessment trigger's search path and prevents late assessments from replacing newer mastery. The configured cloud service reported TimescaleDB 2.30.2. Both migrations have run successfully there.
-
-Run from the repo root:
+`DATABASE_TIMESCALE=true` explicitly preserves the original Timescale installation path for a new Timescale database. Existing installations already at migration head are unaffected: changing the flag does not convert existing hypertables, views or records. Use a separate new database for the portable local setup; no automated production conversion is included.
 
 ```powershell
+$env:PYTHONPATH='backend'
 .\.venv\Scripts\python -m alembic -c backend/alembic.ini upgrade head
-.\.venv\Scripts\python backend/scripts/verify_v23.py
 ```
 
-No compression policy is installed. All event references from claims and annotations remain soft references. Destructive downgrades are deliberately unsupported.
+`DATABASE_URL` selects the database. `V2_DATABASE_SCHEMA` defaults to `prepcrew`; migration and application search paths must match. Destructive downgrades are disabled.
 
-`V2_DATABASE_SCHEMA` defaults to `prepcrew`. A validated identifier can select an
-isolated schema for acceptance tests; migrations and the application use the
-same namespace, including trigger search paths and aggregate metadata queries.
-The frozen SQL and default production schema are unchanged.
-
-Run `python backend/scripts/e2e.py` through the repository virtual environment
-after installing Playwright Chromium (`cd frontend; npx playwright install chromium`).
-The runner creates a uniquely named `prepcrew_e2e_*` schema, migrates it from zero,
-starts its own demo API and frontend on ports 18000/15173, disables provider keys,
-runs browser tests, stops its child processes and drops only that schema. Logs
-and traces stay ignored. The normal `prepcrew` records are never test fixtures.
+`npm start` manages native local Postgres and applies migrations automatically. `backend/scripts/e2e.py` creates a uniquely named disposable schema, migrates it from zero, runs synthetic acceptance checks and browser journeys, then removes only that test schema. `verify_v23.py` is the historical Timescale-specific verifier; use the portable acceptance runner for standard Postgres.

@@ -2,6 +2,7 @@ import { test, expect, type APIRequestContext, type Page } from '@playwright/tes
 
 // Real disposable HTTP/database/board/grading journey; only device speech is accelerated.
 async function speech(page:Page,hold=false){
+ await page.route('**/demo/speech/*',route=>route.fulfill({status:503,body:'Synthetic browser speech fallback'}));
  await page.addInitScript(({hold})=>{
   Object.defineProperty(window,'speechSynthesis',{configurable:true,value:{
    getVoices:()=>[],cancel:()=>{},speak:(utterance:SpeechSynthesisUtterance)=>{
@@ -22,15 +23,16 @@ async function start(request:APIRequestContext,trackTitle:string){
 for(const [title,mistake] of [
  ['System design: whiteboard','separate GET followed by SET'],
  ['Fix the site on the Pi','644 gives every user write permission'],
-])test(`autoplay ${title} saves authored interaction and uses ordinary grading`,async({page,request})=>{
+])test(`autoplay ${title} saves authored interaction and an explicitly scripted recap`,async({page,request})=>{
  test.setTimeout(240000);
  await speech(page);const session=await start(request,title);
  await page.goto(`/session/${session.id}`);
  await page.getByRole('button',{name:'Autoplay demo'}).click();
  await expect(page.getByRole('button',{name:'Stop & take over'})).toBeVisible();
  await page.screenshot({path:`../.artifacts/e2e/autoplay-${title.includes('Pi')?'pi':'design'}-playing.png`,fullPage:true});
- await expect(page).toHaveURL(new RegExp(`/fleet/${session.id}$`),{timeout:200000});
- await expect(page.getByText('Session reviewed',{exact:true})).toBeVisible({timeout:30000});
+ await expect(page.getByRole('dialog')).toBeVisible({timeout:90000});
+ await expect(page.getByText('Scripted example feedback; not a live assessment.')).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Next attempt'})).toBeVisible();
  const saved=await (await request.get(`/api/v2/sessions/${session.id}`)).json();
  expect(saved.events.some((e:any)=>e.kind==='note'&&e.payload.demo_autoplay===true)).toBe(true);
  expect(saved.events.some((e:any)=>e.actor==='candidate'&&e.kind==='turn'&&e.payload.text.includes(mistake))).toBe(true);
@@ -42,17 +44,9 @@ for(const [title,mistake] of [
   expect(saved.events.some((e:any)=>e.payload.board_snapshot&&e.payload.artifact_id)).toBe(true);
  }
  const report=await (await request.get(`/api/v2/sessions/${session.id}/report`)).json();
- expect(report.status).toBe('graded');expect(report.evaluators.length).toBeGreaterThan(0);
- // Never inject a score: rendered assessments must be the checked backend response.
- for(const score of report.scores){
-  const card=page.locator('.stat').filter({has:page.getByText(score.name,{exact:true})});
-  await expect(card.locator('.v')).toContainText(String(score.score));
- }
- await expect(page.getByText('Recorded evaluator fixtures demonstrate acceptance and rejection. They are not a live assessment of your ability.')).toBeVisible();
- if(report.next_gap){
-  await page.goto(`/lesson/${session.id}`);
-  await expect(page.getByRole('button',{name:'Generate my lesson'})).toBeVisible();
- }
+ expect(report.status).toBe('graded');
+ expect(report.scores).toEqual([]);expect(report.evaluators).toEqual([]);
+ expect(saved.engine_state.scripted_demo).toBe(true);
 });
 
 test('Stop during speech saves no subsequent actions and restores manual practice',async({page,request})=>{
@@ -60,7 +54,7 @@ test('Stop during speech saves no subsequent actions and restores manual practic
  await page.setViewportSize({width:390,height:844});
  await page.goto(`/session/${session.id}`);await page.getByRole('button',{name:'Autoplay demo'}).click();
  await expect(page.getByRole('button',{name:'Stop & take over'})).toBeVisible();
- await expect(page.getByLabel('Demo playback').getByRole('status')).toHaveText('Dana is speaking');
+ await expect(page.getByLabel('Demo playback').getByRole('status')).toContainText('Dana is speaking');
  await page.getByRole('button',{name:'Stop & take over'}).click();
  await expect(page.getByRole('button',{name:'Autoplay demo'})).toBeVisible();
  const before=await (await request.get(`/api/v2/sessions/${session.id}/events`)).json();

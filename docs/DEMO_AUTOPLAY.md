@@ -1,40 +1,11 @@
 # Demo autoplay
 
-Start either original **System design: whiteboard** or **Fix the site on the Pi**
-track, then click **Autoplay demo** at the bottom left. The candidate speaks with
-a device voice, answers Dana, draws the design or operates the Pi lab, and finishes
-at the ordinary grading screen. Dana uses the existing voice playback and fallback.
-No microphone permission is needed for autoplay.
+Open either original **System design: whiteboard** or **Fix the site on the Pi** track and click the small **D / play** button at bottom left. Personalized opening text is supported. Changed retests require your own answers.
 
-Playback is labelled **scripted demo candidate**. It saves synthetic practice
-activity to the signed-in account. The answers deliberately include misconceptions:
-nonatomic Redis updates in system design, and file permissions and current versus
-historical power flags in the Pi track. The ordinary evaluators determine the scores
-and verified gaps from saved evidence; autoplay never injects grades or lessons.
-Use the review screen's lesson action and then its changed retest to demonstrate
-how the next visit addresses a verified weakness.
+This is a fast, authored walkthrough like the prototype. Dana and the candidate use distinct ElevenLabs voices, with pitch-preserving 1.2x playback. Each fixed utterance is cached on the backend and reused across sessions. It needs no microphone, speech-model download, live interviewer, live vision or evaluator. Uncached audio uses the configured ElevenLabs quota. Drawing and simulator actions are saved through the usual validated APIs; the dedicated demo endpoints save scripted replies and whiteboard notes.
 
-Pi follow-ups use skill-specific authored coaching and the engine's reference-tested
-changed simulator, selected only after a complete grade identifies a verified gap.
-They are labelled **Authored coaching**. System design follow-ups retain AI lesson
-generation and independent content review. This keeps Pi practice runnable without
-asking a model to redefine the simulator's fixed tasks.
+The candidate deliberately makes mistakes. The end screen shows an explicitly **scripted demo recap** with improvement points, authored coaching and a changed next-practice prompt. It does not claim live grading, publish verified weaknesses, create a real retest, or update skill scores. The saved recap can be reopened from history. Normal practice continues to use the configured interviewer, board review and assessment providers.
 
-**Stop & take over** cancels speech and prevents subsequent scripted actions after
-any already submitted request finishes. The saved session remains available for
-manual use. Replay continues from the current step; interrupted tool sequences can
-repeat safe simulator actions. Navigating away also stops playback. Changed retests
-do not offer the original script.
+**Stop & take over** cancels speech and prevents later scripted actions after any submitted action finishes. The transcript remains saved. Restarting resumes the current script; safe simulator actions may repeat. Navigating away stops playback. A session marked as a scripted walkthrough remains a demo, including after manual takeover; start a new practice session for real grading.
 
-Voice availability depends on device voices and the configured Dana provider.
-If playback audio fails, the controller continues with visible text. Live interviews,
-board review and grading use the normal configured providers and their quotas.
-Browser acceptance tests accelerate speech and use isolated recorded evaluator
-fixtures; they establish application flow, not live model grading quality.
-
-Live calibration of the final scripts, on separate labelled synthetic users,
-returned a nonpartial graded report with two verified gaps and a lesson-eligible
-`next_gap` for each track. An initial design calibration found no usable gap
-because its proposed evidence rule was rejected; the final failure-policy answer
-was strengthened and validated in a new batch. These are observed results, not
-a guarantee that every future model response or provider quota will succeed.
+If ElevenLabs is unavailable, the demo visibly labels its browser-voice fallback. If browser audio also fails, playback continues with visible dialogue. Configure ELEVENLABS_DEMO_CANDIDATE_VOICE_ID to override the default candidate voice; Dana uses ELEVENLABS_VOICE_ID. Keys remain on the server. Browser acceptance accelerates speech in an isolated database and verifies both tracks, personalized whiteboard availability, stop behavior, saved recap and absence of live-model endpoint requests.

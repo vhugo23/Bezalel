@@ -23,7 +23,7 @@ BACKBOARD_BASE_URL = os.getenv("BACKBOARD_BASE_URL", "https://app.backboard.io/a
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "fake")
 VOICE_PROVIDER = os.getenv("VOICE_PROVIDER", "fake")
-MEMORY_BACKEND = os.getenv("MEMORY_BACKEND", "")
+MEMORY_BACKEND = os.getenv("MEMORY_BACKEND", "postgres")
 
 TASK_TIMEOUT_SECONDS = float(os.getenv("TASK_TIMEOUT_SECONDS", "20"))
 # ---- Live interviewer and evaluators (contracts/env.additions.md)

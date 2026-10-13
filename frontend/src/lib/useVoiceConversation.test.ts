@@ -55,6 +55,15 @@ async function start(){
 }
 
 describe('full duplex voice lifecycle',()=>{
+ it('completes optional reply playback without downloading models when cloud voice is unconfigured',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(null,{status:204,headers:{'X-PrepCrew-Speech-Fallback':'browser'}})));
+  vi.stubGlobal('speechSynthesis',undefined);
+  const opts=options();const hook=renderHook(()=>useVoiceConversation(opts));
+  let completed=false;
+  await act(async()=>{completed=await hook.result.current.replay(reply);});
+  expect(completed).toBe(true);expect(localMocks.all).toHaveLength(0);
+  expect(opts.onError).not.toHaveBeenCalled();
+ });
  it('ignores duplicate quota fallback while recognition is loading',async()=>{
   const {ws}=await start();
   await act(async()=>{
@@ -112,7 +121,7 @@ describe('full duplex voice lifecycle',()=>{
  it('uses Kokoro only for explicit quota and keeps it for subsequent replies',async()=>{
   vi.stubGlobal('fetch',vi.fn(async()=>new Response('',{status:503,headers:{'X-PrepCrew-Speech-Fallback':'quota'}})));
   const {ws}=await start();await act(async()=>ws.receive({type:'reply',event:reply,revision:1}));
-  expect(localMocks.all[0].kind).toBe('tts');expect(localMocks.all[0].infer).toHaveBeenCalledWith('session',{seq:2});
+  expect(localMocks.all[0].kind).toBe('tts');expect(localMocks.all[0].infer).toHaveBeenCalledWith('session',{seq:2,voice:'af_heart'});
   expect(messages(ws).some(m=>m.type==='playback_done')).toBe(false);
   await act(async()=>FakeAudio.all[0].onended?.());
   expect(messages(ws)).toContainEqual({type:'playback_done',seq:2,revision:1});

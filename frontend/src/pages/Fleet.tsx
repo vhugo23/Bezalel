@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Event, type Model } from '../api/client';
 import { Shell } from '../components/Shell';
+import { DemoRecap, recapSchema, demoRequest } from '../components/DemoRecap';
 import { Badge, Button, ErrorNotice, Icon, Modal } from '../components/ui';
 
 
@@ -10,6 +11,8 @@ export function FleetPage(){
  const {id=''}=useParams();const [evidence,setEvidence]=useState<Event[]|null>(null);const nav=useNavigate();const cache=useQueryClient();
  const report=useQuery({queryKey:['report',id],queryFn:()=>api.report(id),refetchInterval:q=>['graded','failed'].includes(q.state.data?.status||'')?false:800});
  const session=useQuery({queryKey:['session',id],queryFn:()=>api.session(id)});
+ const scripted=session.data?.engine_state?.scripted_demo===true;
+ const recap=useQuery({queryKey:['demo-recap',id],enabled:scripted&&session.data?.status==='graded',queryFn:async()=>recapSchema.parse(await demoRequest(id,'end',{}))});
  const metrics=useQuery({queryKey:['metrics',id],queryFn:()=>api.metrics(id),refetchInterval:report.data?.status==='graded'?false:1500});
  const retry=useMutation({mutationFn:()=>api.end(id),onSuccess:r=>{cache.setQueryData(['report',id],r);void cache.invalidateQueries({queryKey:['metrics',id]});}});
  const names=report.data?.evaluators.map(r=>String(r.name))||[];
@@ -21,6 +24,7 @@ export function FleetPage(){
  const [search]=useSearchParams();const evidenceSeq=Number(search.get('evidence'));
  useEffect(()=>{if(Number.isInteger(evidenceSeq)&&evidenceSeq>0&&session.data)setEvidence(session.data.events.filter(e=>e.seq===evidenceSeq));},[evidenceSeq,session.data]);
  const show=(claim:Model<'CheckedClaim'>)=>setEvidence(session.data?.events.filter(e=>claim.evidence_seq.includes(e.seq))||[]);
+ if(scripted&&session.data?.status==='graded')return <Shell><main className="page"><div className="wrap lesson-wrap"><Badge>Scripted demo</Badge><h1>Demo recap</h1><p className="sub">Authored example feedback, not a live assessment. This walkthrough does not update your skill scores.</p><ErrorNotice error={recap.error}/><section className="card"><div className="cb lesson-body">{recap.data?<DemoRecap recap={recap.data}/>:<p>Opening the saved walkthrough...</p>}</div></section><Button className="top-gap" asChild><Link to="/plan">Back to your plan</Link></Button></div></main></Shell>;
  return <Shell><main className="page"><div className="wrap">
   <div className="obhead"><Badge tone="acc">{done?'Session reviewed':'Grading'}</Badge><h1>{names.length===1?'One evaluator.':`${names.length===4?'Four':names.length||'Your'} evaluators, in parallel.`}</h1><p className="sub">Each reads the same session log. Claims pass reference checks and an independent model review before contributing to your scores.</p></div>
   <ErrorNotice error={report.error||session.error||retry.error}/>
@@ -28,7 +32,7 @@ export function FleetPage(){
   <div className="fgrid">{names.map(name=>{
    const run=report.data?.evaluators.find(r=>r.name===name);const checked=verified.filter(c=>c.evaluator===name);
    return <section className={`card fcard ${run?.status==='done'?'done':'run'}`} key={name}><div className="cb">
-    <div className="fh"><b>{name}</b><Badge>{report.data?.demo?'Recorded':'Gemini'}</Badge></div><span className="fd">Reviewing the configured practice criteria</span>
+    <div className="fh"><b>{name}</b><Badge>{report.data?.demo?'Recorded':'AI review'}</Badge></div><span className="fd">Reviewing the configured practice criteria</span>
     <div className="fst">{run?.status==='done'?<Icon name="check"/>:run?.status==='failed'?<span>!</span>:<span className="spin"/>}{run?.status==='done'?'Evidence checked':run?.status==='failed'?'Evaluation failed':'Reading the session log'}</div>
     {run?.status==='done'?<div className="fres"><div className="fsc">{checked.length}<span className="count-label"> supported</span></div><p>{checked.length?'Open a citation below to inspect the source event.':'No supported claims to include.'}</p></div>:run?.status==='failed'?<p className="fine top-gap">This evaluator did not finish. Its output is excluded.</p>:<div className="fbody"><i/><i/><i/></div>}
    </div></section>;
@@ -39,7 +43,7 @@ export function FleetPage(){
    {rejected.map(c=><div className="cr bad" key={c.id}><span className="spin">×</span><div><b>Rejected proposal: “{c.text}”</b><div className="ev">{c.check_reason}. Excluded from your report and skill assessments.</div></div><Badge tone="bad">Rejected</Badge></div>)}
   </div></section>
   <p className="fine top-gap">{report.data?.demo?'Recorded evaluator fixtures demonstrate acceptance and rejection. They are not a live assessment of your ability.':'Exact references are checked in code; an independent model reviews interpretation and scoring. These practice rubrics still need human calibration.'}</p>
-  <div className="below"><section className="card"><div className="ch"><div><h3>Session measurements</h3><p>Tiger Data · measured values only</p></div><Badge>{metrics.data?.hypertables.length||'—'} hypertables</Badge></div><div className="cb metrics-grid">{metrics.data?.rows.length?metrics.data.rows.map((r,i)=><div className="stat" key={i}><small>{String(r.name)}</small><div className="v">{Math.round(Number(r.p50))}<small> ms</small></div><small>p50 · {String(r.n)} sample(s)</small></div>):<p className="fine">No latency samples yet.</p>}<p className="fine">Continuous aggregates: {metrics.data?.aggregates.join(' · ')||'Loading…'}</p></div></section>
+  <div className="below"><section className="card"><div className="ch"><div><h3>Session measurements</h3><p>Measured response times</p></div><Badge>{metrics.data?.rows.length||0} measurements</Badge></div><div className="cb metrics-grid">{metrics.data?.rows.length?metrics.data.rows.map((r,i)=><div className="stat" key={i}><small>{String(r.name)}</small><div className="v">{Math.round(Number(r.p50))}<small> ms</small></div><small>p50 · {String(r.n)} sample(s)</small></div>):<p className="fine">No latency samples yet.</p>}<p className="fine">Only recorded timing samples appear here.</p></div></section>
    <section className="card"><div className="ch"><h3>Keep the practice going</h3></div><div className="cb">{gap?<><p className="mut">Build a short lesson and a new retest around this supported gap.</p><div className="focus">{gap.text}<div className="citations">{gap.evidence_seq.map(seq=><button key={seq} onClick={()=>setEvidence(session.data?.events.filter(e=>e.seq===seq)||[])}>Event #{seq}</button>)}</div></div><Button asChild className="top-gap"><Link to={`/lesson/${id}`}>Open the lesson<Icon/></Link></Button></>:<p className="mut">{done?'No verified gap to turn into a lesson in this review. Your evidence is available above.':'Your next practice will follow the evidence from the completed review.'}</p>}</div></section>
   </div><div className="fbar"><span className="fine">{done?`${verified.length} supported · ${rejected.length} rejected`:'Evaluators are working…'}</span><span className="grow"/><Button variant="outline" onClick={()=>nav('/plan')}>See your skill circles<Icon/></Button></div>
  </div></main><Modal open={evidence!==null} onClose={()=>setEvidence(null)} title="Source evidence" description="Saved events from this session. Dana’s annotations are kept apart from candidate work.">{evidence?.map(e=><div className="evidence-item" key={e.seq}><Badge>Event #{e.seq}</Badge> <Badge>{e.actor} · {e.kind}</Badge><p>{String(e.payload.text||e.payload.label||'Candidate stroke')}</p><pre>{JSON.stringify(e.payload,null,2)}</pre></div>)}</Modal></Shell>;

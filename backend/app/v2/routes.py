@@ -13,6 +13,31 @@ from .socket_tickets import SocketTicketInput, SocketTicket
 router = APIRouter(prefix='/api/v2', tags=['PrepCrew v2.3'])
 ws_router = APIRouter()
 
+@router.post('/sessions/{sid}/demo/start',response_model=Event)
+async def demo_start(sid:str):
+    from . import demo_autoplay
+    return await demo_autoplay.start(sid)
+
+@router.get('/sessions/{sid}/demo/speech/{seq}')
+async def demo_speech(sid:str,seq:int):
+    from .demo_speech import speech
+    return await speech(sid,seq)
+
+@router.post('/sessions/{sid}/demo/turn', response_model=TurnResult)
+async def demo_turn(sid:str,body:TurnInput):
+    from . import demo_autoplay
+    return await demo_autoplay.turn(sid,body)
+
+@router.post('/sessions/{sid}/demo/board', response_model=BoardResult)
+async def demo_board(sid:str,body:BoardInput):
+    from . import demo_autoplay
+    return await demo_autoplay.board(sid,body)
+
+@router.post('/sessions/{sid}/demo/end')
+async def demo_end(sid:str):
+    from . import demo_autoplay
+    return await demo_autoplay.end(sid)
+
 @router.post('/sessions/{sid}/socket-ticket', response_model=SocketTicket)
 async def socket_ticket(sid: str, body: SocketTicketInput, request: Request):
     if not auth.enabled():raise HTTPException(403, 'Sign in to connect to your session.')
@@ -250,6 +275,11 @@ async def board(sid: str, body: BoardInput):
 @router.post('/sessions/{sid}/end', response_model=Report)
 async def end(sid: str):
     from . import rubrics,engine
+    session=await s.require_session(sid)
+    if session['engine_state'].get('scripted_demo'):
+        from . import demo_autoplay
+        await demo_autoplay.end(sid)
+        return await s.report(sid)
     async with (await db.pool()).acquire() as conn,conn.transaction():
         session=await conn.fetchrow('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',sid)
         if not session:raise HTTPException(404,'Session not found')
@@ -267,9 +297,12 @@ async def report(sid: str): return await s.report(sid)
 @router.get('/sessions/{sid}/metrics', response_model=Metrics)
 async def metrics(sid: str):
     session=await s.require_session(sid)
+    # The portfolio setup uses ordinary Postgres. Do not query extension-only
+    # catalogs unless Timescale is actually installed (existing deployments).
+    timescale = await db.one("SELECT 1 AS installed FROM pg_extension WHERE extname='timescaledb'")
     return Metrics(rows=[dict(r) for r in await db.fetch('SELECT name,n,p50,p95,max FROM v_session_latency WHERE session_id=$1',sid)],
-                   hypertables=[r['hypertable_name'] for r in await db.fetch('SELECT hypertable_name FROM timescaledb_information.hypertables WHERE hypertable_schema=$1',config.V2_DATABASE_SCHEMA)],
-                   aggregates=[r['view_name'] for r in await db.fetch('SELECT view_name FROM timescaledb_information.continuous_aggregates WHERE view_schema=$1',config.V2_DATABASE_SCHEMA)],
+                   hypertables=[r['hypertable_name'] for r in await db.fetch('SELECT hypertable_name FROM timescaledb_information.hypertables WHERE hypertable_schema=$1',config.V2_DATABASE_SCHEMA)] if timescale else [],
+                   aggregates=['mastery_hourly', 'latency_1m'],
                    mastery=[{**dict(r),'bucket':r['bucket'].isoformat()} for r in await db.fetch('SELECT skill_id,bucket,score,samples FROM mastery_hourly WHERE user_id=$1 ORDER BY bucket DESC LIMIT 48',session['user_id'])])
 
 @router.get('/sessions/{sid}/lesson', response_model=Lesson)
@@ -331,7 +364,7 @@ async def pair(sid: str):
 async def artifact(aid: str):
     r=await db.one('SELECT blob_key FROM artifacts WHERE id=$1',aid)
     if not r: raise HTTPException(404,'Artifact not found')
-    return FileResponse(s.ROOT / '.artifacts' / r['blob_key'],media_type='image/png')
+    return FileResponse(s.artifact_directory() / r['blob_key'],media_type='image/png')
 
 @router.post('/sessions/{sid}/audio', response_model=TurnResult)
 async def audio(sid: str, request: Request, step: int = Query(0,ge=0,le=9), board: bool = False):
@@ -359,6 +392,16 @@ async def speech(sid: str, seq: int):
     r=await db.one("SELECT payload FROM session_events WHERE session_id=$1 AND seq=$2 AND kind IN ('turn','hint') AND actor='interviewer'",sid,seq)
     if not r: raise HTTPException(404,'Interviewer turn not found')
     if DEMO: raise HTTPException(409,'Recorded mode has no live voice.')
+    from . import providers, speech_connections
+    selected=await providers.session_profile(sid) if config.DATABASE_URL else None
+    if selected:
+        settings,keys=selected
+        if settings.tts in ('local','browser'):
+            return Response(status_code=204,headers={'X-PrepCrew-Speech-Fallback':settings.tts,'Cache-Control':'no-store'})
+        if settings.tts=='openai':return await speech_connections.speak(sid,r['payload']['text'],settings,keys)
+        return await speak(sid,r['payload']['text'],voice_id=settings.elevenlabs_voice,api_key=keys['elevenlabs_key'])
+    if not config.ELEVENLABS_API_KEY or not config.ELEVENLABS_VOICE_ID:
+        return Response(status_code=204, headers={'X-PrepCrew-Speech-Fallback':'browser', 'Cache-Control':'no-store'})
     return await speak(sid,r['payload']['text'])
 
 @ws_router.websocket('/ws/v2/sessions/{sid}')

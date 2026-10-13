@@ -20,7 +20,7 @@ describe('authored demo candidate',()=>{
  it('refuses changed retests even when their engine and step titles are reused',()=>{
   const original={engine_id:'conceptual',opening:'Design a rate limiter for a public API. Before you draw anything, ask me what you need to know.',steps:['Clarify requirements','Draw and explain','Defend the trade-offs'].map(title=>({title}))};
   expect(supportsDemo(original)).toBe(true);
-  expect(supportsDemo({...original,opening:'Design a limiter with changed regional requirements.'})).toBe(false);
+  expect(supportsDemo({...original,opening:'Design a limiter for a personalized workload.'})).toBe(true);
   expect(supportsDemo({...original,title:'Retest: concurrency'})).toBe(false);
   expect(supportsDemo({...original,steps:[{title:'Changed variant'}]})).toBe(false);
  });

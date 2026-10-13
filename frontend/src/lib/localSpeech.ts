@@ -33,11 +33,11 @@ export class LocalSpeech {
       catch{this.close();}
     });
   }
-  async load(){
-    try{await this.call({load:true});this.loaded=true;}
+  async load(options?:{parakeet?:'balanced'|'quantized'}){
+    try{await this.call({load:true,...options});this.loaded=true;}
     catch(e){this.close();throw e;}
   }
-  async infer(sid:string,input:{text?:string;seq?:number;pcm?:Float32Array}){
+  async infer(sid:string,input:{text?:string;seq?:number;pcm?:Float32Array;voice?:string}){
     const path=`/sessions/${sid}/local-speech/jobs`;
     const started=await apiFetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:this.kind,seq:input.seq})});
     if(!started.ok)throw new Error('Could not audit local speech. Your conversation is saved.');
@@ -45,7 +45,7 @@ export class LocalSpeech {
     let status='failed',text='';const began=performance.now();
     try{
       // TTS text comes from the saved interviewer event, never arbitrary client text.
-      const output=await this.call({text:job.text,pcm:input.pcm});
+      const output=await this.call({text:job.text,pcm:input.pcm,voice:input.voice});
       status='succeeded';text=output.text||'';return {...output,inference_id:job.id};
     }finally{
       const saved=await apiFetch(`${path}/${job.id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,text,latency_ms:Math.min(600000,Math.round(performance.now()-began))})});
@@ -64,11 +64,12 @@ export class LocalSpeech {
 let persisted=false;
 // Loaded models stay on the GPU between voice starts. Idle workers are freed after a while.
 const IDLE_MS=15*60_000;
-const shared:Partial<Record<'stt'|'tts',{speech:LocalSpeech;idle?:ReturnType<typeof setTimeout>}>>={};
-export function acquireSpeech(kind:'stt'|'tts',progress:(p:LoadProgress)=>void){
+const shared:Partial<Record<'stt'|'tts',{speech:LocalSpeech;mode:string;idle?:ReturnType<typeof setTimeout>}>>={};
+export function acquireSpeech(kind:'stt'|'tts',progress:(p:LoadProgress)=>void,mode='balanced'){
   if(!persisted){persisted=true;void navigator.storage?.persist?.().catch(()=>false);}
   let entry=shared[kind];
-  if(!entry||entry.speech.closed)entry=shared[kind]={speech:new LocalSpeech(kind,progress)};
+  if(entry&&entry.mode!==mode){clearTimeout(entry.idle);entry.speech.close();entry=undefined;}
+  if(!entry||entry.speech.closed)entry=shared[kind]={speech:new LocalSpeech(kind,progress),mode};
   clearTimeout(entry.idle);entry.idle=undefined;entry.speech.progress=progress;
   return entry.speech;
 }

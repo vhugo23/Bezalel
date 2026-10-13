@@ -1,0 +1,15 @@
+{
+  "name": "prepcrew",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "start": "node scripts/start.mjs",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix frontend test",
+    "check:app": "node scripts/check-app.mjs"
+  },
+  "dependencies": {"embedded-postgres": "17.10.0-beta.17"},
+  "engines": {"node": ">=22.12"}
+}

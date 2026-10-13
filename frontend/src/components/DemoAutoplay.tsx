@@ -1,47 +1,77 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, apiFetch, type Event, type Session } from '../api/client';
+import { api, apiFetch, type Event, type Session, type Model } from '../api/client';
 import { randomId } from '../lib/ids';
 import { demoStep, demoBoardItems, demoBoardPng, supportsDemo } from '../lib/demoAutoplay';
 import { activeItems, boardFromEvents } from '../lib/boardElements';
-import { Icon } from './ui';
+import { Icon, Modal, Button } from './ui';
+import { schemas } from '../api/schemas';
+import { z } from 'zod';
+import { DemoRecap, recapSchema, demoRequest } from './DemoRecap';
 import './DemoAutoplay.css';
 
-type Props={session:Session;onRefresh:()=>Promise<unknown>;onStart:()=>void;onStop:()=>void;onRunning:(running:boolean)=>void;onCandidate:(text:string)=>void;onLabAction:(action:{kind:string;text:string}|undefined)=>void;onFinish:()=>void;speakDana:(event:Event)=>Promise<boolean>};
+type Props={session:Session;onRefresh:()=>Promise<unknown>;onStart:()=>void;onStop:()=>void;onRunning:(running:boolean)=>void;onCandidate:(text:string)=>void;onLabAction:(action:{kind:string;text:string}|undefined)=>void};
 
-/** A bounded, user-started rehearsal. Saved answers go through the ordinary grader. */
+/** Explicit scripted rehearsal: no live model or speech-model download. */
 export function DemoAutoplay(props:Props){
  const latest=useRef(props);latest.current=props;
  const [running,setRunning]=useState(false),[status,setStatus]=useState(''),[error,setError]=useState('');
  const [voiceNote,setVoiceNote]=useState('');
+ const [recap,setRecap]=useState<z.infer<typeof recapSchema>|null>(null);
  const run=useRef<{stopped:boolean;cancelSpeech?:()=>void}|null>(null);
  useEffect(()=>()=>{if(run.current){run.current.stopped=true;run.current.cancelSpeech?.();latest.current.onStop();}},[props.session.id]);
  const stop=()=>{if(run.current){run.current.stopped=true;run.current.cancelSpeech?.();}latest.current.onStop();setStatus('Stopping after the current saved action…');};
  const start=async()=>{
   if(run.current)return;
   const token={stopped:false,cancelSpeech:undefined as undefined|(()=>void)};run.current=token;
-  setError('');setVoiceNote('');setStatus('Preparing the demo');setRunning(true);latest.current.onRunning(true);latest.current.onStart();
+  setError('');setRecap(null);setVoiceNote('');setStatus('Preparing the demo');setRunning(true);latest.current.onRunning(true);latest.current.onStart();
   const check=()=>{if(token.stopped)throw new DOMException('Playback stopped','AbortError');};
   const refresh=async()=>{await latest.current.onRefresh();check();};
-  const candidate=async(text:string)=>{
-   check();latest.current.onCandidate(text);setStatus('Demo candidate is speaking');
-   if(!window.speechSynthesis){setVoiceNote('Candidate voice unavailable; answers appear as text.');return;}
+  let cloudUnavailable=false;
+  const speak=async(event:Event,speaker:'candidate'|'dana')=>{
+   const text=String(event.payload.text||'');
+   check();latest.current.onCandidate(speaker==='candidate'?text:'');setStatus(speaker==='candidate'?'Demo candidate is speaking':'Dana is speaking');
+   if(!cloudUnavailable){
+    const controller=new AbortController();
+    const requestTimeout=setTimeout(()=>controller.abort(),15000);
+    token.cancelSpeech=()=>controller.abort();
+    try{
+     const response=await apiFetch(`/sessions/${props.session.id}/demo/speech/${event.seq}`,{signal:controller.signal});
+     if(!response.ok)throw new Error('ElevenLabs audio is unavailable');
+     const blob=await response.blob();check();
+     if(!blob.size)throw new Error('No ElevenLabs audio returned');
+     clearTimeout(requestTimeout);
+     const url=URL.createObjectURL(blob),audio=new Audio(url);
+     audio.playbackRate=1.2;audio.preservesPitch=true;
+     try{
+      await new Promise<void>((resolve,reject)=>{
+       let finished=false;
+       const done=(error?:Error)=>{if(finished)return;finished=true;clearTimeout(timeout);audio.pause();audio.onended=null;audio.onerror=null;token.cancelSpeech=undefined;error?reject(error):resolve();};
+       const timeout=setTimeout(()=>done(new Error('Audio playback timed out')),Math.max(8000,text.length*100));
+       audio.onended=()=>done();audio.onerror=()=>done(new Error('Audio playback failed'));
+       token.cancelSpeech=()=>done();
+       void audio.play().catch(()=>done(new Error('Audio playback was blocked')));
+      });
+      check();setVoiceNote('ElevenLabs voices');return;
+     }finally{audio.pause();URL.revokeObjectURL(url);}
+    }catch(error){check();cloudUnavailable=true;setVoiceNote('ElevenLabs unavailable; browser voice fallback.');}
+    finally{clearTimeout(requestTimeout);token.cancelSpeech=undefined;}
+   }
+   if(!window.speechSynthesis){setVoiceNote('Browser voice unavailable; dialogue appears as text.');return;}
    await new Promise<void>(resolve=>{
     const utterance=new SpeechSynthesisUtterance(text);
     const voices=window.speechSynthesis.getVoices().filter(v=>v.lang.startsWith('en'));
-    utterance.voice=voices.find(v=>/david|daniel|guy|mark|male/i.test(v.name))||voices.at(-1)||null;
-    utterance.pitch=.85;utterance.rate=1.08;
+    utterance.voice=voices.find(v=>speaker==='candidate'?/david|daniel|guy|mark/i.test(v.name):/zira|samantha|jenny|aria|female/i.test(v.name))||voices[speaker==='candidate'?voices.length-1:0]||null;
+    utterance.pitch=speaker==='candidate'?.85:1.1;utterance.rate=1.5;
     const finish=()=>{clearTimeout(timeout);token.cancelSpeech=undefined;resolve();};
-    const timeout=setTimeout(()=>{window.speechSynthesis.cancel();setVoiceNote('Candidate voice unavailable; continuing with text.');finish();},Math.max(8000,text.length*100));
-    utterance.onend=finish;utterance.onerror=()=>{setVoiceNote('Candidate voice unavailable; continuing with text.');finish();};
+    const timeout=setTimeout(()=>{window.speechSynthesis.cancel();setVoiceNote('Browser voice unavailable; continuing with text.');finish();},Math.max(4000,text.length*65));
+    utterance.onend=finish;utterance.onerror=()=>{setVoiceNote('Browser voice unavailable; continuing with text.');finish();};
     token.cancelSpeech=()=>{window.speechSynthesis.cancel();finish();};
     window.speechSynthesis.speak(utterance);
    });check();
   };
   const dana=async(event:Event)=>{
    check();setStatus('Dana is speaking');
-   let timeout:ReturnType<typeof setTimeout>|undefined;
-   const spoken=await Promise.race([latest.current.speakDana(event),new Promise<boolean>(resolve=>{timeout=setTimeout(()=>{latest.current.onStop();resolve(false);},60000);})]).finally(()=>clearTimeout(timeout));check();
-   if(!spoken)setVoiceNote('Dana’s audio is unavailable; continuing with the saved transcript.');
+   await speak(event,'dana');check();
    const response=await apiFetch(`/sessions/${props.session.id}/reply-complete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seq:event.seq})});
    if(!response.ok)throw new Error('Dana’s reply could not be saved. Stop and reopen the session to continue.');
    await refresh();
@@ -51,11 +81,12 @@ export function DemoAutoplay(props:Props){
    if(!supportsDemo(current))throw new Error('This changed scenario needs your own answers. Start either original track to watch the demo.');
    if(current.paused)throw new Error('Resume the interview before starting demo playback.');
    if(!current.events.some(e=>e.kind==='note'&&e.payload.demo_autoplay===true)){
-    await api.append(current.id,{kind:'note',step:current.step,payload:{demo_autoplay:true,label:'Scripted demo candidate; real grading'}});await refresh();
+    await api.append(current.id,{kind:'note',step:current.step,payload:{demo_autoplay:true,scripted_demo:true,label:'Scripted demo playback; illustrative feedback'}});await refresh();
    }
+   const opening=schemas.Event.parse(await demoRequest(current.id,'start',{})) as Event;
+   await refresh();
    if(!current.events.some(e=>e.actor==='candidate'&&e.kind==='turn')){
-    const opening=current.events.filter(e=>e.actor==='interviewer'&&e.kind==='turn').at(-1);
-    if(opening)await dana(opening);
+    await dana(opening);
    }else{
     const pending=current.events.filter(e=>e.actor==='interviewer'&&e.kind==='turn'&&e.step===current.step).at(-1);
     const lastAnswer=current.events.filter(e=>e.actor==='candidate'&&e.kind==='turn').at(-1);
@@ -75,7 +106,7 @@ export function DemoAutoplay(props:Props){
      if(typeof revision!=='number')throw new Error('The Pi simulator state is unavailable. Your saved work is safe.');
      setStatus(`Candidate: ${action.kind==='edit'?'editing the configuration':action.text}`);
      latest.current.onLabAction(action);
-     await new Promise(resolve=>setTimeout(resolve,650));check();
+     await new Promise(resolve=>setTimeout(resolve,180));check();
      await api.lab(current.id,{...action,step,revision,request_id:randomId()});await refresh();
     }
     if(script.board){
@@ -84,9 +115,9 @@ export function DemoAutoplay(props:Props){
      const missing=(await demoBoardItems()).filter(item=>!savedIds.has(item.id));
      if(missing.length){
       setStatus('Candidate is drawing the design');
-      for(const item of missing){
-       check();await api.boardElements(current.id,{step,elements:[item]});await refresh();
-       await new Promise(resolve=>setTimeout(resolve,300));
+      for(let offset=0;offset<missing.length;offset+=4){
+       check();await api.boardElements(current.id,{step,elements:missing.slice(offset,offset+4)});await refresh();
+       await new Promise(resolve=>setTimeout(resolve,100));
       }
      }
     }
@@ -94,16 +125,19 @@ export function DemoAutoplay(props:Props){
     const answered=new Set(current.events.filter(e=>e.actor==='candidate'&&e.kind==='turn'&&e.step===step).map(e=>e.payload.text));
     for(const answer of script.answers.filter(answer=>!answered.has(answer))){
      current=await api.session(current.id);check();if(current.step!==step)break;
-     await candidate(answer);check();setStatus('Dana is thinking');
-     const result=await api.turn(current.id,{text:answer,step,board:!!script.board});
-     latest.current.onCandidate('');await refresh();
+     setStatus('Preparing the next exchange');
+     const result=schemas.TurnResult.parse(await demoRequest(current.id,'turn',{text:answer,step,board:!!script.board})) as Model<'TurnResult'>;
+     await refresh();
+     const savedAnswer=result.events.find(e=>e.actor==='candidate'&&e.kind==='turn');
+     if(savedAnswer)await speak(savedAnswer,'candidate');
+     latest.current.onCandidate('');
      for(const reply of result.events.filter(e=>e.actor==='interviewer'&&e.kind==='turn'))await dana(reply);
     }
     current=await api.session(current.id);check();
     if(current.step===step&&script.board&&!current.board_review){
      setStatus('Dana is reviewing the whiteboard');
      const items=activeItems(boardFromEvents(current.events,step).latest);
-     const png=await demoBoardPng(items);check();await api.board(current.id,{elements:items,png});await refresh();
+     const png=await demoBoardPng(items);check();schemas.BoardResult.parse(await demoRequest(current.id,'board',{elements:items,png}));await refresh();
      current=await api.session(current.id);check();
      const reviewTurns=current.events.filter(e=>e.actor==='interviewer'&&e.kind==='turn'&&e.step===step&&e.payload.annotation_id);
      for(const reply of reviewTurns)await dana(reply);
@@ -113,15 +147,19 @@ export function DemoAutoplay(props:Props){
    }
    current=await api.session(props.session.id);check();
    if(current.step<(current.steps?.length||0))throw new Error('Playback stopped at the step limit. Continue the saved session manually.');
-   setStatus('Sending the scripted session to the real graders');
-   await api.end(current.id);check();latest.current.onFinish();
+   setStatus('Opening the demo recap');
+   const result=recapSchema.parse(await demoRequest(current.id,'end',{}));check();setRecap(result);
   }catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))setError(e instanceof Error?e.message:String(e));}
   finally{run.current=null;latest.current.onCandidate('');latest.current.onLabAction(undefined);latest.current.onStop();latest.current.onRunning(false);setRunning(false);setStatus('');void latest.current.onRefresh();}
  };
- if(!supportsDemo(props.session)||!demoStep(props.session.engine_id,props.session.step)||props.session.status!=='live')return null;
+ if(!recap&&(!supportsDemo(props.session)||!demoStep(props.session.engine_id,props.session.step)||props.session.status!=='live'))return null;
  return <aside className="demo-autoplay" aria-label="Demo playback">
   <button className={running?'playing':''} onClick={running?stop:()=>void start()} aria-label={running?'Stop & take over':'Autoplay demo'} aria-pressed={running} title={running?'Stop demo and take over':'Autoplay scripted demo · saves practice activity'}><span aria-hidden="true">D</span><Icon name={running?'stop':'play'}/></button>
   <span className="demo-autoplay-status" role="status">{running?status:''}{voiceNote&&` ${voiceNote}`}</span>
+  {voiceNote&&running&&<span className="demo-voice-source">{voiceNote}</span>}
   {error&&<p role="alert">{error}</p>}
+  <Modal open={!!recap} onClose={()=>setRecap(null)} title="Demo recap" description="Scripted example feedback; not a live assessment.">
+   {recap&&<><DemoRecap recap={recap}/><Button onClick={()=>setRecap(null)}>Done</Button></>}
+  </Modal>
  </aside>;
 }

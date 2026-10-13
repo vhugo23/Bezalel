@@ -68,16 +68,18 @@ async def transcribe(sid: str, data: bytes, mime: str) -> str:
         raise HTTPException(503,'Transcription failed. Please try again or type your answer.')
 
 
-async def speak(sid: str, text: str):
-    if not config.ELEVENLABS_API_KEY or not config.ELEVENLABS_VOICE_ID:
+async def speak(sid: str, text: str, *, voice_id: str | None = None, api_key: str | None = None):
+    voice_id=voice_id or config.ELEVENLABS_VOICE_ID
+    api_key=api_key or config.ELEVENLABS_API_KEY
+    if not api_key or not voice_id:
         raise HTTPException(503,'Configure ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID in the root .env.')
     model=config.ELEVENLABS_MODEL or 'eleven_flash_v2_5'
     jid=await job(sid,'tts',model);started=time.perf_counter()
     client=httpx.AsyncClient(timeout=httpx.Timeout(35,connect=10))
     response=None
     try:
-        request=client.build_request('POST',f'https://api.elevenlabs.io/v1/text-to-speech/{config.ELEVENLABS_VOICE_ID}/stream',
-            params={'output_format':'mp3_44100_128'},headers={'xi-api-key':config.ELEVENLABS_API_KEY},
+        request=client.build_request('POST',f'https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream',
+            params={'output_format':'mp3_44100_128'},headers={'xi-api-key':api_key},
             json={'text':text,'model_id':model})
         response=await client.send(request,stream=True)
         if not response.is_success:
